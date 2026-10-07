@@ -19,3 +19,6 @@ build/
 dist/
 *.pyc
 *.spec
+
+# Screenshots of the payroll program (real employee names and pay)
+screenshots/

@@ -201,3 +201,64 @@ def test_quit_cancels_active_reading_and_calls_the_exit_hook(tmp_path):
 
 def test_quit_is_refused_from_other_websites(client):
     assert client.post("/api/quit", headers={"origin": "https://evil.example"}).status_code == 403
+
+
+# ------------------------------------------------------------------------------------------------------- payroll
+def card_reader(image):
+    rows = [{"Date": good(str(d)), "Total": good("9")} for d in range(1, 31) if d not in (6, 13, 20, 27)]
+    return record(rows, labels=("Date", "Total"))
+
+
+def test_payroll_screen_api_end_to_end(tmp_path):
+    jobs = Jobs(tmp_path / "jobs", reader=card_reader)
+    with TestClient(app_module.create_app(jobs), base_url="http://localhost") as c:
+        job_id = upload(c, tmp_path, name="card.png").json()["created"][0]["id"]
+        jobs.wait_idle(30)
+
+        view = c.get("/api/payroll/2026-09").json()                      # nothing saved yet: defaults
+        assert view["plan"]["day_types"]["6"] == "rest" and view["plan"]["employees"] == []
+        assert [d["id"] for d in view["documents"]] == [job_id]
+        assert [f["key"] for f in view["fields"]][:3] == ["working_days", "public_holiday", "days_worked"]
+
+        plan = view["plan"]
+        plan["day_types"]["16"] = "holiday"
+        plan["employees"] = [{"id": "e1", "emp_no": "AF(1)", "name": "Test", "jobs": [job_id], "hours_column": None,
+                              "overrides": {"lateness": 2}}]
+        saved = c.put("/api/payroll/2026-09", json=plan).json()
+        r = saved["results"][0]
+        assert r["columns"] == ["Date", "Total"] and r["complete"]
+        assert r["values"]["working_days"]["value"] == 25 and r["values"]["days_worked"]["value"] == 25
+        assert r["values"]["ot_holiday"]["value"] == 1 and r["values"]["lateness"]["edited"]
+
+        assert c.get("/api/payroll/2026-09").json()["plan"]["day_types"]["16"] == "holiday"     # persisted
+        csv = c.get("/api/payroll/2026-09/csv")
+        assert csv.status_code == 200 and csv.content.startswith(b"\xef\xbb\xbfEmployee No.,Name,Month End Pay")
+        assert b"AF(1),Test" in csv.content and b"25.00" in csv.content
+
+
+def test_payroll_api_refuses_bad_input(client, tmp_path):
+    assert client.get("/api/payroll/nonsense").status_code == 400
+    plan = client.get("/api/payroll/2026-09").json()["plan"]
+    plan["employees"] = [{"id": "e1", "emp_no": "1", "name": "", "jobs": ["does-not-exist"]}]
+    r = client.put("/api/payroll/2026-09", json=plan)
+    assert r.status_code == 404 and r.json()["code"] == "JOB_NOT_FOUND"
+    assert client.put("/api/payroll/2026-09", content="x").status_code == 400
+    assert client.get("/api/payroll/2026-09/csv").json()["code"] == "PAYROLL_EMPTY"
+    assert client.put("/api/payroll/2026-09", json=plan, headers={"origin": "https://evil.example"}).status_code == 403
+
+
+def test_company_can_be_set_and_is_listed(client, tmp_path):
+    job = upload(client, tmp_path, name="MAJU JAYA ALI SEPT 26.png").json()["created"][0]
+    r = client.put(f"/api/jobs/{job['id']}/company", json={"company": "MAJU JAYA"})
+    assert r.status_code == 200 and r.json() == {"moved": 0}
+    assert client.get("/api/jobs").json()[0]["company"] == "MAJU JAYA"
+    assert client.put(f"/api/jobs/{job['id']}/company", json={"company": 5}).status_code == 400
+    assert client.put("/api/jobs/nope/company", json={"company": "X"}).status_code == 404
+
+
+def test_payroll_file_picker_gets_the_company_of_each_file(client, tmp_path):
+    job = upload(client, tmp_path, name="MAJU JAYA ALI SEPT 26.png").json()["created"][0]
+    client.put(f"/api/jobs/{job['id']}/company", json={"company": "MAJU JAYA"})
+    client.app.state.jobs.wait_idle()
+    docs = client.get("/api/payroll/2026-09").json()["documents"]
+    assert [d["company"] for d in docs if d["id"] == job["id"]] == ["MAJU JAYA"]

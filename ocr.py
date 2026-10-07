@@ -175,6 +175,11 @@ _BILLING_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_BE
                 "CLAUDE_CODE_USE_FOUNDRY")
 
 
+# The packaged app has no console of its own, so without this flag Windows opens a new black console window every time
+# the Claude CLI is started (once per page, plus every status check).
+NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+
 class OcrError(Exception):
     """A failure with a plain-language message that says what happened and what to do next."""
 
@@ -215,7 +220,7 @@ def auth_status() -> dict:
     out["installed"] = True
     try:
         proc = subprocess.run([cli, "auth", "status"], capture_output=True, text=True, timeout=30, env=_env(),
-                              encoding="utf-8", errors="replace")
+                              encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
         data = json.loads(proc.stdout or "{}")
     except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
         out["message"] = "Could not check whether Claude is signed in. Close this app and open it again."
@@ -559,7 +564,7 @@ def _run_cli(cmd: list[str], *, input: str, timeout: float, cwd: str, env: dict)
     if cancel is not None and cancel.is_set():
         raise cancelled
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                            encoding="utf-8", errors="replace", cwd=cwd, env=env)
+                            encoding="utf-8", errors="replace", cwd=cwd, env=env, creationflags=NO_WINDOW)
     deadline = time.monotonic() + timeout
     to_send = input
     while True:

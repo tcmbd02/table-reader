@@ -1,5 +1,86 @@
 # Progress log
 
+## Session 5e — 2026-10-07 — Bahasa Melayu
+253 tests pass; package rebuilt. Not checked in a browser (Chrome extension not connected).
+- Header button "Bahasa Melayu" / "English" switches the language (kept in the browser's localStorage, page reloads).
+- `static/i18n.js` (loaded first): `t(text, vars)` page text keyed by the English text, `tn(n, one, many)` plurals,
+  `tm(text)` server messages: exact entries, then `MS_PATTERNS` for sentences with names/numbers (also old error messages
+  saved in job.json). Unknown text stays English. `index.html` text marked `data-t` / `data-t-title` / `data-t-aria`.
+  Server and CSV unchanged (English).
+- Kept in English on purpose: the payroll results window (copy of Million Payroll's Edit Payroll screen) and both CSVs
+  (import into Million Payroll), and Claude's own notes/cell reasons (Claude's reading). The guide PDF is English only.
+- Checks (scratch scripts, not in tests/): all scripts parse (esprima); every `t()`/`tn()`/`data-t` text has a Malay
+  entry (167 texts); 49 server messages incl. real payroll issues match an entry or pattern. When adding UI text, add
+  the Malay entry to `MS` in `static/i18n.js`.
+
+## Session 5d — 2026-10-07 — Recent files filtered by client company
+252 tests pass (3 new); package rebuilt. Not checked in a browser (Chrome extension not connected).
+- Each file has a `company` in `job.json` ("" = none; older files read as ""). The company is **never worked out from the
+  name on its own**: the user sets it once ("Set company" chip → box pre-filled with a suggestion: month/year and the last
+  word taken off, e.g. "MAJU JAYA ALI SEPT 26" → "MAJU JAYA"). Then `Jobs.set_company` also files every file with no
+  company whose name starts with that company (whole words, any capitals/spaces), and new uploads are matched against
+  known companies (`company_for`, longest first). Same company typed differently joins the existing spelling.
+- `PUT /api/jobs/{id}/company {"company": "..."}` → `{"moved": n}`.
+- Home: "Company" dropdown beside "Recent files" (All / each company with counts / No company yet), remembered in the
+  browser. The list does not refresh while a company box is open.
+- Payroll file picker: a "Company" dropdown beside "Find a file…" for each employee (screen only, not saved). It starts on
+  the company of the employee's ticked files (if they share one); a new employee starts on the previous employee's company.
+  Ticked files always stay visible. `documents` in the payroll API now carry `company`. 253 tests; package rebuilt.
+
+## Session 5c — 2026-10-07 — Leave table + Allowance & Deduction tab
+249 tests pass (3 new). Package **not** rebuilt yet. Page not checked in a browser (Chrome extension not connected);
+API checked with a throwaway data folder.
+- Basic Pay & Overtime tab: Leave table (Leave | Type | Taken | Balance) bottom-left; "Please check" and day-by-day moved
+  below the two tables. Balance is greyed out (kept in Million Payroll). Taken is typed by the user (never read from cards).
+- New Allowance & Deduction tab: Allowance, Deduction, Benefit In Kind (BIK) tables (Rate typed per employee), User Defined
+  Entry (Zakat / Levy paid by individual), Message.
+- The lines are company lists in the month plan (`plan.lists`, defaults = the lines on the user's screenshots; the
+  Deduction list there was cut off by a scrollbar). "+ Add a … line" / "×" change the list for every employee; a new month
+  copies the lists of the latest saved month. Per employee: `entries`, `zakat`, `levy`, `message`.
+- CSV: one column per line (`Leave: Annual Leave (Day)`, `Allowance: …`, `Deduction: …`, `Benefit In Kind (BIK): …`),
+  then Zakat, Levy, Message, Notes.
+- Still not reproduced: Arrears tab, Overtime Pay Period dates.
+
+## Session 5b — 2026-10-07 — two fixes from the first real use
+246 tests pass; package rebuilt.
+- **Claude console windows popping up** (packaged app only): the windowed .exe has no console, so every `claude` start
+  (status check + each page) opened one. Fixed with `creationflags=CREATE_NO_WINDOW` (`ocr.NO_WINDOW`) on the status check
+  and the page runner (tests added). Checked with the rebuilt .exe during a real read: `claude.exe` ran, no visible window.
+- **Payroll results now look like Million Payroll's Edit Payroll screen** (`static/payroll.js`, `app.css`): title bar,
+  Employee No./Name boxes, "Month End Pay - September, 2026", the Basic Pay & Overtime tab with the three grey panels
+  (Basic Rate/Director Fee/Back Pay greyed out — not on time cards; Working Days/Public Holiday/Days Worked/Hours of Worked;
+  Lateness/Early Departure/No Pay Hour/Encashing Leave with Hour(s)/Day(s)), the Overtime table (Overtime | Unit | Hrs/Days),
+  First/Previous/Next/Last between employees. Bottom-left slot (Leave table on the real screen) shows "Please check" and
+  the day-by-day working. Not reproduced: Leave table, Allowance & Deduction and Arrears tabs, Overtime Pay Period dates
+  (nothing to fill them from).
+
+## Session 5 — 2026-10-07 — Payroll step (Million Payroll month-end figures)
+244 tests pass (`tests/test_payroll.py` + payroll API tests).
+- Flow kept: read → user corrects → generic CSV. New **Payroll** screen (header link, `#/payroll/yyyy-mm`) turns the
+  *confirmed* cells into one row per employee in the Edit Payroll screen's terms and downloads `Payroll yyyy-mm.csv`.
+- The "template" was taken from the 3 screenshots in `screenshots\` (Edit Payroll: Basic Pay & Overtime, Allowance &
+  Deduction, Arrears). **No real Million Payroll import file was available**, so the column headings follow the screen
+  labels (Employee No., Name, Month End Pay, Working Days, Public Holiday, Days Worked, Hours of Worked, Lateness,
+  Early Departure, No Pay Hour, Encashing Leave, six overtime rates, Notes). If its importer needs other headings/order,
+  change `payroll.FIELDS` / `build_csv`. Allowances, deductions, arrears, rates, leave balances are not on time cards: not output.
+- `payroll.py` rules (worked out from a real sample employee: 2 half-month cards ↔ Days Worked 25, Working Days 25, OT 1.5 = 25 h,
+  2 Times Work on Holiday = 1 day): per employee, daily hours come from the cards' Total column (or a chosen column);
+  Working Days = days marked work; Days Worked = work days with hours > 0; OT 1.5 Times = hours above the normal hours
+  (default 8, editable) on those days; rest-day work and public-holiday work are counted in days (not hours); Public
+  Holiday = holidays not worked. Sundays start as rest days; the user marks public holidays on a calendar (Malaysia Day
+  16 Sept in the example). Any figure can be typed over (`overrides`, shown with a blue edge and "use worked-out value").
+- Never-guess in the calculation: a day whose hours cell is still yellow/unclear, a date for another month, text that is
+  not hours, a day written twice with different hours, days with no entry, no hours column, or no Employee No. is listed
+  under "Please check" and the row is marked **INCOMPLETE** in the CSV Notes column; unclear days are left out, not assumed.
+  Corrections made in the document view flow through automatically.
+- Employees are typed in the screen (Employee No. exactly as in Million Payroll); several documents (cards) can belong to
+  one employee, each document to one employee only. Plans are saved per month in `Documents\Table Reader\payroll\`.
+- Checked: example reproduces 25/25/25 h/1 day in tests; visual check in headless Edge (an unclear day 28 gives 24 and
+  "Needs checking"). Live check with real Claude readings of the sample employee's two cards: totals read as 9/dash, but several
+  Totals were flagged this run → user presses "Use this" first (then 25/25/25/1 expected; not yet confirmed end to end).
+- Open: real import file format; other form types (tick grids, salary lists, logbooks) need their own mapping; leave /
+  lateness / early departure are not derived (type over); employee list is typed by hand (could import Million Payroll's list).
+
 ## Session 4 — 2026-10-07 — Phase 5 (packaging) built; clean-PC test still to do
 **Status: package built and tested on this laptop only.** 209 tests pass.
 - Build: `.\packaging\build.ps1` → `dist\Table Reader\` (PyInstaller onedir, no console window, ~49 MB) and

@@ -724,3 +724,32 @@ def test_read_image_with_compact_answer_records_timing(monkeypatch, signed_in, p
     assert result["rows"][0]["cells"]["Date"]["needs_review"] and result["rows"][0]["cells"]["In"]["value"] == "07:26"
     t = result["timing"]
     assert t["looks"] == 1 and len(t["claude_seconds"]) == 1 and t["model"] == ocr.MODEL and t["format"] == "compact"
+
+def test_claude_is_started_without_a_console_window(monkeypatch, signed_in, png):
+    """Regression: the packaged (windowed) app popped up a console window for every Claude call."""
+    seen = []
+    monkeypatch.setattr(ocr, "_run_cli", lambda cmd, **kw: (_ for _ in ()).throw(AssertionError("replaced below")))
+
+    class FakePopen:
+        def __init__(self, cmd, **kw):
+            seen.append(kw.get("creationflags"))
+            self.returncode = 0
+            self.pid = 1
+
+        def communicate(self, input=None, timeout=None):
+            return envelope(structured_output=GOOD), ""
+
+    monkeypatch.undo()
+    monkeypatch.setattr(ocr, "cli_path", lambda: "claude")
+    monkeypatch.setattr(ocr, "auth_status", lambda: {"installed": True, "logged_in": True, "message": None})
+    monkeypatch.setattr(subprocess, "Popen", FakePopen)
+    ocr.read_image(png)
+    assert seen == [ocr.NO_WINDOW] and (ocr.NO_WINDOW != 0 or sys.platform != "win32")
+
+
+def test_auth_status_check_runs_without_a_console_window(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ocr, "cli_path", lambda: "claude")
+    monkeypatch.setattr(subprocess, "run", _fake_run(json.dumps({"loggedIn": False}), calls=calls))
+    ocr.auth_status()
+    assert calls[0][1]["creationflags"] == ocr.NO_WINDOW

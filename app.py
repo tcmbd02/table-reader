@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import ocr
+import payroll
 from jobs import Jobs, count_to_check, merged_pages
 from ocr import OcrError
 
@@ -135,6 +136,15 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
     def get_job(job_id: str):
         return detail(job_id)
 
+    @app.put("/api/jobs/{job_id}/company")
+    async def set_company(job_id: str, request: Request):
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        moved = store.set_company(job_id, body.get("company") if isinstance(body, dict) else None)
+        return {"moved": moved}
+
     @app.post("/api/jobs/{job_id}/resume")
     def resume(job_id: str):
         return store.resume(job_id)
@@ -163,6 +173,63 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
     @app.get("/api/jobs/{job_id}/pages/{number}")
     def page_image(job_id: str, number: int):
         return FileResponse(store.page_path(job_id, number), media_type="image/png")
+
+    # ---------------------------------------------------------------------------------------------- payroll
+    plans = payroll.PayrollStore(store.root.parent / "payroll")
+
+    def finished_documents() -> list[dict]:
+        return [{"id": j["id"], "name": j["name"], "company": j["company"], "created": j["created"]}
+                for j in store.list_jobs() if j.get("status") == "done"]
+
+    def payroll_view(plan: dict) -> dict:
+        cache: dict[str, tuple[str, list[dict]]] = {}
+
+        def load_pages(job_id: str) -> tuple[str, list[dict]]:
+            if job_id not in cache:
+                meta = store.get_job(job_id)
+                if meta["status"] != "done":
+                    raise OcrError("JOB_NOT_FINISHED", f"{meta['name']} has not been read completely yet.")
+                cache[job_id] = (meta["name"], merged_pages(store.load_result(job_id), store.load_edits(job_id)))
+            return cache[job_id]
+
+        results = payroll.compute_all(plan, load_pages)
+        for r, e in zip(results, plan["employees"]):
+            labels: list[str] = []
+            for job_id in e["jobs"]:
+                if job_id in cache:
+                    for page in cache[job_id][1]:
+                        labels += [c for c in page["column_labels"] if c not in labels]
+            r["columns"] = labels
+        return {"plan": plan, "documents": finished_documents(), "results": results,
+                "fields": [{"key": k, "label": label, "unit": unit} for k, label, unit in payroll.FIELDS],
+                "list_heads": {kind: {"title": title, "type": type_head} for kind, (title, type_head, _) in payroll.LISTS.items()}}
+
+    @app.get("/api/payroll/{month}")
+    def get_payroll(month: str):
+        return payroll_view(plans.load(month))
+
+    @app.put("/api/payroll/{month}")
+    async def save_payroll(month: str, request: Request):
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        if isinstance(body, dict):
+            body["month"] = month
+        plan = payroll.validate_plan(body, {d["id"] for d in finished_documents()})
+        plans.save(plan)
+        return payroll_view(plan)
+
+    @app.get("/api/payroll/{month}/csv")
+    def payroll_csv(month: str):
+        view = payroll_view(plans.load(month))
+        if not view["plan"]["employees"]:
+            raise OcrError("PAYROLL_EMPTY", "Add at least one employee before downloading the payroll file.")
+        text = payroll.build_csv(view["plan"], view["results"])
+        plans.root.mkdir(parents=True, exist_ok=True)
+        path = plans.root / f"Payroll {month}.csv"
+        path.write_bytes(text.encode("utf-8-sig"))
+        return FileResponse(path, media_type="text/csv; charset=utf-8", filename=path.name)
 
     app.mount("/", StaticFiles(directory=static_dir(), html=True), name="static")
     return app
