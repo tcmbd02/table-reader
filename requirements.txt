@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+python-multipart
+pypdfium2
+pillow
+pytest
+pyinstaller   # only to build the Windows app (packaging\build.ps1)
+httpx2   # only for tests (FastAPI TestClient)

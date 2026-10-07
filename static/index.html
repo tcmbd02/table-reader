@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Table Reader</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <h1>Table Reader</h1>
+  <div id="claude-box" class="claude-box" aria-live="polite">Checking Claude…</div>
+  <button id="quit" class="link" title="Close Table Reader on this computer">Quit Table Reader</button>
+</header>
+
+<main id="home">
+  <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose files to read">
+    <p class="drop-big">Drop scans or photos here</p>
+    <p>PDF, JPG or PNG — or <u>click to choose files</u></p>
+    <input id="file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.bmp,application/pdf,image/*" multiple hidden>
+  </div>
+  <div id="upload-messages"></div>
+
+  <h2>Recent files</h2>
+  <ul id="recent" class="recent"></ul>
+  <p id="recent-empty" class="muted" hidden>Nothing here yet. Add a file above to get started.</p>
+</main>
+
+<main id="doc" hidden>
+  <div class="doc-bar">
+    <button id="back" class="link">&larr; All files</button>
+    <h2 id="doc-name"></h2>
+    <div class="doc-actions">
+      <button id="next-check" class="secondary" hidden>Go to next cell to check</button>
+      <button id="cancel" hidden>Cancel reading</button>
+      <button id="continue" hidden>Continue reading</button>
+      <button id="download" class="primary">Download CSV</button>
+    </div>
+  </div>
+  <p id="doc-status" class="doc-status"></p>
+  <div id="doc-error" class="banner error" hidden></div>
+  <div id="pages"></div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

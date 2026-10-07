@@ -1,0 +1,21 @@
+# Personal data: sample HR documents and anything the app produces from them
+9. SEPTEMBER 2026*/
+9. SEPTEMBER 2026*.zip
+Table Reader/
+*.csv
+result.json
+edits.json
+reading/
+*.log
+
+# Earlier project's code (kept on this laptop only)
+reference/
+
+# Generated / local
+.venv/
+__pycache__/
+.pytest_cache/
+build/
+dist/
+*.pyc
+*.spec

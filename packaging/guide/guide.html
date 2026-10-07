@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Table Reader guide</title>
+<style>
+  @page { size: A4; margin: 9mm; }
+  * { box-sizing: border-box; }
+  body { font: 9.5pt/1.3 "Segoe UI", Arial, sans-serif; color: #1d2330; margin: 0; }
+  h1 { font-size: 20pt; margin: 0 0 2px; }
+  .sub { color: #657084; margin: 0 0 8px; }
+  .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+  .step { border: 1px solid #d9dde5; border-radius: 8px; padding: 8px 10px; break-inside: avoid; }
+  .step h2 { font-size: 11.5pt; margin: 0 0 3px; }
+  .num { display: inline-block; width: 20px; height: 20px; line-height: 20px; text-align: center; border-radius: 50%;
+         background: #2257d6; color: #fff; font-weight: 700; font-size: 10pt; margin-right: 5px; }
+  .step img { width: 100%; border: 1px solid #d9dde5; border-radius: 4px; margin-top: 5px; }
+  .step p { margin: 3px 0; }
+  .yellow { background: #fff3b0; border: 1px solid #d9a400; padding: 0 4px; border-radius: 3px; }
+  .box { border: 1px solid #d9dde5; border-radius: 8px; padding: 5px 10px; margin-top: 8px; }
+  .box h2 { font-size: 11pt; margin: 0 0 3px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 18px; }
+  ul { margin: 2px 0; padding-left: 16px; }
+  li { margin: 1px 0; }
+  .warn { background: #fde8e8; border-color: #e5a5a5; }
+</style>
+</head>
+<body>
+<h1>Table Reader &mdash; quick guide</h1>
+<p class="sub">Turn a scan or photo of a table into a spreadsheet (CSV) you can open in Excel.</p>
+
+<div class="steps">
+  <div class="step">
+    <h2><span class="num">1</span>Open it and add your files</h2>
+    <p>Double-click <b>Table Reader</b> on your desktop. The first time, press <b>Sign in</b> (top of the page) and finish
+       signing in to your Claude account in the browser window that opens.</p>
+    <p>Drag your <b>PDF, JPG or PNG</b> files onto the box, or click it to choose them. You can add several at once.</p>
+    <img src="home.png" alt="The start page with the drop box and the list of recent files">
+  </div>
+  <div class="step">
+    <h2><span class="num">2</span>Wait while it reads</h2>
+    <p>Each page takes about <b>15 seconds to 1 minute</b>. The page shows &ldquo;Reading page 2 of 5&hellip;&rdquo;.
+       You can keep working and add more files.</p>
+    <p>Changed your mind? Press <b>Cancel reading</b>. Pages already read are kept, and <b>Continue reading</b> picks up
+       where it stopped.</p>
+    <p>If it stops because your Claude plan is used up for now, wait until it resets, then press <b>Continue reading</b>.</p>
+    <div class="box" style="margin-top:8px"><h2>Where are my files?</h2>
+      <p style="margin:0">Everything stays on this computer in <b>Documents &rarr; Table Reader</b>. Recent files are listed on the start page.</p></div>
+  </div>
+  <div class="step" style="grid-column: 1 / 3;">
+    <h2><span class="num">3</span>Check the <span class="yellow">yellow</span> cells</h2>
+    <p>The original page is on the left and the table on the right. Table Reader <b>never guesses</b>: when it is not sure
+       about a cell, it leaves the cell empty and turns it <span class="yellow">yellow</span>, with the reason and what it saw.</p>
+    <div class="cols">
+      <ul>
+        <li><b>Type</b> the right value and press <b>Enter</b>.</li>
+        <li><b>Use this</b> &mdash; accept what Claude saw (check it first; <b>?</b> marks letters it could not read).</li>
+        <li><b>It&rsquo;s empty</b> &mdash; the cell really is blank.</li>
+      </ul>
+      <ul>
+        <li><b>Undo my change</b> brings back the original reading.</li>
+        <li><b>Go to next cell to check</b> jumps to the next yellow cell.</li>
+        <li>Any cell can be corrected, not only yellow ones. Read &ldquo;Claude&rsquo;s notes&rdquo; above the table too.</li>
+      </ul>
+    </div>
+    <img src="doc.png" alt="A document with one yellow cell and its buttons" style="max-width: 54%; display:block; margin: 5px auto 0;">
+  </div>
+  <div class="step" style="grid-column: 1 / 3;">
+    <h2><span class="num">4</span>Download the CSV</h2>
+    <p>Press <b>Download CSV</b>. Open the file in Excel. Your corrections are included. Any <span class="yellow">yellow</span>
+       cell you did not fix is left <b>blank</b> in the CSV and explained in the <b>Notes</b> column, so nothing uncertain looks certain.
+       Each form field (such as Name or Month) is repeated on every row, and a <b>Page</b> column shows which page a row came from.</p>
+  </div>
+</div>
+
+<div class="box warn">
+  <h2>If something goes wrong</h2>
+  <div class="cols">
+    <ul>
+      <li><b>&ldquo;Not signed in&rdquo;</b> &rarr; press <b>Sign in</b> at the top, then <b>Continue reading</b>.</li>
+      <li><b>&ldquo;Claude Code is not installed&rdquo;</b> &rarr; ask your IT person to install Claude Code and sign in.</li>
+    </ul>
+    <ul>
+      <li><b>Page too blurry or dark</b> &rarr; take the photo again in good light, or scan it.</li>
+      <li>When you finish, press <b>Quit Table Reader</b> (top right). Anything else &rarr; tell your support person.</li>
+      <li>Always compare a few cells with the original page: Claude reads handwriting well, but not perfectly.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

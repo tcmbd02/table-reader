@@ -1,0 +1,235 @@
+# Progress log
+
+## Session 4 — 2026-10-07 — Phase 5 (packaging) built; clean-PC test still to do
+**Status: package built and tested on this laptop only.** 209 tests pass.
+- Build: `.\packaging\build.ps1` → `dist\Table Reader\` (PyInstaller onedir, no console window, ~49 MB) and
+  `dist\Table Reader.zip` (25 MB). Contains `Table Reader.exe`, `Install Table Reader.bat` + `install.ps1`, and the guide.
+- Install (staff): unzip, double-click **Install Table Reader.bat** → copies to `%LOCALAPPDATA%\Table Reader`, desktop
+  shortcut “Table Reader”, no admin rights; stops a running copy first; warns if Claude Code is not found.
+- App changes for packaging: **Quit Table Reader** button (`POST /api/quit`; running reads are cancelled so they can be
+  continued; confirm if files are being read), `GET /api/activity`, `Jobs.shutdown`; `start.py` has no console, logs
+  warnings to `Documents\Table Reader\table-reader.log` (`TABLE_READER_DEBUG=1` for detail), second launch just
+  re-opens the page; `ocr.cli_path()` also looks in `~\.local\bin` (desktop shortcuts may lack it on PATH).
+- Found and fixed: start-up took 45 s because probing 20 closed ports takes ~2 s each on Windows → bind test; now ~6 s
+  (first ever launch may be slower while Windows scans the files).
+- Tested with the built .exe: page served, Claude status, real PDF upload read by real Claude (done, CSV + page image),
+  Quit, relaunch, double launch, installer into a test folder + shortcut launches the installed copy.
+- Guide: `packaging\Table Reader guide.pdf` (one A4 page, screenshots made from invented data; source
+  `packaging\guide\guide.html`, regenerate with Edge `--print-to-pdf`). Icon: `packaging\make_icon.py`.
+- NOT done / risks: **test on a clean Windows PC with only Claude Code** (plan's “done when”); the .exe is unsigned, so
+  Windows SmartScreen / antivirus may warn (a code-signing certificate or IT allow-listing fixes it); no auto-update;
+  `build\` and `dist\` are generated folders. Phase 6 (pilot) next.
+
+## Session 3d — 2026-10-07 — Speed: timing, compact answer format (idea 1), inline image (idea 2) tested
+207 tests pass.
+- **Timing**: every page record now has `timing` (seconds, looks, Claude seconds and output tokens per look, model,
+  effort, format). `bench.py run|compare` (counts and times only, no cell text printed) for before/after checks.
+- **Where the time goes**: writing the answer. ~190 output tokens/s, so a page with ~5–7k tokens takes 30–40 s.
+- **Compact answer format is now the default** (`ocr.COMPACT_SCHEMA/COMPACT_PROMPT`, `expand_compact`): rows are plain
+  strings in column order; only doubted cells are listed in `doubts` (row, column, marks, reason). Same never-guess
+  handling afterwards (short rows flagged, extra cells keep a column, a doubt that points at no cell goes to notes).
+  `TABLE_READER_FORMAT=full` switches back (old format still supported by the validator and normaliser).
+- **Benchmark, 6 files (4 JPEG, 2 PDF page 1), Sonnet 5.5 medium, one at a time**: full 155 s / 27,210 output tokens →
+  compact 71 s / 7,595 tokens (2.2× faster; 20 s→10 s on clean PDFs, 35–40 s→14 s on photos). Same rows on every file.
+- **Accuracy NOT proven equal**: cell-by-cell the two formats mostly agree (293 agree, 19 differ — 18 of them a
+  descriptive word in a signature column that differs between runs; a few flags move both ways). But the same photo
+  read repeatedly gives very different amounts of flagging even in one format (hard logbook photo: full 17/20/5 flagged,
+  compact 7/2/21). So run-to-run noise on hard photos is bigger than any format effect; judge compact in the pilot with
+  a human check of unflagged cells.
+- **Idea 2 (inline image instead of the Read tool)**: works with `--input-format stream-json --tools ""` (2 turns
+  instead of 3) but gave no speed-up (31.5 s vs 28.3 s on one page) and needs a more fragile stream parser. Not adopted.
+- Still possible: parallel reading (2–3 pages at once), lower effort on clean pages, quicker orientation check.
+- Finding for the pilot: a hard handwritten photo is flagged inconsistently (2–21 cells) from run to run.
+
+## Session 3c — 2026-10-07 — fixes and Cancel
+- **Use this** now saves the cell at once (it only filled the box before, so the cell stayed flagged).
+- Model fixed in `ocr.py`: `MODEL = "claude-sonnet-5-5"`, `EFFORT = "medium"` (`--model/--effort` on every call).
+  Earlier accuracy notes in this file were made with Claude Code's default model.
+- **Cancel reading**: `Jobs.cancel(id)`, `POST /api/jobs/{id}/cancel`, “Cancel reading” button on the document and
+  “Cancel” on active files in Recent. `ocr._run_cli` (Popen, checks twice a second, kills the CLI process tree on cancel or
+  timeout; per-thread event via `ocr.set_cancel_event`). A cancelled file is `failed` with code `CANCELLED` (shown as
+  “Cancelled”, not an error); finished pages kept; **Continue** carries on. A waiting file can be cancelled and continued
+  without an “already reading” error. 198 tests pass. Live check with real Claude: cancel 2 s into a read stopped it in
+  2.7 s and left no extra `claude` processes.
+
+## Session 3b — 2026-10-07 — Phase 4 (plain-language errors) done
+189 tests pass. Changes:
+- `ocr.parse_cli_output`: plan-limit wording is checked before sign-in wording (a limit message can mention "login");
+  messages now say to press **Sign in** / **Continue**.
+- `app.py`: per page `problem` (blurry/dark → “take the photo again…”, otherwise “no table found…”); `can_continue`
+  (false for damaged/oversize/wrong-type files, where Continue would just fail again); unexpected server errors return
+  a plain JSON message (no stack trace); disk-full on upload is reported (`SAVE_FAILED`).
+- `static/app.js`: problem banner per page; “no table could be read” status; Download disabled when nothing was read;
+  sign-in/CLI-missing failures refresh the top-right Claude box at once; non-retryable failures point to “All files”;
+  failure to load the recent list is shown instead of ignored.
+- Not covered: real expired-sign-in and real plan-limit wording from the CLI (only simulated text); `auth status` may
+  still say signed in while the token has expired, in which case the page fails with the sign-in message at read time.
+
+## Session 3 — 2026-10-07 — Phase 3 (the screen) built
+**Status: Phase 3 built and smoke-tested; not yet tried by a person.** 184 tests pass (7 new in `tests/test_app.py`,
+fake reader, no Claude; needs `httpx2`, added to requirements).
+- `app.py` (`create_app(jobs=None)`): endpoints from PLAN §5 plus `POST /api/jobs/{id}/resume` and `GET /api/ping`.
+  `GET /api/jobs/{id}` returns the job + merged pages (Claude's reading + corrections). Errors → `{code,message}` JSON.
+  Safety: rejects any Host that is not localhost, and POST/PUT with a foreign Origin; uploads ≤150 MB per file; bad files
+  are reported while the others still go ahead.
+- `start.py`: picks a free port from 8765, opens the browser, re-opens the existing window if already running.
+- `static/index.html|app.css|app.js` (plain JS, text inserted via textContent): Claude status/Sign in box, drop zone
+  (disabled until signed in), recent files (live while reading), document view with page picture beside the table,
+  yellow flagged cells (reason + “Claude saw: …” + **Use this** / **It's empty**), inline edit (Enter saves, Esc cancels),
+  **Undo my change**, “Go to next cell to check”, Continue (resume), Download CSV (asks if cells are still yellow).
+- Checked in headless Edge against the real server: page loads, Claude status shows connected, document view renders
+  header fields, notes, flagged cell and tools. NOT checked: clicking/typing, drag-and-drop, a real upload through the
+  browser, PDFs with many pages, small-screen layout. Someone should click through it once (`python start.py`).
+- Known gaps: no delete-job; the Recent list shows no “cells to check” count; progress text is generic (about a minute
+  per page); `class="secondary"` button has no special style. Phase 4 = review error wording; Phase 5 = PyInstaller.
+
+## Session 2 — 2026-10-06 — Rotation detection + Phase 2 (Jobs + CSV) built and tested
+
+**Status: Phase 2 done. Stopped; waiting for the user's go-ahead for Phase 3 (the screen).** 177 tests pass
+(`.\.venv\Scripts\python.exe -m pytest -q`; none need Claude).
+
+### Rotation detection (`ocr.py`) — decided with the user at the start of the session
+- Schema has a new required field `rotate_clockwise_degrees` (0/90/180/270). On a non-zero answer Claude is told not
+  to transcribe; the page is turned and shown again. Up to `MAX_LOOKS = 3` looks: Claude sometimes picks the wrong
+  direction (said 90 for a page needing 270), the next look then sees it upside down and adds 180. The last look must
+  transcribe whatever it sees; if it still says "turn", a note “Claude was not sure which way up this page is” is added.
+- `read_image` returns the usual page record plus `rotated_clockwise` (total turn applied). The job stores the page
+  image turned upright so the viewer shows it the right way.
+- Live check on the 3 originally-problem photos: sideways logbook 0 rows → 29 rows (turned 270); sideways tick grid →
+  30 of 33 cells read, 1 flagged (turned 270); upright time card correctly left at 0. Costs 2–3 Claude calls (≈1–3 min)
+  only for sideways pages.
+- Prompt additions found by live testing: “Transcribe every row… never stop part-way” (it had stopped after 3 of 29 rows,
+  honestly saying so) and “a blank box / unsigned signature space / dotted fill-in line is blank, not unclear”.
+  `normalize_cell` also treats a raw_text that is only dots/underscores/`…`/`---` (with no value and no reason) as empty.
+
+### Phase 2 files
+- `pages.py` — `render_pages(path, out_dir)` PDF (pypdfium2, 200 dpi, ≤2400 px) or picture (EXIF-upright, multi-frame
+  TIFF) → `page-N.png`; reuses existing page images (so resumed jobs keep turned pages); `turn_page` turns a stored page
+  in place; plain-language errors (damaged/password PDF, >100 pages, wrong type).
+- `jobs.py` — class `Jobs(root, reader=None)` (reader defaults to `ocr.read_image`; tests inject a fake):
+  - Folder `<Documents>\Table Reader\jobs\<yyyy-mm-dd_hhmm>_<name>\` (real Documents folder via Windows, so OneDrive
+    redirection works; override with env `TABLE_READER_HOME`) containing `original\`, `pages\`, `reading\page-N.json`
+    (each page's reading, written once), `result.json` (all pages, written once at the end, never edited), `edits.json`,
+    `job.json`, `<name>.csv`.
+  - API for Phase 3: `create_job(filename, bytes)`, `list_jobs()`, `get_job(id)` (status, `pages_done/pages_total`,
+    `error{code,message}`, `cells_to_check`), `resume(id)`, `load_result(id)` (partial while running), `load_edits(id)`,
+    `save_edits(id, changes)`, `page_path(id, n)`, `write_csv(id)`, `wait_idle()`; module functions `merged_pages`
+    (Claude's reading + corrections, each cell with `value`, `edited`, `needs_review`, `claude_value`, `raw_text`),
+    `count_to_check`, `build_csv`.
+  - Status: `queued → reading → done | failed`. One background worker reads **one document at a time** (also the "already
+    reading" busy lock: `resume` on a running job raises `JOB_BUSY`). A failure keeps finished pages; `resume` carries on
+    from the next page. A plan-limit / sign-in / CLI-missing failure also marks the waiting documents as stopped instead
+    of repeating the failure. Jobs left "reading" when the app was closed are marked `INTERRUPTED` at start-up and can be
+    continued. Unexpected crashes give a plain message (no stack trace) and the worker keeps going.
+  - Corrections (`edits.json`): `{"page","row","column","value"}` or `{"page","header","value"}` (0-based row/header
+    positions). `""` = "checked, really empty"; `None` takes a correction back. A batch is all-or-nothing and validated
+    against the real cells. A flagged cell stays "to check" until corrected (or confirmed empty).
+  - CSV: UTF-8 with BOM, CRLF; columns = form fields (union over pages) + `Page` + table columns (union) + `Notes`;
+    duplicate names get ` (2)`. Uncertain, uncorrected cells are **blank** and described in `Notes` (reason + marks seen),
+    so nothing uncertain looks certain; corrected cells are clean. Cells that would run as Excel formulas (`=`, `@`, `+`/`-`
+    followed by a letter) get a leading `'`.
+- Tests: `tests/test_pages.py`, `tests/test_jobs.py`, shared builders in `tests/helpers.py`. Mutation-checked: making the
+  CSV print raw marks into uncertain cells fails a test.
+
+### Live end-to-end (real Claude, scratch folder, not Documents): 3 files, 424 s total
+2-page PDF (2 pages read, 56 CSV rows), small table (4 rows, 0 to check), sideways logbook (turned 270, 28 rows, 147
+cells to check). `result.json` byte-identical after a correction; CSVs have the BOM. A two-minute stall on the first
+document was caused by my own parallel test competing for the plan, not by the code.
+
+### Known issues / decisions for later
+- **CSV and Excel:** Excel will turn `07:26` into a time (fine) but will drop leading zeros of IC/phone numbers and may
+  round 16+ digit numbers. Not handled yet; options: wrap such values as `="0123"` or a text-format xlsx. Decide with the
+  user in Phase 3/4 once real HR use is known.
+- A flagged form field puts its note on every row of that page in the CSV (verbose but keeps the doubt visible per row).
+- Logbook-style photos at 960×1280 are still mostly flagged (147 of ~290 cells): resolution/legibility, not logic.
+- Speed: 25–90 s per upright page; sideways pages 1–3 minutes. Phase 3 must show honest progress text.
+- No delete-job, no CSV-per-batch (decision: per document), no model setting. `types.py` not needed.
+
+### Next: Phase 3 — the screen (waiting for go-ahead)
+`app.py` (FastAPI, endpoints in PLAN §5 over `Jobs`), `start.py`, `static/index.html|app.js|app.css`: Claude status/
+sign-in box (`ocr.auth_status`, `ocr.start_login`), drop zone, progress per file, table beside the page image, yellow
+flagged cells with the reason on hover and `raw_text` offered as a one-click suggestion, inline edit → `save_edits`,
+Download CSV, Recent files. Then Phase 4 (error wording), 5 (PyInstaller), 6 (pilot).
+
+---
+
+## Session 1 — 2026-10-06 — Phase 1 (Engine) built and tested
+
+### Decisions made (PLAN.md §8)
+- App name: **Table Reader**.
+- CSV: **one per document**.
+- Form fields (Name, Month…): **leading columns on every row**.
+- Sample forms: the user's folder `9. SEPTEMBER 2026-…\9. SEPTEMBER 2026` (≈200 time cards, logbooks, tick grids,
+  salary lists; JPEG / PDF / PNG / Excel). **Read-only: never write into it, never add files to it.** Test on small
+  selections (10 files at a time) before any bigger run.
+
+### Done
+- `.venv` (Python 3.14.8) + `requirements.txt` (fastapi, uvicorn, python-multipart, pypdfium2, pillow, pytest;
+  pyinstaller commented out until Phase 5). Run things with `.\.venv\Scripts\python.exe`.
+- `ocr.py`: generic prompt + schema, schema validator, CLI runner, sign-in status/launcher, "never guess" normaliser.
+  `python ocr.py <jpg|png> [-o out.json] [--model M] [--timeout S]` prints validated JSON; failures print
+  `[CODE] plain-language message` and exit 1.
+- `tests/test_ocr.py`: 71 tests, all passing, none need Claude (schema validation, CLI-output parsing and error
+  classification, never-guess rules, auth status, image preparation, `read_image` with a faked CLI, `main`).
+  Checked that they fail when the never-guess line is deliberately broken.
+- Live test on 10 real files (below): all 10 ran without errors, 8–85 s per page (typically ~40 s).
+
+### How `ocr.py` works / differences from the PayTrace reference
+- Per page: copy of the image → upright (EXIF), RGB, ≤2400 px, PNG in an empty temp folder → `claude -p
+  --output-format json --json-schema … --tools Read --permission-mode dontAsk --no-session-persistence
+  --strict-mcp-config --disable-slash-commands` with that folder as cwd. `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_*` are removed from the CLI environment. API-key sign-ins are rejected
+  (`authMethod` must be `claude.ai`). The app never sees credentials.
+- Generic schema: `quality`, `header_fields[{label, cell}]`, `column_labels`, `rows[{cells[{column, cell}]}]`, `notes`.
+  Removed from the PayTrace schema: `document_type*`, `totals` (a totals row is an ordinary row; totals written outside
+  the table go to `header_fields`), `bbox` (not needed while the table is shown beside the image; add later only if
+  Phase 3 wants to jump to a cell). Cell = `value, raw_text, confidence, unclear_reason`.
+- **Never-guess normaliser** (`normalize_page`, applied before anything is saved): a cell keeps its `value` only if it
+  has a value, no `unclear_reason`, no `?` in `raw_text`, and confidence ≥ 70 (`UNSURE_BELOW`). Otherwise
+  `value=None`, `raw_text` (Claude's best marks) is kept, a reason is filled in if missing, and
+  `needs_review=true`. A cell Claude omitted from a row is flagged (“Claude did not report this cell”), not treated
+  as empty. Rows are made rectangular; duplicate column labels become `IN`, `IN (2)`; unlisted columns are added.
+- Processed cell shape: `{value, raw_text, confidence, unclear_reason, needs_review}`; page record:
+  `{quality, header_fields, column_labels, rows:[{cells:{<column>: cell}}], notes}`. This is what Phase 2 saves as
+  `result.json` (then never edited).
+- Not in Phase 1 (deferred on purpose): PDF input (`pages.py`, Phase 2), the per-document “already reading” lock
+  (belongs with job folders, Phase 2), `types.py` (plain dicts are enough).
+
+### Live test results (10 files)
+| # | File type | Quality | Rows | Values | Blank | Flagged | Notes |
+|---|---|---|---|---|---|---|---|
+| 1 | Time card photo, small stamped times (JPEG) | FADED | 16 | 31 | 69 | 28 | Stamped times left blank + flagged; `raw_text` has Claude's best reading |
+| 2 | Bilingual time card photo (JPEG) | FADED | 16 | 30 | 74 | 24 | Same pattern; handwritten OFFDAY/PH noted |
+| 3 | Handwritten + printed attendance log, 30 rows (JPEG) | MOSTLY_CLEAR | 30 | 117 | 30 | 3 | Unlabelled columns → `COL1`, `COL2` |
+| 4 | Handwritten sign-in logbook (JPEG) | MOSTLY_CLEAR | 19 | 92 | 0 | 3 | **Checked all 19 rows by eye: every time matches;** the one ambiguous date was left blank + flagged |
+| 5 | Dense handwritten logbook, rotated 90°, no EXIF (JPEG, 960×1280) | ILLEGIBLE | 0 | – | – | – | **Failed.** Rotated upright by hand: 29 rows, 57 values, 149 flagged |
+| 6 | Tick-grid attendance form, rotated (PNG, 9.9 MB) | MOSTLY_CLEAR | 1 | 0 | 0 | 33 | **All flagged** (could not align marks). Rotated upright: 30 values, 1 flagged; marks consistent with real weekends |
+| 7 | Small 3-column table (JPEG) | CLEAR | 4 | 9 | 3 | 0 | Exactly matches the image |
+| 8 | Printed report, PDF page 1 | CLEAR | 21 | 147 | 0 | 0 | 4 header fields; not checked cell-by-cell |
+| 9 | Scanned 31-day grid, rotated, PDF page 1 | MOSTLY_CLEAR | 9 | 252 | 36 | 0 | Claude warns row/total alignment needs checking; not checked cell-by-cell |
+| 10 | Scanned salary table, rotated, PDF page 1 | CLEAR | 12 | 192 | 36 | 0 | 19 columns, duplicate labels disambiguated; not checked cell-by-cell |
+
+Only #4 and #7 were verified cell-by-cell against the original; #1 and #6 partly. #8–#10 need a human check before
+trusting the accuracy claim. Names of staff are personal data — don't paste result JSON into chat.
+
+### Findings / issues to decide next
+1. **Sideways or upside-down photos are the biggest accuracy risk.** Phone photos without an EXIF flag came out
+   rotated; two of ten files failed or were all-flagged because of it (#5, #6), and both read well once upright.
+   Suggested fix (small): add a `rotate_clockwise_degrees` (0/90/180/270) field to the schema; if non-zero, rotate the
+   page with Pillow and read again (second Claude call only for rotated pages). Needs the user's OK because it doubles
+   time/quota on those pages.
+2. **Small stamped times on time cards** (#1, #2) are mostly blanked as low-confidence. Safe, but the user will have to
+   confirm many cells. Phase 3 should show `raw_text` as a one-click suggestion in the highlighted cell. Possible
+   accuracy lever: send the page at higher resolution / in two halves (images are downscaled by Claude to ~1.5k px).
+3. Threshold `UNSURE_BELOW = 70` is a guess; measure in the pilot (Phase 6).
+4. Speed ~40 s/page (8–85 s). Plan said 10–20 s; update expectations / progress text.
+5. Claude's `notes` sometimes contain useful warnings (alignment, cropped edge). Show them above the table in Phase 3.
+
+### Next: Phase 2 — Jobs + CSV (waiting for the user's go-ahead)
+- `pages.py`: PDF → page PNGs (pypdfium2, `render_pages` from the reference) and images (EXIF-rotated).
+- `jobs.py`: job folders `Documents\Table Reader\jobs\<yyyy-mm-dd_hhmm>_<name>\` with original, pages, `result.json`
+  (Claude's reading, never edited), `edits.json`, CSV; background reading with page progress; per-document busy lock;
+  resume after plan-limit errors without re-reading finished pages.
+- CSV builder: UTF-8 with BOM, form fields as leading columns, `Page` and `Notes` columns, edits applied over
+  `result.json`; uncertain-and-uncorrected cells stay blank.
+- Decide finding 1 (rotation) before or during Phase 2.
