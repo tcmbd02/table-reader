@@ -96,6 +96,16 @@ msgs += [i["text"] for i in payroll.calculate(p, [("grid.pdf (page 1, row 2)", j
 msgs += [i["text"] for i in payroll.calculate(p, [("grid.jpg", jobs.merged_pages({"pages": [two]}, {"edits": []}))],
                                               emp)["issues"]]
 
+# IN/OUT time cards
+io_rows = [{"Date": good("1"), "IN": good("07:55"), "OUT": cell(None, raw="1?:0?", reason="smudged")},
+           {"Date": good("2"), "IN": good("07:55"), "OUT": good("")},
+           {"Date": good("3"), "IN": good("-"), "OUT": good("17:00")},
+           {"Date": good("4"), "IN": good("7.55 AM ✓"), "OUT": good("17:00")},
+           {"Date": good("7"), "IN": good("8.00"), "OUT": good("5.00")}]
+io_rec = record(io_rows, labels=("Date", "IN", "OUT")); io_rec["page"] = 1
+msgs += [i["text"] for i in payroll.calculate(p, [("in-out.jpg", jobs.merged_pages({"pages": [io_rec]}, {"edits": []}))],
+                                              emp)["issues"]]
+
 # Million file refusals, built by the real code
 mapping = payroll.load_office_mapping(ROOT / "million" / "office-mapping.csv")
 rows2 = [{"Date": good(str(d)), "Total": good("9")} for d in range(1, 31)]
@@ -118,6 +128,10 @@ for r_ in ok:
 for n in (1, 2):
     try:
         payroll.build_xls(p, ok[:n], mapping=mapping)
+    except ocr.OcrError as exc:
+        msgs.append(exc.message)
+    try:
+        payroll.build_xls(p, ok[:n], mapping=mapping, known={"zz"})   # not in employees.txt: asks too
     except ocr.OcrError as exc:
         msgs.append(exc.message)
 msgs += ["Payroll 2026-09 (Million).xls could not be saved. If it is open in Excel, close it and try again.",

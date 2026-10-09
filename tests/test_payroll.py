@@ -529,6 +529,110 @@ def test_a_grid_row_and_its_whole_page_or_file_cannot_both_be_chosen():
             payroll.validate_plan(p, known)
 
 
+# ------------------------------------------------------------------------------------------- IN/OUT time cards
+def in_out(rows, labels=("DATE", "DAY", "IN", "OUT", "SIGN")):
+    return merged([{**{c: good("") for c in labels}, labels[0]: good(str(d)), **{c: good(v) for c, v in times.items()}}
+                   for d, times in rows], labels=labels)
+
+
+def test_in_out_columns_are_paired_in_the_cards_order():
+    assert payroll.clock_pairs(["DATE", "DAY", "IN", "OUT", "SIGN"]) == [("IN", "OUT")]
+    assert payroll.clock_pairs(["Date", "Time In", "Signature", "Supervisor", "Time Out", "Signature (2)"]) == [
+        ("Time In", "Time Out")]
+    labels = ["DATE", "MORNING / IN", "MORNING / OUT", "AFTERNOON / IN", "AFTERNOON / OUT", "OVERTIME / IN", "OVERTIME / OUT"]
+    assert payroll.clock_pairs(labels) == [(labels[1], labels[2]), (labels[3], labels[4]), (labels[5], labels[6])]
+    assert payroll.clock_pairs(["Tarikh", "Masuk", "Keluar"]) == [("Masuk", "Keluar")]
+    assert payroll.clock_pairs(["Date", "In"]) == [] and payroll.clock_pairs(["Date", "Out", "In"]) == []
+    assert payroll.clock_pairs(["Date", "Total", "Input", "Outlet"]) == []
+
+
+@pytest.mark.parametrize("text,minutes", [
+    ("07:55", 475), ("7.55", 475), ("17:02:30", 1022.5), ("5.30 PM", 1050), ("5:30pm", 1050), ("5,30 p.m.", 1050),
+    ("12.00 AM", 0), ("12:15 PM", 735), ("8.00 AM.", 480), ("0:00", 0),
+    ("7.5", None), ("7.75", None), ("24:00", None), ("13.00 PM", None), ("530 PM", None), ("8", None), ("8.00 AM ✓", None),
+    ("", None), ("abc", None)])
+def test_clock_times_as_written_on_cards(text, minutes):
+    assert payroll.parse_clock(text) == minutes
+
+
+def test_a_single_in_out_pair_gives_out_minus_in_less_the_break():
+    p = plan_for()                                                   # break 1 hour unless changed
+    docs = [("card", in_out([(1, {"IN": "07:30", "OUT": "17:30"}), (2, {"IN": "8.00", "OUT": "5.00 PM"}),
+                             (3, {"IN": "—", "OUT": ""}), (6, {"IN": "08:00", "OUT": "12:00"})]))]
+    r = payroll.calculate(p, docs, employee())
+    by_day = {d["day"]: d for d in r["days"]}
+    assert by_day[1]["hours"] == 9.0 and by_day[1]["code"] == "07:30 - 17:30"
+    assert by_day[1]["clock"] == {"hours": 9.0, "break": 1.0, "pairs": 1}
+    assert by_day[2]["hours"] == 8.0 and by_day[3]["hours"] == 0.0 and by_day[3]["status"] == "ok"
+    v = values(r)
+    assert v["days_worked"] == 2 and v["ot_1_5"] == 1.0 and v["ot_rest_day"] == 1     # the 6th is a Sunday
+    assert not [i for i in r["issues"] if i["kind"] == "unclear"]
+    p["break_hours"] = 0.5                                           # changeable per month
+    assert values(payroll.calculate(p, docs, employee()))["ot_1_5"] == 2.0            # 9.5 and 8.5 hours
+    p["break_hours"] = 0
+    assert {d["day"]: d for d in payroll.calculate(p, docs, employee())["days"]}[1]["clock"]["break"] == 0
+
+
+def test_a_day_shorter_than_the_break_keeps_its_hours():
+    r = payroll.calculate(plan_for(), [("card", in_out([(1, {"IN": "08:00", "OUT": "08:45"})]))], employee())
+    assert r["days"][0]["hours"] == 0.75 and values(r)["days_worked"] == 1
+
+
+def test_morning_and_afternoon_pairs_are_added_up_and_no_break_is_taken_off():
+    labels = ("DATE", "MORNING / IN", "MORNING / OUT", "AFTERNOON / IN", "AFTERNOON / OUT", "OVERTIME / IN", "OVERTIME / OUT")
+    rows = [(1, {labels[1]: "08:00", labels[2]: "12:00", labels[3]: "13:00", labels[4]: "17:00", labels[5]: "18:00",
+                 labels[6]: "20:00"}),
+            (2, {labels[1]: "08:00", labels[2]: "17:00"})]             # the whole day written in the first pair
+    r = payroll.calculate(plan_for(), [("card", in_out(rows, labels=labels))], employee())
+    assert r["days"][0]["hours"] == 10.0 and r["days"][0]["clock"] == {"hours": 10.0, "break": 0.0, "pairs": 3}
+    assert r["days"][1]["hours"] == 8.0 and r["days"][1]["clock"]["break"] == 1.0
+    assert values(r)["ot_1_5"] == 2.0
+
+
+def test_in_out_days_that_cannot_be_worked_out_are_reported_and_never_guessed():
+    rows = [{"DATE": good("1"), "IN": good("07:55"), "OUT": cell(None, raw="1?:0?", reason="smudged")},
+            {"DATE": good("2"), "IN": good("07:55"), "OUT": good("")},
+            {"DATE": good("3"), "IN": good("-"), "OUT": good("17:00")},
+            {"DATE": good("4"), "IN": good("7.55 AM ✓"), "OUT": good("17:00")},
+            {"DATE": good("7"), "IN": good("8.00"), "OUT": good("5.00")},        # afternoon, or a night shift?
+            {"DATE": good("8"), "IN": good("20:00"), "OUT": good("05:00")}]
+    r = payroll.calculate(plan_for(), [("card", merged(rows, labels=("DATE", "IN", "OUT")))], employee())
+    texts = [i["text"] for i in r["issues"] if i["kind"] == "unclear"]
+    assert texts[0] == "card, day 1: an IN or OUT time is still unclear. Check the yellow cell in the document."
+    assert "day 2: there is an IN time (07:55) but no OUT time" in texts[1]
+    assert "day 3: there is an OUT time (17:00) but no IN time" in texts[2]
+    assert "day 4: '7.55 AM ✓' is not a clock time" in texts[3]
+    assert "day 7: OUT 5.00 is not later than IN 8.00" in texts[4] and "day 8: OUT 05:00" in texts[5]
+    assert all(d["hours"] is None and d["status"] == "unclear" for d in r["days"] if d["day"] in (1, 2, 3, 4, 7, 8))
+    assert values(r)["days_worked"] == 0 and not r["complete"]
+
+
+def test_a_door_system_date_with_the_year_first_is_read():
+    assert payroll.parse_day("2026-09-16", 9) == (16, None)
+    assert payroll.parse_day("2026-08-16", 9) == (None, "the date 2026-08-16 is not in the chosen month")
+    rows = [{"Date": good("2026-09-01"), "Time In": good("07:58:10"), "Time Out": good("17:03:40")}]
+    r = payroll.calculate(plan_for(), [("door", merged(rows, labels=("Date", "Time In", "Time Out")))], employee())
+    assert r["days"][0]["hours"] == 8.09
+
+
+def test_an_hours_column_wins_over_in_and_out_times():
+    rows = [{"Date": good("1"), "IN": good("08:00"), "OUT": good("20:00"), "Total": good("9")}]
+    r = payroll.calculate(plan_for(), [("card", merged(rows, labels=("Date", "IN", "OUT", "Total")))], employee())
+    assert r["days"][0]["hours"] == 9.0 and r["days"][0]["clock"] is None
+
+
+def test_in_out_cards_are_readable_and_the_break_is_validated():
+    assert payroll.readable(in_out([(1, {"IN": "08:00", "OUT": "17:00"})])[0])
+    p = plan_for()
+    assert payroll.validate_plan(p, set())["break_hours"] == 1.0
+    del p["break_hours"]                                             # a plan saved before IN/OUT cards
+    assert payroll.validate_plan(p, set())["break_hours"] == 1.0
+    for bad in (-1, 6, "1", True):
+        with pytest.raises(ocr.OcrError):
+            payroll.validate_plan(plan_for(break_hours=bad), set())
+    assert payroll.validate_plan(plan_for(break_hours=0), set())["break_hours"] == 0.0
+
+
 # ------------------------------------------------------------------------------------- Million import file (.xls)
 BUNDLED_MAPPING = Path(__file__).resolve().parent.parent / "million" / "office-mapping.csv"
 MAPPING = payroll.load_office_mapping(BUNDLED_MAPPING)
@@ -649,6 +753,34 @@ def test_incomplete_employees_need_an_explicit_yes_and_keep_their_note():
     results[0]["emp_no"] = ""                                         # hard problems are refused even with the yes
     msg = refused(plan, results, allow_incomplete=True)
     assert "Also marked INCOMPLETE: MJ(2) WORKER 2." in msg
+
+
+def test_an_employee_no_that_is_not_in_employees_txt_needs_an_explicit_yes(tmp_path):
+    f = tmp_path / "employees.txt"
+    f.write_text("# codes in Million\n\nmj(1)\n  MJ(3)  \n", encoding="utf-8")
+    known = payroll.load_million_employees(f)
+    assert known == {"mj(1)", "mj(3)"}                               # case does not matter, brackets do
+    plan, results = million()
+    msg = refused(plan, results, code="MILLION_UNKNOWN", known=known)
+    assert msg.startswith("1 Employee No. is not in the Million employee list (employees.txt): MJ(2) WORKER 2. ")
+    assert read_xls(payroll.build_xls(plan, results, mapping=MAPPING, known=known, allow_unknown=True)).nrows == 4
+    results[0]["emp_no"] = "MJ1"
+    assert refused(plan, results, code="MILLION_UNKNOWN", known=known).startswith(
+        "2 Employee Nos. are not in the Million employee list (employees.txt): MJ1 WORKER 1, MJ(2) WORKER 2. ")
+    results[2]["complete"] = False                                    # asked about first, then INCOMPLETE
+    refused(plan, results, code="MILLION_UNKNOWN", known=known, allow_incomplete=True)
+    refused(plan, results, code="MILLION_INCOMPLETE", known=known, allow_unknown=True)
+
+
+def test_no_employee_list_means_no_check(tmp_path, monkeypatch):
+    assert payroll.load_million_employees() is None                  # no file
+    f = tmp_path / "employees.txt"
+    f.write_text("# nothing typed yet\n", encoding="utf-8")
+    monkeypatch.setenv("TABLE_READER_MILLION_EMPLOYEES", str(f))
+    assert payroll.load_million_employees() is None                  # a file with no codes
+    payroll.build_xls(*million(), mapping=MAPPING, known=None)
+    monkeypatch.delenv("TABLE_READER_MILLION_EMPLOYEES")
+    assert payroll.million_employees_path().parts[-3:] == ("learn-million", "million-import-tools", "employees.txt")
 
 
 def test_a_broken_mapping_file_is_reported(tmp_path):

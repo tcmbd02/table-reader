@@ -367,11 +367,13 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         return FileResponse(path, media_type="text/csv; charset=utf-8", filename=path.name)
 
     @app.get("/api/payroll/{month}/xls")
-    def payroll_xls(month: str, company: str = "", allow_incomplete: bool = False):
+    def payroll_xls(month: str, company: str = "", allow_incomplete: bool = False, allow_unknown: bool = False):
         """The Million import file for the office (.xls, the office File Format Setting's columns). Refused, with every
-        problem listed, when it would import wrong; INCOMPLETE employees only with ``allow_incomplete``."""
+        problem listed, when it would import wrong; INCOMPLETE employees only with ``allow_incomplete``, Employee Nos.
+        that are not in employees.txt only with ``allow_unknown``."""
         plan, results = payroll_of(month, company)
-        data = payroll.build_xls(plan, results, allow_incomplete=allow_incomplete)
+        data = payroll.build_xls(plan, results, allow_incomplete=allow_incomplete,
+                                 known=payroll.load_million_employees(), allow_unknown=allow_unknown)
         name = f"Payroll {month} {safe_name(company)} (Million).xls" if company else f"Payroll {month} (Million).xls"
         path = save_payroll_file(name, data)
         return FileResponse(path, media_type="application/vnd.ms-excel", filename=path.name)

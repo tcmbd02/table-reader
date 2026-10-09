@@ -30,8 +30,8 @@ const MS = {
   "Download payroll CSV": "Muat turun CSV gaji",
   "Download Million file (.xls)": "Muat turun fail Million (.xls)",
   "Make the Million file anyway?": "Buat juga fail Million?",
-  "Million file made: {name}. A copy is kept in Documents\\Table Reader\\payroll. Back up Million before you import it.":
-    "Fail Million siap: {name}. Satu salinan disimpan dalam Documents\\Table Reader\\payroll. Buat sandaran Million sebelum anda mengimportnya.",
+  "Million file made: {name}. A copy is kept in Documents\\Table Reader\\payroll. Back up Million before you import it. Million only updates employees who are already in that month's payroll (Transaction > Payroll > Edit).":
+    "Fail Million siap: {name}. Satu salinan disimpan dalam Documents\\Table Reader\\payroll. Buat sandaran Million sebelum anda mengimportnya. Million hanya mengemas kini pekerja yang sudah ada dalam gaji bulan itu (Transaction > Payroll > Edit).",
   "Pick the month and mark the days, add each employee and tick their time-card files. Table Reader adds up days worked and overtime from the cells you have already checked. Anything it cannot work out is listed, never guessed, and you can type over any figure.":
     "Pilih bulan dan tandakan hari, tambah setiap pekerja dan tandakan fail kad perakam waktu mereka. Table Reader mengira hari bekerja dan kerja lebih masa daripada sel yang telah anda semak. Apa-apa yang tidak dapat dikira akan disenaraikan, tidak sekali-kali diteka, dan anda boleh menaip semula mana-mana angka.",
   "1. Month and days": "1. Bulan dan hari",
@@ -199,6 +199,12 @@ const MS = {
   "Nothing to check for this employee.": "Tiada apa-apa untuk disemak bagi pekerja ini.",
   "Day by day (how the figures were worked out)": "Hari demi hari (cara angka dikira)",
   "From the report: {x}": "Daripada laporan: {x}",
+  "Break taken off IN/OUT time cards (hours)": "Rehat yang ditolak daripada kad masa IN/OUT (jam)",
+  "Time cards with IN and OUT times: the hours of a day are OUT minus IN, less the break. A day with more than one IN/OUT pair (morning and afternoon) is added up and no break is taken off.":
+    "Kad masa dengan masa IN dan OUT: jam sehari ialah OUT tolak IN, tolak rehat. Hari yang ada lebih daripada satu pasangan IN/OUT (pagi dan petang) dijumlahkan dan rehat tidak ditolak.",
+  "{h} hours: the IN/OUT pairs added up, no break taken off": "{h} jam: pasangan IN/OUT dijumlahkan, rehat tidak ditolak",
+  "{h} hours: OUT minus IN, less {b} for the break": "{h} jam: OUT tolak IN, tolak {b} untuk rehat",
+  "{h} hours: OUT minus IN, no break taken off": "{h} jam: OUT tolak IN, rehat tidak ditolak",
   "Day": "Hari", "Type": "Jenis", "Hours written": "Jam yang ditulis", "Written on the card": "Ditulis pada kad", "Note": "Catatan",
   "Employee {a} of {b}": "Pekerja {a} daripada {b}",
   "Changes are saved automatically.": "Perubahan disimpan secara automatik.",
@@ -249,6 +255,7 @@ const MS = {
   "Choose a month and a year for the payroll.": "Pilih bulan dan tahun untuk gaji.",
   "Figures must be numbers (0 or more).": "Angka mestilah nombor (0 atau lebih).",
   "Normal hours per day must be a number from 1 to 24.": "Jam biasa sehari mestilah nombor dari 1 hingga 24.",
+  "The break must be a number of hours from 0 to 5.": "Rehat mestilah bilangan jam dari 0 hingga 5.",
   "The message is too long (2000 characters at most).": "Mesej terlalu panjang (paling banyak 2000 aksara).",
   "No document chosen for this employee yet.": "Belum ada dokumen dipilih untuk pekerja ini.",
   "Employee No. is empty. Type it exactly as in Million Payroll.": "No. Pekerja kosong. Taipkannya sama seperti dalam Million Payroll.",
@@ -294,6 +301,11 @@ const MS_PATTERNS = [
   [/^(.+), day (\d+): the (.+) figure is unclear or not a number of hours\. Check it in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: angka ${m[3]} tidak jelas atau bukan bilangan jam. Semaknya dalam dokumen.`],
   [/^No entry found for day (.+) in the chosen documents\. These days were counted as not worked: add the other card if there is one\.$/, "Tiada catatan dijumpai untuk hari $1 dalam dokumen yang dipilih. Hari-hari ini dikira sebagai tidak bekerja: tambah kad yang satu lagi jika ada."],
   [/^(.+): no column with the daily hours was found\. Choose it in the 'Hours column' list\.$/, (m) => `${msWhere(m[1])}: tiada lajur dengan jam harian dijumpai. Pilihnya dalam senarai 'Lajur jam'.`],
+  // IN/OUT time cards
+  [/^(.+), day (\d+): an IN or OUT time is still unclear\. Check the yellow cell in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: masa IN atau OUT masih tidak jelas. Semak sel kuning dalam dokumen.`],
+  [/^(.+), day (\d+): there is an (IN|OUT) time \(([\s\S]*)\) but no (IN|OUT) time, so the hours cannot be worked out\. Complete it in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: ada masa ${m[3]} (${m[4]}) tetapi tiada masa ${m[5]}, jadi jam tidak dapat dikira. Lengkapkannya dalam dokumen.`],
+  [/^(.+), day (\d+): '([\s\S]*)' is not a clock time \(such as 07:55 or 5\.30 PM\)\. Correct it in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: '${m[3]}' bukan masa jam (seperti 07:55 atau 5.30 PM). Betulkannya dalam dokumen.`],
+  [/^(.+), day (\d+): OUT ([\s\S]*) is not later than IN ([\s\S]*)\. If it is an afternoon time, write it as 17\.00 or 5\.00 PM in the document\. A shift that ends the next day cannot be worked out: type the figures yourself\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: OUT ${m[3]} tidak lebih lewat daripada IN ${m[4]}. Jika ia masa petang, tuliskannya sebagai 17.00 atau 5.00 PM dalam dokumen. Syif yang tamat pada hari berikutnya tidak dapat dikira: taip angkanya sendiri.`],
   [/^(.+), day (\d+): the hours are still unclear\. Check the yellow cell in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: jam masih tidak jelas. Semak sel kuning dalam dokumen.`],
   [/^(.+), day (\d+): '([\s\S]*)' is not a number of hours\. Correct it in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: '${m[3]}' bukan bilangan jam. Betulkannya dalam dokumen.`],
   [/^Day (\d+) appears more than once \((.+) and (.+)\)\. It was left out until you fix it\.$/, (m) => `Hari ${m[1]} muncul lebih daripada sekali (${msWhere(m[2])} dan ${msWhere(m[3])}). Ia tidak dikira sehingga anda membetulkannya.`],
@@ -319,6 +331,7 @@ const MS_PATTERNS = [
   [/^- (.+): '(.+)' has a figure in two lists\. Keep it in one list only\.$/, "- $1: '$2' ada angka dalam dua senarai. Simpan dalam satu senarai sahaja."],
   [/^- Also marked INCOMPLETE: (.+)\.$/, "- Juga ditanda INCOMPLETE (belum lengkap): $1."],
   [/^(\d+) employees? (?:is|are) marked INCOMPLETE: ([\s\S]+)\. Check them first, or make the file anyway: the reason is then written in its Notes column\.$/, "$1 pekerja ditanda INCOMPLETE (belum lengkap): $2. Semak mereka dahulu, atau buat juga fail itu: sebabnya akan ditulis dalam lajur Notes."],
+  [/^(\d+) Employee Nos?\. (?:is|are) not in the Million employee list \((.+?)\): ([\s\S]+)\. Million skips an Employee No\. it does not know and gives no warning\. Check it in Million Payroll \(Employee > Employee\)\. If it is right there, add it to (.+), or make the file anyway\.$/, "$1 No. Pekerja tiada dalam senarai pekerja Million ($2): $3. Million melangkau No. Pekerja yang tidak dikenalinya tanpa sebarang amaran. Semaknya dalam Million Payroll (Employee > Employee). Jika ia betul di sana, tambahkannya ke dalam $4, atau buat juga fail itu."],
   [/^The Million column table (.+) was not found\.$/, "Jadual lajur Million $1 tidak dijumpai."],
   [/^The Million column table \((.+)\) could not be used: ([\s\S]+)\. Fix it to match Million's File Format Setting, then try again\.$/, "Jadual lajur Million ($1) tidak dapat digunakan: $2. Betulkannya supaya sepadan dengan File Format Setting dalam Million, kemudian cuba lagi."],
   [/^(.+) could not be saved\. If it is open in Excel, close it and try again\.$/, "$1 tidak dapat disimpan. Jika ia sedang dibuka dalam Excel, tutupnya dan cuba lagi."],

@@ -1,5 +1,69 @@
 # Progress log
 
+## Session 9 — 2026-10-09 — Import cause found, Employee No. warning, IN/OUT time cards
+335 tests pass; Malay checks pass (106 server messages, 0 missing). **Package rebuilt and restarted. Not committed.**
+- **"No record updated" — cause confirmed in Million itself** (looked at through desktop control, nothing changed):
+  Employee tab > Employee lists 3 employees, the two codes of the import file among them. But the **September payroll
+  is Processed and lists only the first employee** (it was created before the two were added), so Million had no
+  payroll row to update. October (status New) also lists only that one employee, and has an **Add** button in
+  Transaction > Payroll > October > Edit; the processed September window has no Add/Edit. Not tried: how to get the
+  two workers into September (un-process / Organize / delete and re-create) — that changes payroll data, the user decides.
+- **End-to-end test passed (user's OK, ~12:30):** Payroll screen, one company chosen -> "Download Million file (.xls)"
+  (2 employees, no warnings) -> Million backed up (previous backup kept as
+  `mycompany_2026-10-09_1014_before-table-reader-test.bak`) -> the two workers added to the **October** payroll
+  (Transaction > Payroll > October > Edit > Add; tick = select the box cell, then Space; Alt+S, Yes) -> System >
+  Administrative Tools > 9. Import > October > Import, **Files of type "Excel 97-2003 (*.xls)"** (the dialog opens on
+  "Text (*.txt)") -> "Update complete". Both employees went from Working Days 26 / PH 0 / Days Worked 26 to
+  **25 / 1 / 21**, exactly the file; the third employee (not in the file) kept its figures. October now holds these
+  September figures as test data (not processed).
+- **Second company, same test, passed (~12:38, user's OK):** its 4 Employee Nos. were not in Million -> Table Reader
+  asked "4 Employee Nos. are not in the Million employee list" (answered No) -> 4 employees created in Million
+  (Employee > Add: Employee No. + Name only, Million saves with just these; **everything else is Million's default,
+  e.g. Gender Male, Basic Rate 0 — to be completed by the user**) -> codes added to employees.txt -> download with no
+  question -> added to October -> import -> "Update complete": all 4 went 26/0/26 -> 25/1/25 = the file; the first
+  company's two and the third employee unchanged. The Open dialog resets to "Text (*.txt)" on every import.
+- **Guide for staff:** `GUIDE - Table Reader to Million.html` (project folder; no real names; prints well).
+- `learn-million\million-import-tools\employees.txt`: now all 7 codes of this laptop's Million.- **Warning before download** (`payroll.load_million_employees`, `build_xls(known=, allow_unknown=)`, endpoint
+  `allow_unknown`): an Employee No. that is not in `employees.txt` -> 400 `MILLION_UNKNOWN`, the page asks "Make the
+  Million file anyway?" (asked before the INCOMPLETE question). No employees.txt (or no codes in it) = no check. Path:
+  `TABLE_READER_MILLION_EMPLOYEES`, else the learn-million tools folder. Tests never read this PC's list
+  (`tests/conftest.py`). The "Million file made" message now also says Million only updates employees who are already
+  in that month's payroll. Checked in the packaged app: whole-month file -> MILLION_UNKNOWN (5 codes), page draws.
+- **IN/OUT time cards** (`clock_pairs`, `parse_clock`, `_clock_day`; used only when the page has no hours column):
+  pairs "IN|OUT", "Time In|…|Time Out", "MORNING / IN|MORNING / OUT|AFTERNOON / …", Masuk/Keluar. Clock formats seen
+  on the real cards and accepted: 07:55, 7.55, 17:02:10, 5.30 PM / 5:30pm / 5,30 p.m. One pair on a day: OUT − IN −
+  break (`plan.break_hours`, default 1, 0–5, box next to Normal hours; a day shorter than the break keeps its hours).
+  Several pairs: added up, no break. Reported and left out, never guessed: yellow cell, only one time of a pair, not a
+  clock time (e.g. "530 PM", a time with a tick after it), OUT not later than IN (night shift, or afternoon written
+  without PM). "Day by day" shows the times and how the hours were worked out. `readable()` now includes these cards,
+  so "Add employees from files" picks them up. Dates written year-first (2026-09-16, door systems) are read now.
+- **Real cards (counts only):** 11 documents now readable; typical worked day 8.3–8.8 h after the break. Left out:
+  40 days with a yellow cell, 20 "OUT not later than IN" (one card writes afternoon times without PM), 5 not a clock
+  time, 6 unclear dates, 2 conflicts.
+- **Still not readable:** one cell holding several stamps ("Times | Time", 4 pages), day-per-column job sheets, tables
+  whose headers were read as COL1…, a leave form.
+- **To confirm with the user:** (1) morning/afternoon pairs: no break taken off; (2) a half day with one IN/OUT pair
+  still has the break taken off (only matters for overtime); (3) a few minutes early/late each day become overtime
+  fractions (e.g. 0.17 h) — no rounding rule yet; (4) cards that print their own "Work"/"Work Hour" figure: Table
+  Reader works from IN/OUT unless the user picks that column in the Hours column list.
+
+## Session 8 — 2026-10-09 — Million import said "no record updated" (diagnosis only, no code changed)
+The user imported a real September Million file for one company (2 employees) on this laptop: nothing was updated.
+- **The file is built correctly** (compared by shape with `learn-million\import-test\Million import test 2026-10.xls`,
+  which imported correctly today: same sheet name, same 51 headers, text in A, numbers in C–AY).
+- **Likely cause: the Employee Nos. are not in Million on this laptop.** Both rows have a short 3-character code;
+  `employees.txt` holds only the one code confirmed in Million. Million skips unknown codes silently. The office
+  checker had already said "Fix 2 errors" (both codes not in employees.txt) before the import.
+- Not confirmed directly: Million's own employee list could not be read from here (no database access, no desktop
+  control in this session).
+- Second possible cause, same message: this laptop's September payroll is already processed and holds one employee;
+  workers who are not in that month's payroll cannot be updated. How Million adds a new employee to an existing
+  month is not known yet.
+- **Next (user):** in Million check Employee tab > Employee for the two workers; add them or correct the codes in
+  Table Reader; check they are listed in the month's payroll; add the codes to `employees.txt`; checker READY; import.
+- **Offered, not built:** Table Reader warns before download when an Employee No. is not in `employees.txt`.
+- IN/OUT time cards still not started.
+
 ## Session 7b — 2026-10-09 — Office checker run, package rebuilt, ready to commit
 303 tests pass. **Package rebuilt** (10:25, includes month grids + Million .xls). **Not committed yet** (waiting for the
 user's OK; repo is public).

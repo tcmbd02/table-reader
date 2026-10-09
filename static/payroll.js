@@ -94,6 +94,12 @@ function renderMonth() {
     const v = Number(hours.value);
     if (v >= 1 && v <= 24) { pr.plan.normal_hours = v; schedulePayrollSave(); } else hours.value = String(pr.plan.normal_hours);
   });
+  // IN/OUT time cards: the break taken off a day that has one IN and one OUT time
+  const rest = el("input", { type: "number", min: "0", max: "5", step: "0.25", value: String(pr.plan.break_hours ?? 1), style: "width:90px" });
+  rest.addEventListener("change", () => {
+    const v = Number(rest.value);
+    if (rest.value !== "" && v >= 0 && v <= 5) { pr.plan.break_hours = v; schedulePayrollSave(); } else rest.value = String(pr.plan.break_hours ?? 1);
+  });
   const grid = el("div", { class: "days", id: "pr-days" });
   for (let d = 1; d <= n; d++) {
     const btn = el("button", { type: "button", class: "day" });
@@ -107,7 +113,9 @@ function renderMonth() {
   }
   $("pr-month").replaceChildren(
     el("div", { class: "row" }, el("label", {}, t("Month"), monthSel), el("label", {}, t("Year"), yearIn),
-      el("label", {}, t("Normal hours in a working day (overtime starts after this)"), hours)),
+      el("label", {}, t("Normal hours in a working day (overtime starts after this)"), hours),
+      el("label", {}, t("Break taken off IN/OUT time cards (hours)"), rest)),
+    el("p", { class: "legend", text: t("Time cards with IN and OUT times: the hours of a day are OUT minus IN, less the break. A day with more than one IN/OUT pair (morning and afternoon) is added up and no break is taken off.") }),
     el("p", { class: "legend", text: t("Click a day to change it: working day → rest day → public holiday. Sundays start as rest days. Mark every public holiday of the month.") }),
     el("p", { class: "legend day-key" }, t("Colours:"),
       ...DAY_ORDER.map((k) => el("span", {}, el("span", { class: `swatch day ${k}`, "aria-hidden": "true" }),
@@ -397,6 +405,14 @@ function printedText(p) {
   return Object.entries(p).map(([k, v]) => `${PRINTED_NAMES[k] || k} ${fmt(v)}`).join(", ");
 }
 
+// How a day's hours were worked out from the IN and OUT times of a time card
+function clockText(c) {
+  if (!c) return "";
+  if (c.pairs > 1) return t("{h} hours: the IN/OUT pairs added up, no break taken off", { h: fmt(c.hours) });
+  return c.break ? t("{h} hours: OUT minus IN, less {b} for the break", { h: fmt(c.hours), b: fmt(c.break) })
+    : t("{h} hours: OUT minus IN, no break taken off", { h: fmt(c.hours) });
+}
+
 function renderResults() {
   const host = $("pr-results");
   const vis = visibleIndexes().filter((k) => k < pr.results.length);   // only the chosen company's employees
@@ -452,7 +468,7 @@ function renderResults() {
   const dayRows = r.days.map((d) => el("tr", { class: d.status === "ok" || (d.status === "missing" && d.type === "rest") ? "" : "bad" },
     el("td", { text: String(d.day) }), el("td", { text: DAY_WORDS[d.type] }),
     el("td", { text: d.code ?? (d.hours === null ? "" : String(d.hours)) }),       // a grid mark (✓, PH…) or the hours
-    el("td", { text: STATUS_WORDS[d.status] || (d.printed ? t("From the report: {x}", { x: printedText(d.printed) }) : "") })));
+    el("td", { text: STATUS_WORDS[d.status] || (d.printed ? t("From the report: {x}", { x: printedText(d.printed) }) : clockText(d.clock)) })));
   const details = el("details", {}, el("summary", { text: t("Day by day (how the figures were worked out)") }),
     el("table", { class: "daytable" }, el("thead", {}, el("tr", {}, ...["Day", "Type", "Written on the card", "Note"].map((h) => el("th", { text: t(h) })))), el("tbody", {}, ...dayRows)));
 
@@ -544,20 +560,23 @@ $("pr-download").addEventListener("click", async () => {
 });
 
 // The Million import file (.xls) for the office. Fetched rather than opened as a link, so that a refusal (what would
-// import wrong, listed one problem per line) is shown on this page; INCOMPLETE employees only after the user agrees.
-async function downloadMillion(allowIncomplete) {
+// import wrong, listed one problem per line) is shown on this page; Employee Nos. that are not in employees.txt and
+// INCOMPLETE employees only after the user agrees (each is asked once).
+const MILLION_ASKS = { MILLION_UNKNOWN: "allow_unknown", MILLION_INCOMPLETE: "allow_incomplete" };
+async function downloadMillion(allowed = []) {
   const q = new URLSearchParams();
   const c = chosenCompany();
   if (c) q.set("company", c);
-  if (allowIncomplete) q.set("allow_incomplete", "true");
+  for (const a of allowed) q.set(a, "true");
   let res;
   try { res = await fetch(payrollUrl("/xls") + (q.toString() ? `?${q}` : "")); }
   catch { prShowError(t("Table Reader is not running any more. Close this tab and open Table Reader again.")); return; }
   if (!res.ok) {
     let data = null;
     try { data = await res.json(); } catch { /* not JSON */ }
-    if (data && data.code === "MILLION_INCOMPLETE") {
-      if (confirm(tm(data.message) + "\n\n" + t("Make the Million file anyway?"))) await downloadMillion(true);
+    const ask = data && MILLION_ASKS[data.code];
+    if (ask && !allowed.includes(ask)) {
+      if (confirm(tm(data.message) + "\n\n" + t("Make the Million file anyway?"))) await downloadMillion([...allowed, ask]);
       return;
     }
     prShowError(data && data.message ? tm(data.message) : t("Something went wrong. Reload the page and try again."));
@@ -570,14 +589,14 @@ async function downloadMillion(allowIncomplete) {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 30000);
   prShowError("");
-  prShowInfo(t("Million file made: {name}. A copy is kept in Documents\\Table Reader\\payroll. Back up Million before you import it.", { name }));
+  prShowInfo(t("Million file made: {name}. A copy is kept in Documents\\Table Reader\\payroll. Back up Million before you import it. Million only updates employees who are already in that month's payroll (Transaction > Payroll > Edit).", { name }));
 }
 
 $("pr-download-xls").addEventListener("click", async () => {
   if (!(await savePayroll())) return;
   const btn = $("pr-download-xls");
   btn.disabled = true;
-  try { await downloadMillion(false); } finally { btn.disabled = false; }
+  try { await downloadMillion(); } finally { btn.disabled = false; }
 });
 
 if (location.hash.startsWith("#/payroll")) route();      // the page was opened on this screen: app.js ran before this file

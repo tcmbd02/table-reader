@@ -398,6 +398,29 @@ def test_million_xls_download_refuses_then_allows_incomplete(tmp_path):
         assert saved.read_bytes() == r.content                              # a copy is kept in the payroll folder
 
 
+def test_million_xls_download_asks_about_an_employee_no_that_is_not_in_employees_txt(tmp_path, monkeypatch):
+    def card(image):
+        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
+
+    listed = tmp_path / "employees.txt"
+    listed.write_text("MJ(7)\n", encoding="utf-8")
+    monkeypatch.setenv("TABLE_READER_MILLION_EMPLOYEES", str(listed))
+    store = Jobs(tmp_path / "jobs", reader=card)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        upload(c, tmp_path, name="MAJU JAYA ALI SEPT 26.png")
+        store.wait_idle()
+        view = c.post("/api/payroll/2026-09/auto", json={"company": ""}).json()
+        view["plan"]["employees"][0]["emp_no"] = "MJ(1)"
+        c.put("/api/payroll/2026-09", json=view["plan"])
+        r = c.get("/api/payroll/2026-09/xls", params={"allow_incomplete": "true"})
+        assert r.status_code == 400 and r.json()["code"] == "MILLION_UNKNOWN"
+        assert "(employees.txt): MJ(1) MAJU JAYA ALI." in r.json()["message"]
+        r = c.get("/api/payroll/2026-09/xls", params={"allow_incomplete": "true", "allow_unknown": "true"})
+        assert r.status_code == 200
+        listed.write_text("MJ(7)\nmj(1)\n", encoding="utf-8")                # added to the list: no question
+        assert c.get("/api/payroll/2026-09/xls", params={"allow_incomplete": "true"}).status_code == 200
+
+
 def test_payroll_csv_for_one_company(tmp_path):
     def card(image):
         return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))

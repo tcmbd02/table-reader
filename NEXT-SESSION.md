@@ -5,9 +5,25 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 **To continue, paste this into the new session:**
 
-> Read NEXT-SESSION.md and PROGRESS.md, then let's continue with the next step (IN/OUT time cards).
+> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (session 9), then let's continue.
 
 ---
+
+## 0. Open problem from sessions 8–9 (2026-10-09) — read before anything else
+
+A real September Million file (one company, 2 employees) imported on this laptop gave **"no record updated"**.
+**Cause confirmed (session 9, seen in Million):** the file and both Employee Nos. are right and the two employees
+exist in Million, but the **September payroll is already Processed and lists only one other employee** — the two
+workers are not in that month's payroll, so there was nothing to update. Details: PROGRESS.md session 9.
+- **Test passed on October (session 9):** the two workers were added to the October payroll (Edit > Add) and the
+  Table Reader file imported: "Update complete", figures in Million equal the file. So the routine is: employee exists
+  in Million -> is added to the month's payroll -> import with file type "Excel 97-2003 (*.xls)".
+- A second company (4 new employees created in Million with Employee No. + Name only) passed the same test. Staff
+  guide: `GUIDE - Table Reader to Million.html`. Million now has 7 employees; the 4 new ones still need their details.
+- **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
+  decides). October holds September figures as test data — clear or overwrite before the real October payroll.
+- Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
+  all 3 codes of this laptop's Million).
 
 ## 1. Where things stand
 
@@ -22,12 +38,12 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 | Payroll from **clock-system reports** (Shift Details / OverTime columns) | **Done today.** Printed figures added up as-is (decimal hours); checked against the report's own totals: all 17 worker pages of the real report match exactly. |
 | Reports with one worker per page | Done: picker lists each page separately ("… — page 3: CODE NAME"). |
 | "Add employees from files" | Done. One employee per worker, cards ticked; Employee No. remembered per worker in `payroll\employees.json` for next months. Dry run on Sept A–D: 34 employees, 34 files left out (can't be calculated yet). |
-| Payroll from **IN/OUT time cards** | **Not started — next step.** |
+| Payroll from **IN/OUT time cards** | **Done (session 9).** OUT − IN − break (1 h, box next to Normal hours); several pairs added up, no break. 4 points to confirm with the user: PROGRESS.md session 9. |
 | Payroll from **month grids** ("Name \| 1 … 31", many workers per sheet) | **Done (session 7).** Each worker's row is offered separately; unclear marks are reported. |
 | **Million import file (.xls)** for the office | **Done (session 7).** Button "Download Million file (.xls)"; the office checker says READY on invented figures. Real September file not made yet (needs Employee Nos.). |
 | Browser check | Never clicked through by Claude (Chrome extension was not connected). All checks were tests + API + real-data scripts. |
 
-Tests: **303 pass** (`.venv\Scripts\python -m pytest -q`).
+Tests: **335 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 9. **Session 9 is not committed.**
 
 ## 2. Git / GitHub
 
@@ -67,14 +83,10 @@ Open data points:
 1. **User:** check one employee from the clock report against Million Payroll (especially that report OT 2.0 belongs
    in "Overtime 2 Times (Hour)" and not in the "Work on Rest Day / Holiday (Day)" fields). Fix mapping first if wrong.
 2. **User:** fix yellow cells in the date/hours columns of the cards going through payroll.
-3. **Claude — IN/OUT time cards** (decided: **deduct 1 hour break**, shown on screen, changeable per month, e.g. 0.5/0):
-   - Card shapes seen: `DATE | DAY | IN | OUT | SIGN`; `DATE | MORNING IN/OUT | AFTERNOON IN/OUT | OVERTIME IN/OUT`;
-     `Date | Time In | … | Time Out`; `Date | Cleaner | Time In | Time Out`.
-   - Day hours = sum of each IN→OUT pair; single pair → OUT − IN − break. Morning/afternoon pairs: no break deducted
-     (the gap is the break) — confirm with the user. Overnight (OUT < IN): report, don't guess.
-   - Unclear/missing stamps → day unclear (never guessed). Show the rule + per-day working in "Day by day".
-   - Check clock format on real cards first (e.g. `7.55` vs `07:55`), like the decimal check done for reports.
-   - Afterwards "Add employees from files" will pick these cards up automatically (it only adds readable kinds).
+3. **IN/OUT time cards: done in session 9.** Open, for the user to decide (PROGRESS.md session 9): break on
+   morning/afternoon pairs and on half days; rounding of overtime minutes; an option to read an OUT earlier than IN
+   as afternoon (one real card writes 8.00 / 5.00 with no PM: 20 days are reported instead of guessed); night shifts.
+   Possible next shapes: several stamps in one cell ("Times | Time"), day-per-column job sheets.
 4. Month grids and the Million .xls: **done in session 7** (see PROGRESS.md). **User:** fill the September payroll
    (Add employees from files, Employee Nos., mark PH) → "Download Million file (.xls)" → drag it onto
    `Documents\learn-million\million-import-tools\Check Office File.bat` (its `employees.txt` must list the codes).

@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Table Reader to Million Payroll - guide</title>
+<style>
+  :root { --ink: #1c2530; --soft: #5b6775; --line: #d6dce3; --paper: #ffffff; --tint: #f3f6f9; --blue: #17508a;
+          --warn-bg: #fff6d6; --warn-line: #e0b400; --ok-bg: #e7f5ea; --ok-line: #3d9a55; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--tint); color: var(--ink); font: 16px/1.55 "Segoe UI", Arial, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; background: var(--paper); }
+  h1 { font-size: 28px; margin: 0 0 4px; color: var(--blue); }
+  h2 { font-size: 21px; margin: 36px 0 8px; padding-top: 14px; border-top: 2px solid var(--line); color: var(--blue); }
+  h3 { font-size: 17px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  .lead { color: var(--soft); margin-bottom: 18px; }
+  ol, ul { margin: 6px 0 10px; padding-left: 26px; }
+  li { margin: 5px 0; }
+  .path { font-weight: 600; white-space: nowrap; }
+  kbd { font: 600 14px "Segoe UI", Arial, sans-serif; border: 1px solid #9aa5b1; border-bottom-width: 2px; border-radius: 4px;
+        padding: 0 6px; background: #f7f9fb; white-space: nowrap; }
+  code { font: 14px Consolas, monospace; background: var(--tint); padding: 1px 5px; border-radius: 3px; }
+  .note, .ok { border-left: 5px solid var(--warn-line); background: var(--warn-bg); padding: 10px 14px; margin: 12px 0; border-radius: 3px; }
+  .ok { border-left-color: var(--ok-line); background: var(--ok-bg); }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 14px 0; padding: 0; list-style: none; }
+  .steps li { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin: 0; background: var(--tint); }
+  .steps b { display: block; color: var(--blue); }
+  .wide { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--tint); }
+  .small { color: var(--soft); font-size: 14px; }
+  @media print { body { background: #fff; } main { padding: 0; max-width: none; } h2 { break-after: avoid; } li, .note, .ok, tr { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<main>
+<h1>From time cards to Million Payroll</h1>
+<p class="lead">How to turn scanned time cards into a file with Table Reader and import it into Million Payroll.
+Tested on 9 October 2026 with two client companies (6 employees): every figure arrived in Million exactly as in the file.</p>
+
+<ol class="steps">
+  <li><b>A. Read</b>Add the scans to Table Reader and check the yellow cells.</li>
+  <li><b>B. Payroll</b>Pick the month, add the employees, type their Employee No.</li>
+  <li><b>C. File</b>Choose the company and download the Million file (.xls).</li>
+  <li><b>D. Million</b>Back up, make sure the employees are in the month, import.</li>
+  <li><b>E. Check</b>Open one or two employees in Million and compare.</li>
+</ol>
+
+<div class="note"><b>The three things that must be true before an import works</b>
+<ol>
+  <li>The employee <b>exists in Million</b> (Employee tab &gt; Employee).</li>
+  <li>The <b>Employee No. is the same</b> in Table Reader and in Million, character for character (<code>MJ(1)</code> is not <code>MJ1</code>).</li>
+  <li>The employee is <b>in that month's payroll</b> in Million (Transaction &gt; Payroll &gt; the month &gt; Edit).</li>
+</ol>
+If one of them is missing, Million skips that employee <b>without any warning</b>, or says that no record was updated.</div>
+
+<h2>A. Read the time cards in Table Reader</h2>
+<ol>
+  <li>Open <b>Table Reader</b>. If it asks, press <b>Sign in</b> (top right) and sign in to Claude.</li>
+  <li>Drop the scans or photos (PDF, JPG or PNG) on the page, and choose the <b>company</b> they belong to.</li>
+  <li>Wait until each file shows <b>Finished</b>.</li>
+  <li>Open each file and check every <b>yellow cell</b> against the picture. Type the right value, or leave it empty if it really cannot be read.</li>
+</ol>
+<p class="small">Table Reader never guesses. A day whose date, hours or IN/OUT time is still yellow is left out of the payroll and listed under "Please check".</p>
+
+<h2>B. Prepare the payroll in Table Reader</h2>
+<ol>
+  <li>Press <b>Payroll</b> (top bar).</li>
+  <li><b>1. Month and days</b>: choose the month and year. Click each <b>public holiday</b> until it is yellow (white = working day, grey = rest day).</li>
+  <li>Check the two rules beside the month:
+    <ul>
+      <li><b>Normal hours in a working day</b> (overtime starts after this).</li>
+      <li><b>Break taken off IN/OUT time cards</b> (1 hour unless you change it).</li>
+    </ul></li>
+  <li><b>2. Employees and their time cards</b>: press <b>Add employees from files</b>. One employee is added for each worker, with their cards ticked.</li>
+  <li>Type each <b>Employee No.</b> exactly as in Million. It is remembered for the following months.</li>
+  <li><b>3. Results</b>: go through the employees. <b>Complete</b> is ready. For <b>Needs checking</b>, read "Please check" and fix the cells in the document, add the missing card, or type the figure yourself.</li>
+</ol>
+
+<h2>C. Download the Million file</h2>
+<ol>
+  <li>Choose the <b>company</b> in the chooser at the top, so the file holds only that company's employees.</li>
+  <li>Press <b>Download Million file (.xls)</b>.</li>
+  <li>The file is called <code>Payroll 2026-09 COMPANY (Million).xls</code>. A copy is always kept in
+      <span class="path">Documents &gt; Table Reader &gt; payroll</span>.</li>
+</ol>
+<div class="wide"><table>
+  <tr><th>Table Reader says</th><th>What it means</th><th>What to do</th></tr>
+  <tr><td>"The Million file was not made. Fix these first…"</td><td>Something would import wrong: an empty or repeated Employee No., or a figure Million's file has no column for.</td><td>Fix each listed line, then download again.</td></tr>
+  <tr><td>"… Employee Nos. are not in the Million employee list (employees.txt)"</td><td>Million does not know these Employee Nos. and would skip them silently.</td><td>Answer <b>No</b>. Add the employee in Million (D2) or correct the Employee No., add the code to <code>employees.txt</code>, download again.</td></tr>
+  <tr><td>"… marked INCOMPLETE"</td><td>Some days could not be worked out.</td><td>Best: fix them first. If you make the file anyway, the reason is written in its Notes column.</td></tr>
+  <tr><td>"… could not be saved. If it is open in Excel…"</td><td>The earlier file is open in Excel.</td><td>Close it in Excel, download again.</td></tr>
+</table></div>
+<p class="small"><code>employees.txt</code> is in <span class="path">Documents &gt; learn-million &gt; million-import-tools</span>: one Employee No. per line, the same list as Million's Employee screen. Keep it up to date when you add an employee in Million.</p>
+
+<h2>D. Import into Million Payroll</h2>
+<div class="note"><b>Million's buttons often ignore the mouse.</b> Use the keyboard: <kbd>Alt</kbd>+<kbd>S</kbd> Save, <kbd>Alt</kbd>+<kbd>C</kbd> Close,
+<kbd>Alt</kbd>+<kbd>E</kbd> Edit, <kbd>Alt</kbd>+<kbd>A</kbd> Add, <kbd>Alt</kbd>+<kbd>Y</kbd> Yes, <kbd>Alt</kbd>+<kbd>O</kbd> OK. The first click on a window only wakes it up.</div>
+
+<h3>D1. Back up first</h3>
+<ol>
+  <li>Close any open Million window, then click <b>Backup Database</b> on the left.</li>
+  <li><kbd>Alt</kbd>+<kbd>O</kbd> (OK), <kbd>Alt</kbd>+<kbd>Y</kbd> (Yes). Wait for "Backup database complete".</li>
+</ol>
+<p class="small">Each backup replaces <code>C:\million\Payroll\mycompany\mycompany.bak</code>. To keep an older one, copy it to another name first.</p>
+
+<h3>D2. Is every employee in Million?</h3>
+<ol>
+  <li><span class="path">Employee tab &gt; Employee</span>. Look for each Employee No. of your file.</li>
+  <li>Missing? Press <kbd>Alt</kbd>+<kbd>A</kbd> (Add), type the <b>Employee No.</b> and the <b>Name</b>, then <kbd>Alt</kbd>+<kbd>S</kbd> (Save).
+      Million saves with just these two. Fill in the rest (I/C No., gender, Basic Rate, EPF, SOCSO…) before a real payroll is processed.</li>
+</ol>
+
+<h3>D3. Is every employee in the month's payroll?</h3>
+<ol>
+  <li><span class="path">Transaction tab &gt; Payroll</span>. Click the month, then <kbd>Alt</kbd>+<kbd>E</kbd> (Edit). The list shows who is in that month.</li>
+  <li>Someone missing? Press <kbd>Alt</kbd>+<kbd>A</kbd> (Add). The list shows the employees who are not in the month yet.</li>
+  <li><b>Tick them with the keyboard:</b> click the small box at the end of the row (this only selects it), then press <kbd>Space</kbd>.
+      Use <kbd>&darr;</kbd> and <kbd>Space</kbd> for the next rows.</li>
+  <li><kbd>Alt</kbd>+<kbd>S</kbd> (Save), then <kbd>Alt</kbd>+<kbd>Y</kbd> (Yes). They now appear in the month with status <b>New</b>.</li>
+</ol>
+<div class="note">A month that is already <b>Processed</b> has no Add button: nobody can be added and an import updates nothing.
+Use a month that is not processed yet, or ask before un-processing a month.</div>
+
+<h3>D4. Import the file</h3>
+<ol>
+  <li>Close the payroll windows (<kbd>Alt</kbd>+<kbd>C</kbd>).</li>
+  <li>Menu <span class="path">System &gt; Administrative Tools</span>, click <b>9. Import Data from External File</b>, <kbd>Alt</kbd>+<kbd>O</kbd> (OK).
+      <br><span class="small">Be careful to click line 9, not "5. Clear All Records".</span></li>
+  <li>Click the <b>month</b> the figures are for, then <kbd>Alt</kbd>+<kbd>I</kbd> (Import).</li>
+  <li>In the Open window set <b>Files of type</b> to <b>Excel 97-2003 (*.xls)</b>. It starts on "Text (*.txt)" every time, and the folder looks empty until you change it.</li>
+  <li>Go to <span class="path">Documents &gt; Table Reader &gt; payroll</span>, choose the file, press <b>OK</b>.</li>
+  <li>"Are you sure you want to update?": <kbd>Alt</kbd>+<kbd>Y</kbd> (Yes).</li>
+  <li>Wait for <b>"Update complete."</b>, press <kbd>Enter</kbd>, then <kbd>Alt</kbd>+<kbd>C</kbd> to close.</li>
+</ol>
+<div class="note">"Update complete" appears even when an employee was skipped. Always do step E.</div>
+
+<h2>E. Check the result in Million</h2>
+<ol>
+  <li><span class="path">Transaction tab &gt; Payroll</span>, click the month, <kbd>Alt</kbd>+<kbd>E</kbd>.</li>
+  <li>Click an employee, <kbd>Alt</kbd>+<kbd>E</kbd>. Compare <b>Working Days, Public Holiday, Days Worked</b> and the <b>Overtime</b> table with Table Reader's Results
+      (allowances and deductions are on the <b>Allowance &amp; Deduction</b> tab).</li>
+  <li><b>Next</b> (<kbd>Alt</kbd>+<kbd>N</kbd>) moves to the following employee. Leave with <kbd>Alt</kbd>+<kbd>C</kbd> (Close), not Save.</li>
+</ol>
+<div class="ok"><b>What the test showed.</b> A new employee starts with Working Days 26, Public Holiday 0, Days Worked 26. After the import the employees of the
+file showed the file's figures (for example 25 / 1 / 21), and employees who were not in the file were left untouched.</div>
+
+<h2>Good to know</h2>
+<ul>
+  <li><b>The import replaces.</b> Every figure the file has a column for is written into Million, <b>zeros included</b>. An allowance or deduction typed by hand in Million
+      before the import is set back to 0 unless it is also in Table Reader. Import first, then type the extras, or type them in Table Reader.</li>
+  <li>Employees who are <b>not in the file</b> are not changed, so companies can be imported one after another into the same month.</li>
+  <li>Importing the same file again is harmless: it writes the same figures.</li>
+  <li>Use only the <b>.xls</b> file from "Download Million file". Million's CSV import ignores the column settings.</li>
+  <li><b>Basic Rate</b>, director fee and back pay are not on a time card: keep them in Million.</li>
+  <li>The columns of the file follow Million's <span class="path">File Format Setting</span> (inside the Import window). If someone changes that setting, the file no longer fits: tell whoever looks after Table Reader.</li>
+</ul>
+
+<h2>If something goes wrong</h2>
+<div class="wide"><table>
+  <tr><th>What you see</th><th>Likely cause</th><th>What to do</th></tr>
+  <tr><td>"No record updated", or the figures did not change</td><td>The employees are not in that month's payroll, or the month is Processed.</td><td>D3: add them to the month (a month that is not processed).</td></tr>
+  <tr><td>One employee did not change, the others did</td><td>The Employee No. differs from Million's, or the employee is missing from the month.</td><td>Compare the Employee No. letter by letter (D2), then D3. Import again.</td></tr>
+  <tr><td>The Open window shows no files</td><td>"Files of type" is still Text (*.txt).</td><td>Choose Excel 97-2003 (*.xls).</td></tr>
+  <tr><td>A tick box will not tick</td><td>Clicking only selects the box.</td><td>Press <kbd>Space</kbd>.</td></tr>
+  <tr><td>A button does nothing</td><td>Million missed the click.</td><td>Use the <kbd>Alt</kbd> key with the underlined letter.</td></tr>
+  <tr><td>Wrong figures were imported</td><td>Wrong file or wrong month chosen.</td><td>Import the right file again; if needed, restore the backup (System &gt; Restore Database) - ask first.</td></tr>
+</table></div>
+
+<p class="small">Tested on this laptop: Million Payroll System v3 (PMAX) and Table Reader as rebuilt on 9 October 2026.
+The office PC may differ in its employee list and File Format Setting.</p>
+</main>
+</body>
+</html>
