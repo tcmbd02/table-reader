@@ -1,5 +1,102 @@
 # Progress log
 
+## Session 7b — 2026-10-09 — Office checker run, package rebuilt, ready to commit
+303 tests pass. **Package rebuilt** (10:25, includes month grids + Million .xls). **Not committed yet** (waiting for the
+user's OK; repo is public).
+- **Office checker run** on Million files made from invented figures (`payroll.build_xls` + the office mapping):
+  "READY TO IMPORT", all 51 headers match, every figure in the column the office setting reads (D/E 25, K 25, O 1,
+  Q 2, AC 50, AK 30, AY 12.5). With invented Employee Nos. it reports each one as "not in employees.txt" — as it should.
+  Only the real September file is still to be checked (needs the user's Employee Nos. first).
+- **Rebuilt package checked** on an empty scratch data folder: the packaged .exe makes the .xls (xlwt and
+  `million\office-mapping.csv` are inside), refuses an INCOMPLETE employee without allow_incomplete.
+- `.gitignore`: `*.csv` was hiding the bundled `million/office-mapping.csv` (a fresh clone could not build or pass the
+  mapping test) -> exception added.
+- Before committing to the public repo: real client-company names taken out of this log and of a docstring in
+  `payroll.py` (invented names instead). Scan of all added lines: no worker names, no document contents.
+- Note: "Hours of Worked" is never worked out (0 unless the user types it) — by design since session 5.
+- **3. Results: Employee No. and Name are typing boxes** (`pw-empno`, `pw-name` in `static/payroll.js`; same plan
+  fields as section 2, which follows after the save).
+- **"Download Million file (.xls)" did nothing** (user's report). The server answered correctly (September: 400
+  MILLION_INCOMPLETE, 200 with allow_incomplete). Likely cause: the page and scripts were served with no Cache-Control,
+  so after the rebuild the browser showed the new page (with the button) beside an old `payroll.js` (no click handler).
+  Now every non-API answer has `Cache-Control: no-cache` (test added, 304 pass). Package rebuilt again (10:4x).
+  Checked in headless Edge on the real plan: both boxes drawn, button enabled. **Not clicked in a browser** (Chrome
+  extension still not connected) — the user should confirm the button now works.
+- **User: "both still not working".** Only one app was running and it served the new code, so the browser was still
+  running an old script (a plain reload keeps scripts it already has). Now `app.page_html` serves index.html with each
+  script/style address stamped with the file's fingerprint (`payroll.js?v=…`), so an update always loads. Test added
+  (305 pass); package rebuilt and restarted (opens a fresh tab).
+- **Type-and-click test in headless Edge** (scratch data, app from source, test script added to the page): typing in
+  the Results boxes keeps focus through the save, section 2 + title + server follow; the Million button asks about the
+  INCOMPLETE employee, then downloads `Payroll 2026-09 (Million).xls`; no script errors. Scripts for this are scratch
+  only (not in the repo).
+- **Next:** user's OK -> commit + push + update PR #1. User: fill September payroll (Employee Nos., PH) -> download the
+  Million .xls -> `Check Office File.bat`. Then IN/OUT time cards (still not started; rule in NEXT-SESSION.md §4).
+
+## Session 7 — 2026-10-09 — Month grids (several workers per sheet) + Million .xls export
+303 tests pass; Malay checks pass (96 server messages, 0 missing). **Not committed, package NOT rebuilt, office checker
+NOT run yet.**
+- **Month grids** ("Name | 1…31 | Remark", one row per worker): `payroll.grid_columns/grid_mark/document_parts`, refs
+  `<id>#p<page>r<row>` (`split_part`, `part_suffix`). Each worker's row is offered separately in the picker and by
+  "Add employees from files" (name from the row, never from the header; unclear-name rows listed as `unnamed`). Marks:
+  ✓ / P / 1 = worked (normal day, no OT), hours = hours, 0/O/-/x = absent, PH, OFF/RO/RD, leave AL/MC/… ; anything
+  else (S, SU…) = unclear, reported. PH on a calendar working day -> `daytype` (blocks Complete). Remark/Total checked
+  against worked or worked+PH. Whole multi-worker grid on one employee -> issue. Real data: one company's grid -> 4 workers,
+  each 25 working / 25 worked / 1 PH, complete (scan checked by eye: all four rows really identical). All files: 12
+  multi-worker grids, 43 rows offered, 12 with an unclear name.
+- **Million .xls** (`payroll.build_xls`, `GET /api/payroll/{month}/xls?company=&allow_incomplete=`, button "Download
+  Million file (.xls)"): xlwt BIFF8, sheet "Import", columns from office-mapping.csv (learn-million, else bundled
+  `million/office-mapping.csv`, else `OFFICE_MAPPING`), A text, C–AY numbers (0 written), AZ Notes. Refuses with every
+  problem listed (empty/spaced/duplicate Employee No., bad numbers, non-zero figure with no office column: Encashing
+  Leave, Maternity Leave, loan cleaner, Zakat/Levy paid by individual, unknown lines); INCOMPLETE only with
+  allow_incomplete. New default lines: Transport Allowance, use and claim, PENALTY, RENTAL CAR, rental hostel, ZAKAT.
+  Saved as `Payroll <month> [<company>] (Million).xls` in Documents\Table Reader\payroll. `xlwt` + `xlrd` (tests) added.
+- Real September plan (2 employees: one empty leftover, one INCOMPLETE) is refused, as it should be.
+- **Next:** user fills the September payroll (Add employees from files, Employee Nos., mark PH) -> make the .xls ->
+  run the office checker (`million-import-checker.ps1 -Mapping office-mapping.csv -Path <xls> -NoOpen -NoPause`) ->
+  rebuild with `packaging\build.ps1` (quit the running app first) -> commit. OCR engine bake-off (session 6, `ocr-lab\`)
+  is paused.
+
+## Session 6 — 2026-10-09 — Plan: open-source OCR instead of Claude (for server hosting)
+Plan only, no code changed: `PLAN-OCR-ENGINE.md`. Sample folder counted (counts only): 91 photos, 82 scanned PDFs,
+30 digital PDFs with a real text layer (79 of 220 PDF pages), 10 Excel files. Key points: Tesseract cannot keep
+today's handwriting quality, so the plan uses engines chosen per page (Excel/text layer exact → classic OCR for print →
+self-hosted document model on a GPU for handwriting, Claude kept as a fallback), all feeding the existing never-guess
+normaliser. First step is a measured bake-off (O0). Waiting on the user's decisions in its §9.
+
+## Session 5f — 2026-10-07 — Payroll: save bug, clock-system reports, one worker per page
+261 tests pass; package rebuilt. Not committed yet (branch `payroll-companies-malay`, PR #1).
+- **Bug:** a ticked document that no longer existed (history reset) made `validate_plan` refuse *every* save, so the
+  results never changed. Now `app.drop_gone_documents` takes such documents off the employee (on GET and PUT) with an
+  issue of kind `removed`; the page copies the cleaned `jobs` back after each save.
+- Real Sept A–D data (85 pages): only 29 pages had a daily-total column. Card types: clock-system reports (17 pages,
+  printed Actual/Late/EarlyOut/OverTime per day), IN/OUT cards, month grids "Name | 1…31" (many workers per sheet).
+- **Clock-system reports** (user's choice, done): columns matched by label (`REPORT_*` in payroll.py). Printed daily
+  figures are decimal hours — proved by the report totals (h.mm reading never matched). Late→lateness,
+  EarlyOut→early_departure, OverTime 1.0/1.5/2.0/3.0→ot_1/ot_1_5/ot_2/ot_3, Actual→days worked; normal-hours rule and
+  rest/holiday day counts not applied on report days (no double pay). Column sums checked against printed totals
+  (kind `total`, blocks Complete); Flat OT reported (kind `flat`), allowance columns not used. Real data: all 17
+  worker pages give exactly the printed totals.
+- **One worker per page:** a document whose pages show different Emp Code/Name is offered page by page in the
+  picker (`payroll.worker_parts`, refs `<id>#p<page>`, `split_ref`); a page and its whole document cannot both be chosen.
+- **"Add employees from files"** (section 2 of Payroll, per company or all): `payroll.auto_employees` makes one
+  employee per worker among the readable documents (those with an hours column), cards ticked; documents it cannot
+  read yet are listed. Same worker = same printed Emp Code, else same printed name (`_WORKER_LABEL`: Name, Nama / name,
+  Cleaner Name, Emp Code…), else same file name without company/month/year/copy numbers (`name_from_file`); a card
+  with nothing printed joins the one worker whose other card has its file name. `worker_key` is kept on the employee;
+  `remember_employees` saves Employee No./name per worker_key in `payroll/employees.json` on every save and the next
+  month's auto-add fills them in. Employee No. is never taken from the clock system's Emp Code.
+  Dry run on Sept A–D: 34 employees (one company 17 by code, two others 3×2 and 6×2 cards), 34 files left
+  out (IN/OUT cards, grids, other forms). 266 tests.
+- **Company chooser in the top bar** (user's request; replaces the filter above Recent files): `#company-box`,
+  remembered in localStorage (`companyFilter`), redrawn only when its options change. It filters Recent files and the
+  Payroll screen: employees list + results navigation show only that company's employees (`empCompany`: the
+  employee's `company`, else the one company of their ticked files — same rule as `payroll.employee_company`);
+  "Add employees from files" uses it; new employees get it as `company`; "Download payroll CSV" sends `?company=` and
+  the file is "Payroll <month> <company>.csv". 268 tests.
+- **Next (user chose 1-hour break rule for later):** IN/OUT cards (hours = OUT − IN − break, rule shown and
+  changeable); month grids (pick a row per employee).
+
 ## Session 5e — 2026-10-07 — Bahasa Melayu
 253 tests pass; package rebuilt. Not checked in a browser (Chrome extension not connected).
 - Header button "Bahasa Melayu" / "English" switches the language (kept in the browser's localStorage, page reloads).

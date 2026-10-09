@@ -28,11 +28,34 @@ const MS = {
   "Download CSV": "Muat turun CSV",
   "Payroll for Million Payroll": "Gaji untuk Million Payroll",
   "Download payroll CSV": "Muat turun CSV gaji",
+  "Download Million file (.xls)": "Muat turun fail Million (.xls)",
+  "Make the Million file anyway?": "Buat juga fail Million?",
+  "Million file made: {name}. A copy is kept in Documents\\Table Reader\\payroll. Back up Million before you import it.":
+    "Fail Million siap: {name}. Satu salinan disimpan dalam Documents\\Table Reader\\payroll. Buat sandaran Million sebelum anda mengimportnya.",
   "Pick the month and mark the days, add each employee and tick their time-card files. Table Reader adds up days worked and overtime from the cells you have already checked. Anything it cannot work out is listed, never guessed, and you can type over any figure.":
     "Pilih bulan dan tandakan hari, tambah setiap pekerja dan tandakan fail kad perakam waktu mereka. Table Reader mengira hari bekerja dan kerja lebih masa daripada sel yang telah anda semak. Apa-apa yang tidak dapat dikira akan disenaraikan, tidak sekali-kali diteka, dan anda boleh menaip semula mana-mana angka.",
   "1. Month and days": "1. Bulan dan hari",
   "2. Employees and their time cards": "2. Pekerja dan kad perakam waktu mereka",
   "Add employee": "Tambah pekerja",
+  "Add employees from files": "Tambah pekerja daripada fail",
+  "for {c}": "untuk {c}",
+  "for all companies": "untuk semua syarikat",
+  "Choose a company at the top (or “All companies”).": "Pilih syarikat di bahagian atas (atau “Semua syarikat”).",
+  "No employees for this company yet. Press “Add employees from files” or “Add employee”.":
+    "Belum ada pekerja untuk syarikat ini. Tekan “Tambah pekerja daripada fail” atau “Tambah pekerja”.",
+  "One employee is added for each worker in the files, with their time cards ticked. Employee No. is filled in from earlier months; type it once for new workers.":
+    "Seorang pekerja ditambah bagi setiap pekerja dalam fail, dengan kad perakam waktu mereka ditandakan. No. Pekerja diisi daripada bulan sebelumnya; taipkannya sekali untuk pekerja baharu.",
+  "Added {n} employee.": "{n} pekerja ditambah.", "Added {n} employees.": "{n} pekerja ditambah.",
+  "No new workers found: every readable file is already chosen for an employee.": "Tiada pekerja baharu dijumpai: setiap fail yang boleh dibaca sudah dipilih untuk seorang pekerja.",
+  "{n} file was left out because Table Reader cannot work out the days from it yet (for example IN/OUT cards):":
+    "{n} fail tidak dimasukkan kerana Table Reader belum boleh mengira hari daripadanya (contohnya kad IN/OUT):",
+  "{n} files were left out because Table Reader cannot work out the days from them yet (for example IN/OUT cards):":
+    "{n} fail tidak dimasukkan kerana Table Reader belum boleh mengira hari daripadanya (contohnya kad IN/OUT):",
+  "{n} worker row was left out because the name in it is unclear (fix the name in the document, or tick the row for the right employee yourself):":
+    "{n} baris pekerja tidak dimasukkan kerana nama padanya tidak jelas (betulkan nama dalam dokumen, atau tandakan baris itu sendiri untuk pekerja yang betul):",
+  "{n} worker rows were left out because the names in them are unclear (fix the names in the document, or tick the rows for the right employees yourself):":
+    "{n} baris pekerja tidak dimasukkan kerana nama padanya tidak jelas (betulkan nama dalam dokumen, atau tandakan baris itu sendiri untuk pekerja yang betul):",
+  "Type the Employee No. where it is empty; it is remembered for next month.": "Taip No. Pekerja jika kosong; ia akan diingat untuk bulan depan.",
   "3. Results": "3. Keputusan",
   "Change the language": "Tukar bahasa",
 
@@ -132,6 +155,10 @@ const MS = {
   "Show files of company": "Tunjukkan fail bagi syarikat",
   " (used for {who})": " (digunakan untuk {who})",
   "another employee": "pekerja lain",
+  "{name} — page {n}: {who}": "{name} — halaman {n}: {who}",
+  "{name} — row {r}: {who}": "{name} — baris {r}: {who}",
+  "{name} — page {n}, row {r}: {who}": "{name} — halaman {n}, baris {r}: {who}",
+  "name unclear": "nama tidak jelas",
   "No file matches.": "Tiada fail yang sepadan.",
   "No finished files yet. Read your time cards on the start page first.": "Belum ada fail yang selesai. Baca kad perakam waktu anda di halaman utama dahulu.",
   "e.g. MJ(1)": "cth. MJ(1)",
@@ -171,7 +198,8 @@ const MS = {
   "Please check:": "Sila semak:",
   "Nothing to check for this employee.": "Tiada apa-apa untuk disemak bagi pekerja ini.",
   "Day by day (how the figures were worked out)": "Hari demi hari (cara angka dikira)",
-  "Day": "Hari", "Type": "Jenis", "Hours written": "Jam yang ditulis", "Note": "Catatan",
+  "From the report: {x}": "Daripada laporan: {x}",
+  "Day": "Hari", "Type": "Jenis", "Hours written": "Jam yang ditulis", "Written on the card": "Ditulis pada kad", "Note": "Catatan",
   "Employee {a} of {b}": "Pekerja {a} daripada {b}",
   "Changes are saved automatically.": "Perubahan disimpan secara automatik.",
   "{n} employee is marked \"Needs checking\". In the file they are marked INCOMPLETE in the Notes column. Download anyway?":
@@ -227,10 +255,14 @@ const MS = {
   "Each line needs a name (up to 80 characters).": "Setiap baris perlu ada nama (sehingga 80 aksara).",
   "One of the chosen documents was not found. It may have been moved or deleted.": "Salah satu dokumen yang dipilih tidak dijumpai. Ia mungkin telah dipindahkan atau dipadam.",
   "A document can belong to one employee only. Untick it from the other employee first.": "Satu dokumen hanya boleh dimiliki oleh seorang pekerja. Nyahtanda dokumen itu daripada pekerja lain dahulu.",
+  "The Million file was not made. Fix these first, then download again:": "Fail Million tidak dibuat. Betulkan perkara ini dahulu, kemudian muat turun semula:",
 };
 
 // "card.pdf, page 2" -> "card.pdf, halaman 2" (where a payroll message says which document it is about)
-const msWhere = (w) => w.replace(/, page (\d+)$/, ", halaman $1");
+const msWhere = (w) => w.replace(/ \(page (\d+), row (\d+)\)/, " (halaman $1, baris $2)").replace(/ \(page (\d+)\)/, " (halaman $1)")
+  .replace(/ \(row (\d+)\)/, " (baris $1)").replace(/, page (\d+)$/, ", halaman $1");
+// Million file refusals: field names stay as on the Million screen
+const msWho = (w) => (w === "An employee" ? "Seorang pekerja" : w);
 
 // Server sentences that have names or numbers in them. Each: [pattern, Malay (with $1…) or a function of the match].
 const MS_PATTERNS = [
@@ -256,6 +288,10 @@ const MS_PATTERNS = [
   [/^(.+) has not been read completely yet\.$/, "$1 belum habis dibaca."],
   [/^(.+) could not be saved\. Check that the computer has free disk space, then add it again\.$/, "$1 tidak dapat disimpan. Pastikan komputer mempunyai ruang cakera yang mencukupi, kemudian tambahkannya semula."],
   [/^'(.+)' is in the (.+) list twice\. Use another name\.$/, "'$1' ada dua kali dalam senarai $2. Guna nama lain."],
+  [/^(\d+) time-card files? chosen before (?:is|are) no longer in Recent files, so (?:it was|they were) taken off this employee\.$/, "$1 fail kad perakam waktu yang dipilih sebelum ini tiada lagi dalam Fail terkini, jadi ia telah dibuang daripada pekerja ini."],
+  [/^(.+): the (.+) column adds up to ([\d.]+) but the report's printed total is ([\d.]+)\. Check that column in the document\.$/, (m) => `${msWhere(m[1])}: jumlah lajur ${m[2]} ialah ${m[3]} tetapi jumlah yang dicetak pada laporan ialah ${m[4]}. Semak lajur itu dalam dokumen.`],
+  [/^(.+): the report has Flat overtime\. Table Reader does not add it: type it in the right Million Payroll field yourself\.$/, (m) => `${msWhere(m[1])}: laporan ini ada kerja lebih masa Flat. Table Reader tidak mengiranya: taipkannya sendiri dalam medan Million Payroll yang betul.`],
+  [/^(.+), day (\d+): the (.+) figure is unclear or not a number of hours\. Check it in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: angka ${m[3]} tidak jelas atau bukan bilangan jam. Semaknya dalam dokumen.`],
   [/^No entry found for day (.+) in the chosen documents\. These days were counted as not worked: add the other card if there is one\.$/, "Tiada catatan dijumpai untuk hari $1 dalam dokumen yang dipilih. Hari-hari ini dikira sebagai tidak bekerja: tambah kad yang satu lagi jika ada."],
   [/^(.+): no column with the daily hours was found\. Choose it in the 'Hours column' list\.$/, (m) => `${msWhere(m[1])}: tiada lajur dengan jam harian dijumpai. Pilihnya dalam senarai 'Lajur jam'.`],
   [/^(.+), day (\d+): the hours are still unclear\. Check the yellow cell in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: jam masih tidak jelas. Semak sel kuning dalam dokumen.`],
@@ -265,6 +301,27 @@ const MS_PATTERNS = [
   [/^(.+), row (\d+): the date (.+) is not in the chosen month, so its hours were left out\.$/, (m) => `${msWhere(m[1])}, baris ${m[2]}: tarikh ${m[3]} bukan dalam bulan yang dipilih, jadi jamnya tidak dikira.`],
   [/^(.+), row (\d+): the date could not be read, so its hours were left out\.$/, (m) => `${msWhere(m[1])}, baris ${m[2]}: tarikh tidak dapat dibaca, jadi jamnya tidak dikira.`],
   [/^(.+), row (\d+): day (\d+) is not in this month, so its hours were left out\.$/, (m) => `${msWhere(m[1])}, baris ${m[2]}: hari ${m[3]} bukan dalam bulan ini, jadi jamnya tidak dikira.`],
+  // month grids
+  [/^(.+): this sheet lists (\d+) workers\. Tick each worker's own row instead of the whole file\.$/, (m) => `${msWhere(m[1])}: helaian ini menyenaraikan ${m[2]} pekerja. Tandakan baris setiap pekerja, bukan seluruh fail.`],
+  [/^(.+): day (\d+) is not in this month, so its mark was left out\.$/, (m) => `${msWhere(m[1])}: hari ${m[2]} bukan dalam bulan ini, jadi tandanya tidak dikira.`],
+  [/^(.+), day (\d+): the mark is still unclear\. Check the yellow cell in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: tanda masih tidak jelas. Semak sel kuning dalam dokumen.`],
+  [/^(.+), day (\d+): '([\s\S]*)' is not a mark Table Reader knows \(✓, 0, PH, OFF, AL, MC or hours\)\. Correct it in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: '${m[3]}' bukan tanda yang dikenali oleh Table Reader (✓, 0, PH, OFF, AL, MC atau jam). Betulkannya dalam dokumen.`],
+  [/^(.+): (\d+) days are marked as worked \((\d+) with public holidays\), but the sheet's (.+) column says (\d+)\. Check the marks in the document\.$/, (m) => `${msWhere(m[1])}: ${m[2]} hari ditanda bekerja (${m[3]} termasuk cuti umum), tetapi lajur ${m[4]} pada helaian menyatakan ${m[5]}. Semak tanda dalam dokumen.`],
+  [/^The card marks day (.+) as a public holiday \(PH\), but the calendar above has it as a working day\. If it is a public holiday, click it in the calendar until it is yellow\.$/, "Kad menanda hari $1 sebagai cuti umum (PH), tetapi kalendar di atas menunjukkannya sebagai hari bekerja. Jika ia cuti umum, klik hari itu dalam kalendar sehingga ia berwarna kuning."],
+  [/^The card marks leave on day (.+)\. Type the leave in the Leave table if Million Payroll should count it\.$/, "Kad menanda cuti pada hari $1. Taip cuti itu dalam jadual Cuti jika Million Payroll perlu mengiranya."],
+  // Million file (.xls): one problem per line
+  [/^- (.+): Employee No\. is empty\. Type it exactly as in Million Payroll\.$/, (m) => `- ${msWho(m[1])}: No. Pekerja kosong. Taipkannya sama seperti dalam Million Payroll.`],
+  [/^- (.+): Employee No\. '(.*)' has a space before or after it\. Delete the space\.$/, "- $1: No. Pekerja '$2' ada ruang kosong di hadapan atau di belakangnya. Padamkan ruang itu."],
+  [/^- Employee No\. (.+) is used for two employees \((.+) and (.+)\)\. Each employee needs their own\.$/, "- No. Pekerja $1 digunakan untuk dua pekerja ($2 dan $3). Setiap pekerja perlu nombor sendiri."],
+  [/^- (.+): (.+) is not a number of 0 or more\.$/, "- $1: $2 bukan nombor 0 atau lebih."],
+  [/^- (.+): (.+) is ([\d.]+), but the office Million file has no column for it \(the ZAKAT column is the Deduction line ZAKAT\)\. Make it 0, or type it in Million by hand after the import\.$/, "- $1: $2 ialah $3, tetapi fail Million pejabat tiada lajur untuknya (lajur ZAKAT ialah baris Potongan ZAKAT). Jadikannya 0, atau taipkannya sendiri dalam Million selepas import."],
+  [/^- (.+): (.+) is ([\d.]+), but the office Million file has no column for it\. Make it 0, or type it in Million by hand after the import\.$/, "- $1: $2 ialah $3, tetapi fail Million pejabat tiada lajur untuknya. Jadikannya 0, atau taipkannya sendiri dalam Million selepas import."],
+  [/^- (.+): '(.+)' has a figure in two lists\. Keep it in one list only\.$/, "- $1: '$2' ada angka dalam dua senarai. Simpan dalam satu senarai sahaja."],
+  [/^- Also marked INCOMPLETE: (.+)\.$/, "- Juga ditanda INCOMPLETE (belum lengkap): $1."],
+  [/^(\d+) employees? (?:is|are) marked INCOMPLETE: ([\s\S]+)\. Check them first, or make the file anyway: the reason is then written in its Notes column\.$/, "$1 pekerja ditanda INCOMPLETE (belum lengkap): $2. Semak mereka dahulu, atau buat juga fail itu: sebabnya akan ditulis dalam lajur Notes."],
+  [/^The Million column table (.+) was not found\.$/, "Jadual lajur Million $1 tidak dijumpai."],
+  [/^The Million column table \((.+)\) could not be used: ([\s\S]+)\. Fix it to match Million's File Format Setting, then try again\.$/, "Jadual lajur Million ($1) tidak dapat digunakan: $2. Betulkannya supaya sepadan dengan File Format Setting dalam Million, kemudian cuba lagi."],
+  [/^(.+) could not be saved\. If it is open in Excel, close it and try again\.$/, "$1 tidak dapat disimpan. Jika ia sedang dibuka dalam Excel, tutupnya dan cuba lagi."],
 ];
 
 function fill(text, vars) {
@@ -282,6 +339,7 @@ function tn(n, one, many, vars) {
 
 function tm(text) {
   if (LANG !== "ms" || !text) return text;
+  if (text.includes("\n")) return text.split("\n").map(tm).join("\n");   // a list, one sentence per line
   if (MS[text] !== undefined) return MS[text];
   for (const [re, out] of MS_PATTERNS) {
     const m = text.match(re);

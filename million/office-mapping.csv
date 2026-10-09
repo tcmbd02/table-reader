@@ -1,0 +1,54 @@
+Field,Label,Type,Column,Header,Max
+Employee No.,Employee No.,Key,1,Employee No.,
+Name,Name,Info,2,Name (not imported),
+Public Holiday,Public Holiday,Number,3,Public Holiday (days),31
+Working Day,Working Days,Number,4,Working Day (days),31
+Days Worked,Days Worked,Number,5,Days Worked (days),31
+Hours of Worked,Hours Worked,Number,6,Hours of Worked (hours),400
+Lateness,Lateness (h),Number,7,Lateness (hours),200
+Early Departure,Early Dep. (h),Number,8,Early Departure (hours),200
+No Pay Hour,No Pay (h),Number,9,No Pay Hour (hours),300
+Overtime - From Date,OT From Date,Number,0,,
+Overtime - To Date,OT To Date,Number,0,,
+Overtime # 1,OT #1 (h),Number,10,Overtime # 1 (1.0x hours),300
+Overtime # 2,OT #2 (h),Number,11,Overtime # 2 (1.5x hours),300
+Overtime # 3,OT #3 (h),Number,12,Overtime # 3 (2.0x hours),300
+Overtime # 4,OT #4 (h),Number,13,Overtime # 4 (3.0x hours),300
+Overtime # 5,OT #5 (d),Number,14,Overtime # 5 (Rest Day days),31
+Overtime # 6,OT #6 (d),Number,15,Overtime # 6 (Holiday days),31
+Absence,Absence (d),Number,16,Absence (days),31
+Annual Leave,Annual (d),Number,17,Annual Leave (days),31
+Compassionate Leave,Compassionate (d),Number,18,Compassionate Leave (days),31
+Examination Leave,Examination (d),Number,19,Examination Leave (days),31
+Hospital Leave,Hospital (d),Number,20,Hospital Leave (days),31
+Line Shutdown Leave,Line Shutdown (d),Number,21,Line Shutdown Leave (days),31
+Medical Leave,Medical (d),Number,22,Medical Leave (days),31
+Marriage Leave,Marriage (d),Number,23,Marriage Leave (days),31
+Non-Pay Leave,Non-Pay (d),Number,24,Non-Pay Leave (days),31
+Out of Bound,Out of Bound (d),Number,25,Out of Bound (days),31
+Paternity Leave,Paternity (d),Number,26,Paternity Leave (days),31
+ADHOC ALLOWANCE,ADHOC Allow.,Number,27,ADHOC ALLOWANCE (RM),
+Attendance Allowance,Attendance Allow.,Number,28,Attendance Allowance (RM),
+RECAB 2.0 BLC PERMIT,RECAB Permit,Number,29,RECAB 2.0 BLC PERMIT (RM),
+Food Allowance,Food Allow.,Number,30,Food Allowance (RM),
+Overtime,Allow. Overtime,Number,31,Overtime allowance (RM),
+OVERTIME 1.5,Allow. OT 1.5,Number,32,OVERTIME 1.5 allowance (RM),
+OVERTIME 2.0,Allow. OT 2.0,Number,33,OVERTIME 2.0 allowance (RM),
+RECRUITMENT CLAIM,Recruitment Claim,Number,34,RECRUITMENT CLAIM (RM),
+SPORTS CLAIM,Sports Claim,Number,35,SPORTS CLAIM (RM),
+SUPERVISIOR ALLOWANCE,Supervisor Allow.,Number,36,SUPERVISIOR ALLOWANCE (RM),
+Transport Allowance,Transport Allow.,Number,37,Transport Allowance (RM),
+use and claim,Use and Claim,Number,38,use and claim (RM),
+Absent Deduction Fine,Absent Ded. Fine,Number,39,Absent Deduction Fine (RM),
+ADVANCE SALARY,Advance Salary,Number,40,ADVANCE SALARY (RM),
+EXTRA PAID SALARY,Extra Paid Salary,Number,41,EXTRA PAID SALARY (RM),
+Loan Deduction,Loan Ded.,Number,42,Loan Deduction (RM),
+MEAL DEDUCTION,Meal Ded.,Number,43,MEAL DEDUCTION (RM),
+MERCHANTRADE CARD,Merchantrade Card,Number,44,MERCHANTRADE CARD (RM),
+NON-COMPLETE HRS,Non-Complete Hrs,Number,45,NON-COMPLETE HRS (RM),
+ALREADY PAID SALARY,Already Paid Salary,Number,46,ALREADY PAID SALARY (RM),
+PENALTY,Penalty,Number,47,PENALTY (RM),
+APPLY/RENEWAL,Apply/Renewal,Number,48,APPLY/RENEWAL (RM),
+RENTAL CAR,Rental Car,Number,49,RENTAL CAR (RM),
+rental hostel,Rental Hostel,Number,50,rental hostel (RM),
+ZAKAT,Zakat,Number,51,ZAKAT (RM),

@@ -1,8 +1,10 @@
 """Tests for payroll.py: the calculation from confirmed cells, the issues it must raise, and the payroll file."""
 import csv
 import io
+from pathlib import Path
 
 import pytest
+import xlrd
 
 import jobs
 import ocr
@@ -255,3 +257,436 @@ def test_store_round_trip_and_default(tmp_path):
     assert s.load("2026-10")["month"] == "2026-10"
     with pytest.raises(ocr.OcrError):
         s.load("not-a-month")
+
+
+# ------------------------------------------------------------------------------------------ clock-system reports
+REPORT_LABELS = ("Date", "Day", "Time / In", "Time / Out", "Shift Details / Normal", "Shift Details / Late",
+                 "Shift Details / EarlyOut", "Shift Details / Actual", "OverTime / 1.0", "OverTime / 1.5",
+                 "OverTime / 2.0", "OverTime / 3.0", "OverTime / Flat")
+
+
+def report(days, totals=None, flat=None):
+    """``days`` maps day -> (actual, late, early, ot15, ot20). Every other day of September is an empty row."""
+    rows = []
+    for d in range(1, 31):
+        actual, late, early, ot15, ot20 = days.get(d, ("", "", "", "", ""))
+        rows.append({"Date": good(f"{d:02d}-09-2026"), "Day": good("Mon"), "Time / In": good(""), "Time / Out": good(""),
+                     "Shift Details / Normal": good(""), "Shift Details / Late": good(late),
+                     "Shift Details / EarlyOut": good(early), "Shift Details / Actual": good(actual),
+                     "OverTime / 1.0": good(""), "OverTime / 1.5": good(ot15), "OverTime / 2.0": good(ot20),
+                     "OverTime / 3.0": good(""), "OverTime / Flat": good((flat or {}).get(d, ""))})
+    rec = record(rows, labels=REPORT_LABELS, header=[(k, good(v)) for k, v in (totals or {}).items()])
+    rec["page"] = 1
+    return jobs.merged_pages({"pages": [rec]}, {"edits": []})
+
+
+def test_a_clock_report_is_added_up_as_printed_in_decimal_hours():
+    days = {1: ("8.00", "0.25", "", "1.50", ""), 2: ("9.75", "", "0.30", "2.00", ""), 6: ("8.00", "", "", "", "8.00")}
+    pages = report(days, totals={"Total Actual": "25.75", "Total Late": "0.25", "Total EarlyOut": "0.30",
+                                 "Total OT 1.5": "3.50", "Total OT 2.0": "8.00"})
+    r = payroll.calculate(plan_for(), [("report", pages)], employee())
+    v = values(r)
+    assert v["lateness"] == 0.25 and v["early_departure"] == 0.30
+    assert v["ot_1_5"] == 3.50 and v["ot_2"] == 8.00                  # as printed, not worked out from normal hours
+    assert v["days_worked"] == 2 and v["ot_rest_day"] == 0            # day 6 (Sunday) is in OT 2.0, not counted twice
+    assert not [i for i in r["issues"] if i["kind"] in ("total", "unclear", "column")]
+    assert r["days"][0]["printed"] == {"lateness": 0.25, "ot_1_5": 1.5}
+
+
+def test_a_clock_report_that_does_not_match_its_printed_total_is_reported():
+    pages = report({1: ("8.00", "", "", "1.50", "")}, totals={"Total OT 1.5": "2.50"})
+    r = payroll.calculate(plan_for(), [("report", pages)], employee())
+    assert any(i["kind"] == "total" and "OverTime / 1.5" in i["text"] and "2.50" in i["text"] for i in r["issues"])
+    assert not r["complete"]
+
+
+def test_an_unclear_report_figure_is_not_added():
+    pages = report({1: ("8.00", "", "", "1.50", "")})
+    pages[0]["rows"][0]["cells"]["OverTime / 1.5"] = {**cell(None, raw="1.?0", reason="smudged"), "needs_review": True}
+    r = payroll.calculate(plan_for(), [("report", pages)], employee())
+    assert values(r)["ot_1_5"] == 0 and not r["complete"]
+    assert any("OverTime / 1.5 figure is unclear" in i["text"] for i in r["issues"])
+
+
+def test_flat_overtime_on_a_report_is_left_to_the_user():
+    pages = report({1: ("8.00", "", "", "", "")}, flat={1: "2.00"})
+    r = payroll.calculate(plan_for(), [("report", pages)], employee())
+    assert any(i["kind"] == "flat" for i in r["issues"]) and not r["complete"]
+
+
+# ------------------------------------------------------------------------------- one worker per page (report PDFs)
+def test_pages_with_different_workers_are_offered_one_by_one():
+    pages = [{"page": n, "header_fields": [{"label": "Emp Code", "cell": good(code)}, {"label": "Name", "cell": good(nm)}]}
+             for n, code, nm in ((1, "E01", "ALI"), (2, "E02", "AMIN"))]
+    assert payroll.worker_parts(pages) == [{"page": 1, "label": "E01 ALI"}, {"page": 2, "label": "E02 AMIN"}]
+    same = [{"page": n, "header_fields": [{"label": "Name", "cell": good("ALI")}]} for n in (1, 2)]
+    assert payroll.worker_parts(same) == []                         # one worker over two pages: the whole document
+    assert payroll.split_ref("job-1#p3") == ("job-1", 3) and payroll.split_ref("job-1") == ("job-1", None)
+
+
+def test_a_page_and_its_whole_document_cannot_both_be_chosen():
+    p = plan_for()
+    p["employees"] = [employee(id="a", jobs=["j1#p1"]), employee(id="b", jobs=["j1#p2"])]
+    payroll.validate_plan(p, {"j1", "j1#p1", "j1#p2"})                # different pages, different employees: fine
+    p["employees"][1]["jobs"] = ["j1"]
+    with pytest.raises(ocr.OcrError) as e:
+        payroll.validate_plan(p, {"j1", "j1#p1", "j1#p2"})
+    assert "one employee only" in e.value.message
+
+
+# ------------------------------------------------------------------------------ employees added from the documents
+def test_worker_name_from_the_file_name():
+    assert payroll.name_from_file("MAJU JAYA ALI SEPT  26 2.jpeg", "MAJU JAYA") == "ALI"
+    assert payroll.name_from_file("MAJU JAYA ALI SEPT26.jpeg", "MAJU JAYA") == "ALI"
+    assert payroll.name_from_file("ACME KLC 1 SEPT 2026 (ZURA) (2).jpeg", "ACME") == "KLC ZURA"
+
+
+def candidate(ref, name, company="MAJU JAYA", header=(), labels=("Date", "Total")):
+    rec = record([{"Date": good("1"), labels[1]: good("8")}], labels=labels, header=header)
+    rec["page"] = 1
+    return {"ref": ref, "name": name, "company": company, "pages": jobs.merged_pages({"pages": [rec]}, {"edits": []})}
+
+
+def test_auto_employees_groups_a_workers_cards_and_never_invents_an_employee_no():
+    p = plan_for()
+    ids = iter(["n1", "n2", "n3"])
+    cands = [candidate("j1", "MAJU JAYA ALI SEPT 26.jpeg"), candidate("j2", "MAJU JAYA ALI SEPT 26 2.jpeg"),
+             candidate("j3", "MAJU JAYA AMIN SEPT 26.jpeg", header=[("Name", good("AMIN BIN ABU"))]),
+             candidate("j4", "MAJU JAYA LOG SEPT 26.jpeg", labels=("Date", "In"))]       # no hours column yet
+    added, skipped, unnamed = payroll.auto_employees(p, cands, {}, lambda: next(ids))
+    assert added == 2 and skipped == ["MAJU JAYA LOG SEPT 26.jpeg"] and unnamed == []
+    ali, amin = p["employees"]
+    assert ali["jobs"] == ["j1", "j2"] and ali["name"] == "ALI" and ali["emp_no"] == ""
+    assert amin["name"] == "AMIN BIN ABU" and amin["worker_key"] == "maju jaya|name:amin bin abu"
+    assert payroll.auto_employees(p, cands, {}, lambda: "x") == (0, ["MAJU JAYA LOG SEPT 26.jpeg"], [])   # nothing twice
+
+
+def test_the_employee_no_typed_once_is_used_next_month():
+    directory = {}
+    sept = plan_for()
+    payroll.auto_employees(sept, [candidate("j1", "MAJU JAYA ALI SEPT 26.jpeg")], directory, lambda: "a")
+    sept["employees"][0]["emp_no"] = "MJ(7)"
+    assert payroll.remember_employees(sept, directory) and directory["maju jaya|file:ali"]["emp_no"] == "MJ(7)"
+    octo = plan_for("2026-10")
+    payroll.auto_employees(octo, [candidate("k1", "MAJU JAYA ALI OCT 26.jpeg")], directory, lambda: "b")
+    assert octo["employees"][0]["emp_no"] == "MJ(7)"
+    assert payroll.validate_plan(octo, {"k1"})["employees"][0]["worker_key"] == "maju jaya|file:ali"
+
+
+def test_a_card_with_an_unclear_printed_name_joins_its_pair_by_file_name():
+    p = plan_for()
+    cands = [candidate("j2", "MAJU JAYA ALI SEPT 26 2.jpeg"),                       # name unclear on this one
+             candidate("j1", "MAJU JAYA ALI SEPT 26.jpeg", header=[("Name", good("ALI BIN ABU"))])]
+    added, _, _ = payroll.auto_employees(p, cands, {}, lambda: "a")
+    assert added == 1 and sorted(p["employees"][0]["jobs"]) == ["j1", "j2"]
+    assert p["employees"][0]["name"] == "ALI BIN ABU"
+
+
+# ------------------------------------------------------------------- month grids: one row per worker, a column per day
+GRID_LABELS = ("Name",) + tuple(str(d) for d in range(1, 32)) + ("Remark",)
+# September 2026 as such sheets are filled in: ticks, Sundays (6, 13, 20, 27) empty, Malaysia Day (16) PH, no day 31
+SEPT_MARKS = {d: "" if d in (6, 13, 20, 27, 31) else "PH" if d == 16 else "✓" for d in range(1, 32)}
+
+
+def grid_row(name, marks=None, remark="26"):
+    marks = {**SEPT_MARKS, **(marks or {})}
+    return {"Name": good(name) if name else good(""), **{str(d): good(v) for d, v in marks.items()}, "Remark": good(remark)}
+
+
+def grid(*rows, header=(("CLEANER NAME", "ALI"),)):
+    rec = record(list(rows), labels=GRID_LABELS, header=[(k, good(v)) for k, v in header])
+    rec["page"] = 1
+    return jobs.merged_pages({"pages": [rec]}, {"edits": []})
+
+
+def holiday_16():
+    p = plan_for()
+    p["day_types"]["16"] = "holiday"
+    return p
+
+
+def test_a_grid_row_gives_days_worked_and_the_public_holiday():
+    r = payroll.calculate(holiday_16(), [("grid (row 2)", grid(grid_row("AMIN")))], employee())
+    v = values(r)
+    assert v["working_days"] == 25 and v["days_worked"] == 25 and v["public_holiday"] == 1
+    assert v["ot_1_5"] == 0 and v["ot_rest_day"] == 0 and v["ot_holiday"] == 0     # a tick is a normal day
+    assert r["complete"], r["issues"]
+    assert r["days"][0]["code"] == "✓" and r["days"][15]["code"] == "PH"
+
+
+def test_each_worker_in_a_grid_is_offered_separately_with_the_name_in_their_row():
+    pages = grid(grid_row("ALI"), grid_row("AMIN"), grid_row(""), grid_row("ZUL"))
+    parts = payroll.document_parts(pages)
+    assert [(p["page"], p["row"], p["label"]) for p in parts] == [(1, 1, "ALI"), (1, 2, "AMIN"), (1, 3, ""), (1, 4, "ZUL")]
+    assert payroll.document_parts(grid(grid_row("ALI"))) == []                  # one worker: the file as a whole
+    assert payroll.document_parts(merged([day(1, "9")])) == []                 # an ordinary card
+    assert payroll.part_suffix(1, 3) == "#p1r3" and payroll.split_part("job-1#p1r3") == ("job-1", 1, 3)
+    assert payroll.split_ref("job-1#p1r3") == ("job-1", 1) and payroll.split_part("job-1") == ("job-1", None, None)
+
+
+def test_a_whole_grid_with_several_workers_is_not_given_to_one_employee():
+    r = payroll.calculate(holiday_16(), [("grid", grid(grid_row("ALI"), grid_row("AMIN")))], employee())
+    assert not r["complete"] and values(r)["days_worked"] == 0
+    assert any("lists 2 workers" in i["text"] for i in r["issues"])
+
+
+def test_ph_on_a_working_day_of_the_calendar_is_reported():
+    r = payroll.calculate(plan_for(), [("grid", grid(grid_row("ALI")))], employee())   # 16th not marked as holiday
+    assert not r["complete"]
+    assert any(i["kind"] == "daytype" and "day 16" in i["text"] for i in r["issues"])
+
+
+@pytest.mark.parametrize("mark", ["S", "SU", "HALF", "late"])
+def test_a_mark_table_reader_does_not_know_is_reported_not_guessed(mark):
+    r = payroll.calculate(holiday_16(), [("grid", grid(grid_row("ALI", {3: mark}, remark="")))], employee())
+    assert not r["complete"] and values(r)["days_worked"] == 24
+    assert any(f"'{mark}' is not a mark" in i["text"] for i in r["issues"])
+
+
+def test_an_unclear_grid_cell_is_left_out_and_reported():
+    pages = grid(grid_row("ALI", remark=""))
+    pages[0]["rows"][0]["cells"]["5"] = {**cell(None, raw="✓?", reason="faint"), "needs_review": True}
+    r = payroll.calculate(holiday_16(), [("grid", pages)], employee())
+    assert not r["complete"] and values(r)["days_worked"] == 24
+    assert any("day 5: the mark is still unclear" in i["text"] for i in r["issues"])
+
+
+def test_absent_off_and_leave_marks_are_days_not_worked():
+    marks = {2: "0", 3: "OFF", 4: "AL", 5: "MC", 7: "-"}
+    r = payroll.calculate(holiday_16(), [("grid", grid(grid_row("ALI", marks, remark="20")))], employee())
+    v = values(r)
+    assert v["days_worked"] == 20 and v["working_days"] == 25
+    leave = [i for i in r["issues"] if i["kind"] == "leave"]
+    assert leave and "4 (AL), 5 (MC)" in leave[0]["text"]
+    assert r["complete"], r["issues"]                            # leave is clear: the user types it in the Leave table
+
+
+def test_hours_written_in_a_grid_count_as_hours():
+    r = payroll.calculate(holiday_16(), [("grid", grid(grid_row("ALI", {1: "10", 2: "8.5"}, remark="")))], employee())
+    v = values(r)
+    assert v["days_worked"] == 25 and v["ot_1_5"] == 2.5                     # (10 - 8) + (8.5 - 8)
+
+
+def test_the_sheet_total_is_checked_but_never_used_as_a_figure():
+    ok = payroll.calculate(holiday_16(), [("grid", grid(grid_row("ALI", remark="25")))], employee())
+    assert ok["complete"]                                         # 25 days marked worked
+    also_ok = payroll.calculate(holiday_16(), [("grid", grid(grid_row("ALI", remark="26")))], employee())
+    assert also_ok["complete"]                                    # 25 worked + 1 PH: some sheets count it
+    wrong = payroll.calculate(holiday_16(), [("grid", grid(grid_row("ALI", remark="22")))], employee())
+    assert not wrong["complete"] and values(wrong)["days_worked"] == 25
+    assert any(i["kind"] == "total" and "says 22" in i["text"] for i in wrong["issues"])
+    note = payroll.calculate(holiday_16(), [("grid", grid(grid_row("ALI", remark="see HR")))], employee())
+    assert note["complete"]                                       # a remark that is not a number is not a total
+
+
+def test_a_mark_on_day_31_of_a_30_day_month_is_reported():
+    r = payroll.calculate(holiday_16(), [("grid", grid(grid_row("ALI", {31: "✓"}, remark="")))], employee())
+    assert not r["complete"] and any("day 31 is not in this month" in i["text"] for i in r["issues"])
+
+
+def grid_candidates(pages, file="MAJU JAYA SEPT 26.jpeg", ref="g1"):
+    out = []
+    for p in payroll.document_parts(pages):
+        rows = [{**pg, "rows": pg["rows"][p["row"] - 1:p["row"]]} for pg in pages if pg["page"] == p["page"]]
+        out.append({"ref": ref + payroll.part_suffix(p["page"], p["row"]), "name": f"{file} (row {p['row']})",
+                    "company": "MAJU JAYA", "pages": rows})
+    return out
+
+
+def test_auto_employees_makes_one_employee_per_grid_row_named_from_the_row():
+    pages = grid(grid_row("ALI"), grid_row("AMIN"), grid_row(""), header=(("CLEANER NAME", "ALI"),))
+    p = holiday_16()
+    ids = iter(["n1", "n2", "n3"])
+    added, skipped, unnamed = payroll.auto_employees(p, grid_candidates(pages), {}, lambda: next(ids))
+    assert added == 2 and skipped == [] and unnamed == ["MAJU JAYA SEPT 26.jpeg (row 3)"]
+    ali, amin = p["employees"]
+    assert (ali["name"], ali["jobs"]) == ("ALI", ["g1#p1r1"]) and (amin["name"], amin["jobs"]) == ("AMIN", ["g1#p1r2"])
+    assert amin["worker_key"] == "maju jaya|name:amin"            # not the name printed at the top (the first worker's)
+    payroll.validate_plan(p, {"g1#p1r1", "g1#p1r2", "g1#p1r3"})
+    results = [payroll.calculate(p, [("grid", [{**pages[0], "rows": [pages[0]["rows"][k]]}])], e)
+               for k, e in enumerate(p["employees"])]
+    assert [values(r)["days_worked"] for r in results] == [25, 25]
+
+
+def test_the_same_worker_on_two_grid_files_becomes_one_employee():
+    first = grid_candidates(grid(grid_row("ALI"), grid_row("AMIN")), ref="g1")
+    second = grid_candidates(grid(grid_row("AMIN"), grid_row("ALI")), file="MAJU JAYA SEPT 26 2.jpeg", ref="g2")
+    p = holiday_16()
+    ids = iter(["n1", "n2"])
+    added, _, _ = payroll.auto_employees(p, first + second, {}, lambda: next(ids))
+    assert added == 2
+    assert {e["name"]: e["jobs"] for e in p["employees"]} == {"ALI": ["g1#p1r1", "g2#p1r2"], "AMIN": ["g1#p1r2", "g2#p1r1"]}
+
+
+def test_a_grid_row_and_its_whole_page_or_file_cannot_both_be_chosen():
+    known = {"g1", "g1#p1", "g1#p1r1", "g1#p1r2"}
+    p = plan_for()
+    p["employees"] = [employee(id="a", jobs=["g1#p1r1"]), employee(id="b", jobs=["g1#p1r2"])]
+    payroll.validate_plan(p, known)                                # two rows, two employees: fine
+    for other in ("g1#p1", "g1"):
+        p["employees"][1]["jobs"] = [other]
+        with pytest.raises(ocr.OcrError):
+            payroll.validate_plan(p, known)
+
+
+# ------------------------------------------------------------------------------------- Million import file (.xls)
+BUNDLED_MAPPING = Path(__file__).resolve().parent.parent / "million" / "office-mapping.csv"
+MAPPING = payroll.load_office_mapping(BUNDLED_MAPPING)
+
+
+def million(results_of=None, n=3, **plan_kw):
+    """(plan, results) for ``n`` complete employees on two half-month cards; ``results_of(k)`` adds employee fields."""
+    p = holiday_16()
+    p.update(plan_kw)
+    docs = [("card 1", card(1, 15, not_worked={6, 13})), ("card 2", card(16, 30, not_worked={20, 27}))]
+    emps = [employee(**{"id": f"e{k}", "emp_no": f"MJ({k})", "name": f"WORKER {k}", **((results_of or (lambda k: {}))(k))})
+            for k in range(1, n + 1)]
+    return p, [payroll.calculate(p, docs, e) for e in emps]
+
+
+def read_xls(data):
+    sheet = xlrd.open_workbook(file_contents=data).sheet_by_index(0)
+    return sheet
+
+
+def col(letters):
+    n = 0
+    for ch in letters:
+        n = n * 26 + ord(ch) - 64
+    return n - 1                                                    # 0-based, as xlrd counts
+
+
+def test_million_file_has_the_office_columns_a_to_az_with_the_mapping_headers():
+    plan, results = million()
+    sheet = read_xls(payroll.build_xls(plan, results, mapping=MAPPING))
+    assert sheet.name == "Import" and sheet.nrows == 4 and sheet.ncols == 52               # A..AZ
+    headers = sheet.row_values(0)
+    for m in MAPPING:
+        assert headers[m["column"] - 1] == m["header"]
+    assert headers[col("A")] == "Employee No." and headers[col("AZ")] == "Notes (not imported)"
+    assert [sheet.cell_value(r, col("A")) for r in (1, 2, 3)] == ["MJ(1)", "MJ(2)", "MJ(3)"]
+    assert sheet.cell_value(1, col("B")) == "WORKER 1"
+
+
+def test_the_bundled_mapping_matches_the_built_in_table():
+    assert [(m["field"], m["type"], m["column"], m["header"]) for m in MAPPING] == payroll.OFFICE_MAPPING
+    assert len(xlrd.open_workbook(file_contents=payroll.build_xls(*million(n=1), mapping=None)).sheet_by_index(0)
+               .row_values(0)) == 52                                              # whichever mapping is found
+
+
+def test_million_columns_land_where_the_office_setting_reads_them():
+    entries = {"allowance": {"RECAB 2.O BLC PERMIT": 50.0, "Transport Allowance": 30.0},
+               "deduction": {"ALREADY PAID SALARY": 100.0, "ZAKAT": 12.5}, "leave": {"Annual Leave": 2.0}}
+    plan, results = million(lambda k: {"entries": entries})          # Transport Allowance is a default line now
+    sheet = read_xls(payroll.build_xls(plan, results, mapping=MAPPING))
+    v = {letters: sheet.cell_value(1, col(letters)) for letters in ("C", "D", "E", "K", "O", "Q", "AC", "AK", "AT", "AY")}
+    assert v == {"C": 0.0, "D": 25.0, "E": 25.0, "K": 25.0, "O": 1.0, "Q": 2.0, "AC": 50.0, "AK": 30.0, "AT": 100.0,
+                 "AY": 12.5}
+    # numbers are number cells (0 written explicitly), the Employee No. is a text cell
+    assert all(sheet.cell_type(1, c) == xlrd.XL_CELL_NUMBER for c in range(col("C"), col("AY") + 1))
+    assert sheet.cell_type(1, col("A")) == xlrd.XL_CELL_TEXT and sheet.cell_value(1, col("N")) == 0.0
+
+
+def test_an_employee_no_like_007_stays_text():
+    plan, results = million(lambda k: {"emp_no": "007"}, n=1)
+    sheet = read_xls(payroll.build_xls(plan, results, mapping=MAPPING))
+    assert sheet.cell_value(1, 0) == "007" and sheet.cell_type(1, 0) == xlrd.XL_CELL_TEXT
+
+
+def refused(plan, results, code="MILLION_REFUSED", **kw):
+    with pytest.raises(ocr.OcrError) as e:
+        payroll.build_xls(plan, results, mapping=MAPPING, **kw)
+    assert e.value.code == code
+    return e.value.message
+
+
+def test_million_file_is_refused_for_bad_employee_numbers():
+    plan, results = million()
+    results[0]["emp_no"], results[1]["emp_no"], results[2]["emp_no"] = "", " MJ(2)", "MJ(9)"
+    msg = refused(plan, results)
+    assert "WORKER 1: Employee No. is empty" in msg and "' MJ(2)' has a space" in msg
+    plan, results = million()
+    results[2]["emp_no"] = "MJ(1)"
+    assert "Employee No. MJ(1) is used for two employees (WORKER 1 and WORKER 3)" in refused(plan, results)
+
+
+@pytest.mark.parametrize("change,expected", [
+    (lambda r: r["values"]["encashing_leave"].update(value=1.0), "Encashing Leave (Day) is 1.00"),
+    (lambda r: r["values"]["lateness"].update(value=-1.0), "Lateness (Hour) is not a number"),
+    (lambda r: r["values"]["ot_1"].update(value="2"), "Overtime 1 Time (Hour) is not a number"),
+    (lambda r: r["entries"].setdefault("leave", {}).update({"Maternity Leave": 3.0}), "Leave 'Maternity Leave' is 3.00"),
+    (lambda r: r["entries"].setdefault("allowance", {}).update({"loan cleaner": 80.0}), "Allowance 'loan cleaner' is 80.00"),
+    (lambda r: r.update(zakat=15.0), "Zakat paid by individual is 15.00"),
+    (lambda r: r.update(levy=5.0), "Levy paid by individual is 5.00"),
+])
+def test_million_file_is_refused_rather_than_lose_a_figure(change, expected):
+    plan, results = million(lambda k: {"entries": {}})
+    change(results[1])
+    msg = refused(plan, results)
+    assert f"MJ(2) WORKER 2: {expected}" in msg, msg
+    assert msg.startswith("The Million file was not made. Fix these first, then download again:\n- ")
+
+
+def test_a_line_the_office_file_does_not_have_is_refused_and_zero_lines_are_fine():
+    plan, results = million(lambda k: {"entries": {"allowance": {"Phone Allowance": 20.0}}})
+    plan["lists"]["allowance"].append({"name": "Phone Allowance", "type": "Ordinary"})
+    assert "Allowance 'Phone Allowance' is 20.00" in refused(plan, results)
+    plan, results = million(lambda k: {"entries": {}})
+    plan["lists"]["allowance"].append({"name": "Phone Allowance", "type": "Ordinary"})
+    payroll.build_xls(plan, results, mapping=MAPPING)                 # nothing on it: nothing is lost
+
+
+def test_incomplete_employees_need_an_explicit_yes_and_keep_their_note():
+    plan, results = million()
+    results[1]["complete"] = False
+    results[1]["issues"].append({"kind": "missing", "text": "No entry found for day 3 in the chosen documents.",
+                                 "job": None})
+    msg = refused(plan, results, code="MILLION_INCOMPLETE")
+    assert msg.startswith("1 employee is marked INCOMPLETE: MJ(2) WORKER 2.")
+    sheet = read_xls(payroll.build_xls(plan, results, mapping=MAPPING, allow_incomplete=True))
+    assert sheet.cell_value(2, col("AZ")).startswith("INCOMPLETE - check before importing; No entry found for day 3")
+    assert sheet.cell_value(1, col("AZ")) == ""
+    results[0]["emp_no"] = ""                                         # hard problems are refused even with the yes
+    msg = refused(plan, results, allow_incomplete=True)
+    assert "Also marked INCOMPLETE: MJ(2) WORKER 2." in msg
+
+
+def test_a_broken_mapping_file_is_reported(tmp_path):
+    good_text = BUNDLED_MAPPING.read_text(encoding="utf-8")
+    f = tmp_path / "office-mapping.csv"
+    for broken, problem in [(good_text.replace(",Key,1,", ",Info,1,"), "exactly one Key"),
+                            (good_text.replace(",Number,4,", ",Number,3,"), "column 3 is used for both"),
+                            (good_text.replace(",Number,5,", ",Number,five,"), "not a whole number")]:
+        f.write_text(broken, encoding="utf-8")
+        with pytest.raises(ocr.OcrError) as e:
+            payroll.load_office_mapping(f)
+        assert e.value.code == "MILLION_MAPPING" and problem in e.value.message
+    with pytest.raises(ocr.OcrError) as e:
+        payroll.load_office_mapping(tmp_path / "missing.csv")
+    assert "missing.csv was not found" in e.value.message
+
+
+def test_the_mapping_file_in_documents_is_preferred(tmp_path, monkeypatch):
+    f = tmp_path / "office-mapping.csv"
+    f.write_text(BUNDLED_MAPPING.read_text(encoding="utf-8").replace("ZAKAT (RM)", "ZAKAT (office)"), encoding="utf-8")
+    monkeypatch.setenv("TABLE_READER_MILLION_MAPPING", str(f))
+    assert payroll.load_office_mapping()[-1]["header"] == "ZAKAT (office)"
+    assert payroll.mapping_paths()[-1].parts[-2:] == ("million", "office-mapping.csv")
+
+
+def test_new_office_lines_are_in_the_default_lists():
+    lists = payroll.default_lists()
+    names = {kind: [line["name"] for line in lists[kind]] for kind in lists}
+    assert {"Transport Allowance", "use and claim"} <= set(names["allowance"])
+    assert {"PENALTY", "RENTAL CAR", "rental hostel", "ZAKAT"} <= set(names["deduction"])
+    assert {"name": "ZAKAT", "type": "Zakat"} in lists["deduction"]
+
+
+def test_the_employees_company_is_set_or_comes_from_their_files():
+    docs = {"j1": "MAJU JAYA", "j2": "MAJU JAYA", "j3": "OTHER CO"}
+    assert payroll.employee_company({"company": "ACME", "jobs": ["j3"]}, docs) == "ACME"
+    assert payroll.employee_company({"jobs": ["j1", "j2#p3"]}, docs) == "MAJU JAYA"
+    assert payroll.employee_company({"jobs": ["j1", "j3"]}, docs) == ""              # files of two companies
+    p = plan_for()
+    payroll.auto_employees(p, [candidate("j1", "MAJU JAYA ALI SEPT 26.jpeg")], {}, lambda: "a")
+    assert p["employees"][0]["company"] == "MAJU JAYA"

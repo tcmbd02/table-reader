@@ -4,5 +4,7 @@ python-multipart
 pypdfium2
 pillow
 pytest
+xlwt          # the Million import file (Excel 97-2003 .xls)
 pyinstaller   # only to build the Windows app (packaging\build.ps1)
+xlrd          # only for tests (reads the .xls back)
 httpx2   # only for tests (FastAPI TestClient)

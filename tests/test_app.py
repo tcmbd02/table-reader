@@ -1,4 +1,5 @@
 import pytest
+import xlrd
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -35,6 +36,31 @@ def test_page_is_served(client):
     r = client.get("/")
     assert r.status_code == 200 and "Table Reader" in r.text
     assert client.get("/app.js").status_code == 200 and client.get("/app.css").status_code == 200
+
+
+def test_browser_must_not_keep_an_old_script_after_an_update(client):
+    for path in ("/", "/app.js", "/payroll.js", "/i18n.js", "/app.css"):
+        assert client.get(path).headers["cache-control"] == "no-cache", path
+    assert client.get("/api/ping").headers["cache-control"] == "no-store"
+
+
+def test_script_addresses_change_when_a_script_changes(client, tmp_path, monkeypatch):
+    import re
+    import shutil
+
+    page = client.get("/").text
+    stamped = re.findall(r'(?:src|href)="([\w.-]+)\?v=([0-9a-f]{8})"', page)
+    assert [name for name, _ in stamped] == ["app.css", "i18n.js", "app.js", "payroll.js"]
+    assert client.get("/index.html").text == page
+    assert all(client.get(f"/{name}?v={v}").status_code == 200 for name, v in stamped)
+
+    copy = tmp_path / "static"
+    shutil.copytree(app_module.static_dir(), copy)
+    (copy / "payroll.js").write_text("// an update\n", encoding="utf-8")
+    monkeypatch.setattr(app_module, "static_dir", lambda: copy)
+    after = dict(re.findall(r'(?:src|href)="([\w.-]+)\?v=([0-9a-f]{8})"', app_module.page_html()))
+    before = dict(stamped)
+    assert after["payroll.js"] != before["payroll.js"] and after["app.js"] == before["app.js"]
 
 
 def test_upload_read_edit_download(client, tmp_path):
@@ -239,11 +265,11 @@ def test_payroll_screen_api_end_to_end(tmp_path):
 def test_payroll_api_refuses_bad_input(client, tmp_path):
     assert client.get("/api/payroll/nonsense").status_code == 400
     plan = client.get("/api/payroll/2026-09").json()["plan"]
-    plan["employees"] = [{"id": "e1", "emp_no": "1", "name": "", "jobs": ["does-not-exist"]}]
-    r = client.put("/api/payroll/2026-09", json=plan)
-    assert r.status_code == 404 and r.json()["code"] == "JOB_NOT_FOUND"
-    assert client.put("/api/payroll/2026-09", content="x").status_code == 400
     assert client.get("/api/payroll/2026-09/csv").json()["code"] == "PAYROLL_EMPTY"
+    plan["employees"] = [{"id": "e1", "emp_no": "1", "name": "", "jobs": ["does-not-exist"]}]
+    r = client.put("/api/payroll/2026-09", json=plan)                 # a gone document is taken off, not an error
+    assert r.status_code == 200 and r.json()["plan"]["employees"][0]["jobs"] == []
+    assert client.put("/api/payroll/2026-09", content="x").status_code == 400
     assert client.put("/api/payroll/2026-09", json=plan, headers={"origin": "https://evil.example"}).status_code == 403
 
 
@@ -262,3 +288,131 @@ def test_payroll_file_picker_gets_the_company_of_each_file(client, tmp_path):
     client.app.state.jobs.wait_idle()
     docs = client.get("/api/payroll/2026-09").json()["documents"]
     assert [d["company"] for d in docs if d["id"] == job["id"]] == ["MAJU JAYA"]
+
+
+def test_payroll_saves_even_when_a_ticked_time_card_no_longer_exists(client, tmp_path):
+    """History reset / deleted document: the old tick must not block every later save."""
+    job = upload(client, tmp_path, name="card.png").json()["created"][0]
+    client.app.state.jobs.wait_idle()
+    plan = client.get("/api/payroll/2026-09").json()["plan"]
+    plan["employees"] = [{"id": "e1", "emp_no": "MJ(1)", "name": "", "jobs": ["gone-job", job["id"]],
+                          "hours_column": None, "overrides": {}}]
+    r = client.put("/api/payroll/2026-09", json=plan)
+    assert r.status_code == 200
+    view = r.json()
+    assert view["plan"]["employees"][0]["jobs"] == [job["id"]]
+    assert view["results"][0]["issues"][0]["kind"] == "removed"
+    assert "no longer in Recent files" in view["results"][0]["issues"][0]["text"]
+
+
+def test_payroll_uses_only_the_chosen_workers_page_of_a_report(tmp_path):
+    def two_workers(image):
+        n = two_workers.calls = getattr(two_workers, "calls", 0) + 1
+        return record([{"Date": good("01-09-2026"), "Shift Details / Actual": good("8.00"),
+                        "OverTime / 1.5": good("1.50" if n == 1 else "3.00")}],
+                      labels=("Date", "Shift Details / Actual", "OverTime / 1.5"),
+                      header=[("Emp Code", good(f"E0{n}")), ("Name", good(f"W{n}"))])
+
+    store = Jobs(tmp_path / "jobs", reader=two_workers)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        src = tmp_path / "report.pdf"
+        make_pdf(src, 2)
+        job = c.post("/api/jobs", files=[("files", ("report.pdf", src.read_bytes(), "application/pdf"))]).json()["created"][0]
+        store.wait_idle()
+        view = c.get("/api/payroll/2026-09").json()
+        doc = [d for d in view["documents"] if d["id"] == job["id"]][0]
+        assert [p["label"] for p in doc["parts"]] == ["E01 W1", "E02 W2"]
+        plan = view["plan"]
+        plan["employees"] = [{"id": "e1", "emp_no": "1", "name": "", "jobs": [doc["parts"][1]["ref"]],
+                              "hours_column": None, "overrides": {}}]
+        r = c.put("/api/payroll/2026-09", json=plan).json()["results"][0]
+        assert r["values"]["ot_1_5"]["value"] == 3.0 and r["values"]["days_worked"]["value"] == 1
+
+
+def test_add_employees_from_files_of_a_company(tmp_path):
+    def card(image):
+        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
+
+    store = Jobs(tmp_path / "jobs", reader=card)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        for name in ("MAJU JAYA ALI SEPT 26.png", "MAJU JAYA ALI SEPT 26 2.png", "OTHER CO ZUL SEPT 26.png"):
+            upload(c, tmp_path, name=name)
+        store.wait_idle()
+        for j in c.get("/api/jobs").json():
+            c.put(f"/api/jobs/{j['id']}/company", json={"company": "MAJU JAYA" if j["name"].startswith("MAJU") else "OTHER CO"})
+        view = c.post("/api/payroll/2026-09/auto", json={"company": "MAJU JAYA"}).json()
+        assert view["auto"] == {"added": 1, "skipped": [], "unnamed": []}
+        emp = view["plan"]["employees"][0]
+        assert emp["name"] == "ALI" and len(emp["jobs"]) == 2 and emp["emp_no"] == ""
+        emp["emp_no"] = "MJ(1)"
+        c.put("/api/payroll/2026-09", json=view["plan"])                  # typed once ...
+        oct_view = c.post("/api/payroll/2026-10/auto", json={"company": "MAJU JAYA"}).json()
+        assert oct_view["plan"]["employees"][0]["emp_no"] == "MJ(1)"       # ... filled in next month
+        assert c.post("/api/payroll/2026-09/auto", json={"company": 5}).status_code == 400
+
+
+def test_a_month_grid_with_several_workers_gives_one_employee_per_row(tmp_path):
+    labels = ("Name",) + tuple(str(d) for d in range(1, 32)) + ("Remark",)
+    marks = {str(d): good("" if d in (6, 13, 20, 27, 31) else "✓") for d in range(1, 32)}
+
+    def sheet(image):
+        return record([{"Name": good(n), **marks, "Remark": good("26")} for n in ("ALI", "AMIN", "ZUL")],
+                      labels=labels, header=[("CLEANER NAME", good("ALI"))])
+
+    store = Jobs(tmp_path / "jobs", reader=sheet)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        upload(c, tmp_path, name="MAJU JAYA SEPT 26.png")
+        store.wait_idle()
+        doc = c.get("/api/payroll/2026-09").json()["documents"][0]
+        assert [(p["row"], p["label"]) for p in doc["parts"]] == [(1, "ALI"), (2, "AMIN"), (3, "ZUL")]
+        assert doc["parts"][1]["ref"] == doc["id"] + "#p1r2"
+        view = c.post("/api/payroll/2026-09/auto", json={"company": ""}).json()
+        assert view["auto"]["added"] == 3
+        assert [e["name"] for e in view["plan"]["employees"]] == ["ALI", "AMIN", "ZUL"]
+        assert [r["values"]["days_worked"]["value"] for r in view["results"]] == [26, 26, 26]
+        assert all(r["complete"] or {i["kind"] for i in r["issues"]} == {"empno"} for r in view["results"])
+
+
+def test_million_xls_download_refuses_then_allows_incomplete(tmp_path):
+    def card(image):
+        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
+
+    store = Jobs(tmp_path / "jobs", reader=card)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        upload(c, tmp_path, name="MAJU JAYA ALI SEPT 26.png")
+        store.wait_idle()
+        view = c.post("/api/payroll/2026-09/auto", json={"company": ""}).json()
+        r = c.get("/api/payroll/2026-09/xls")
+        assert r.status_code == 400 and r.json()["code"] == "MILLION_REFUSED"            # no Employee No. yet
+        assert "ALI: Employee No. is empty" in r.json()["message"]
+        view["plan"]["employees"][0]["emp_no"] = "MJ(1)"
+        c.put("/api/payroll/2026-09", json=view["plan"])
+        r = c.get("/api/payroll/2026-09/xls")                             # one card: most days have no entry
+        assert r.status_code == 400 and r.json()["code"] == "MILLION_INCOMPLETE"
+        r = c.get("/api/payroll/2026-09/xls", params={"allow_incomplete": "true"})
+        assert r.status_code == 200 and r.headers["content-type"] == "application/vnd.ms-excel"
+        assert "Payroll%202026-09%20%28Million%29.xls" in r.headers["content-disposition"]
+        sheet = xlrd.open_workbook(file_contents=r.content).sheet_by_index(0)
+        assert sheet.cell_value(1, 0) == "MJ(1)" and sheet.cell_value(1, 51).startswith("INCOMPLETE")
+        saved = tmp_path / "payroll" / "Payroll 2026-09 (Million).xls"
+        assert saved.read_bytes() == r.content                              # a copy is kept in the payroll folder
+
+
+def test_payroll_csv_for_one_company(tmp_path):
+    def card(image):
+        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
+
+    store = Jobs(tmp_path / "jobs", reader=card)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        for name in ("MAJU JAYA ALI SEPT 26.png", "OTHER CO ZUL SEPT 26.png"):
+            upload(c, tmp_path, name=name)
+        store.wait_idle()
+        for j in c.get("/api/jobs").json():
+            c.put(f"/api/jobs/{j['id']}/company", json={"company": " ".join(j["name"].split()[:2])})
+        c.post("/api/payroll/2026-09/auto", json={"company": ""})            # both companies
+        everyone = c.get("/api/payroll/2026-09/csv").content.decode("utf-8-sig").splitlines()
+        one = c.get("/api/payroll/2026-09/csv", params={"company": "MAJU JAYA"})
+        lines = one.content.decode("utf-8-sig").splitlines()
+        assert len(everyone) == 3 and len(lines) == 2 and ",ALI," in lines[1]
+        assert "Payroll%202026-09%20MAJU%20JAYA.csv" in one.headers["content-disposition"]
+        assert c.get("/api/payroll/2026-09/csv", params={"company": "NOBODY"}).json()["code"] == "PAYROLL_EMPTY"

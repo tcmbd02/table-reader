@@ -40,7 +40,7 @@ button:disabled { opacity: .5; cursor: default; }
 .drop.disabled { opacity: .55; cursor: not-allowed; }
 
 .banner { padding: 10px 14px; border-radius: 8px; margin: 10px 0; }
-.banner.error { background: var(--bad-bg); color: var(--bad); }
+.banner.error { background: var(--bad-bg); color: var(--bad); white-space: pre-line; }
 .banner.info { background: var(--card); border: 1px solid var(--line); }
 
 .recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
@@ -48,10 +48,12 @@ button:disabled { opacity: .5; cursor: default; }
   border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
 .recent .name { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
 .recent .when { color: var(--muted); font-size: .9rem; }
+.auto-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.auto-bar select { font: inherit; padding: 3px 6px; max-width: 100%; }
 .pick-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
 .pick-bar select { font: inherit; padding: 3px 6px; max-width: 100%; }
-.recent-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.recent-head select { font: inherit; padding: 4px 6px; max-width: 100%; }
+.company-box label { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.company-box select { font: inherit; font-weight: 400; padding: 4px 6px; max-width: 260px; }
 .recent .company { font-size: .85rem; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; }
 .recent .company.unset { border-style: dashed; color: var(--muted); }
 .company-edit { flex-basis: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -139,8 +141,8 @@ table.daytable tr.bad td { background: var(--warn-bg); }
 .pw-head { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; padding: 8px 12px; }
 .pw-ids { display: grid; gap: 4px; }
 .pw-id { display: flex; align-items: center; gap: 10px; }
-.pw-id span { width: 90px; font-size: .9rem; }
-.ro { min-width: 190px; min-height: 26px; padding: 2px 8px; background: var(--panel); border: 2px solid var(--panel-line); border-radius: 2px; font-size: .9rem; }
+.pw-id label { width: 90px; font-size: .9rem; }
+.pw-id input { font: inherit; font-size: .9rem; width: 240px; max-width: 100%; padding: 3px 8px; border: 1px solid var(--panel-line); border-radius: 2px; background: var(--card); color: var(--text); }
 .pw-month { flex: 1 1 260px; text-align: center; font-size: 1.35rem; font-weight: 700; color: var(--title); }
 .pw-tabs { padding: 0 12px; border-bottom: 1px solid var(--panel-line); }
 .pw-tabs .tab { display: inline-block; padding: 3px 12px; border: 1px solid var(--panel-line); border-bottom: 0; border-radius: 3px 3px 0 0; background: var(--panel); color: var(--text); font: inherit; font-size: .9rem; margin: 0 2px -1px 0; cursor: pointer; }

@@ -3,6 +3,7 @@
 Small Windows app for HR/accounting staff: upload scans/photos → Claude reads the table (incl. handwriting) →
 user checks highlighted cells → download CSV. Full plan, phases and open decisions: **`PLAN.md`** (read first).
 Progress log: `PROGRESS.md` (create/update at the end of every session).
+**Continuing work? Read `NEXT-SESSION.md` first** (current state, open items, next step, how to build/run).
 
 ## Rules
 - **Never guess.** Unreadable or uncertain cells stay blank, keep the raw marks (`raw_text`, `?` for unreadable

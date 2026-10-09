@@ -66,6 +66,8 @@ async function savePayroll() {
   try {
     const view = await api("PUT", payrollUrl(), pr.plan);
     pr.documents = view.documents; pr.results = view.results;
+    // the server takes off time cards that no longer exist: keep the page's copy the same
+    view.plan.employees.forEach((saved, k) => { if (pr.plan.employees[k]) pr.plan.employees[k].jobs = saved.jobs; });
     prShowError(""); setSaveState(t("Saved"));
     keepFocus(renderResults); renderDaysSummary();
     if (!$("pr-employees").contains(document.activeElement)) renderEmployees();     // refresh the "Hours column" choices
@@ -137,17 +139,73 @@ const prCompany = {};   // employee id -> company chosen in their file picker (s
 
 // The company an employee's picker starts on: the company of the files already ticked, if they share one.
 function startCompany(e) {
-  const of = new Set(e.jobs.map((id) => (pr.documents.find((d) => d.id === id) || {}).company).filter(Boolean));
+  const docOf = (ref) => pr.documents.find((d) => d.id === ref || (d.parts || []).some((p) => p.ref === ref)) || {};
+  const of = new Set(e.jobs.map((ref) => docOf(ref).company).filter(Boolean));
   return of.size === 1 ? [...of][0] : "";
 }
 
+// What can be ticked: each document, each page of a document whose pages show different workers, or each worker's
+// row of a month grid that lists several workers.
+function partName(d, p) {
+  if (!p.row) return t("{name} — page {n}: {who}", { name: d.name, n: p.page, who: p.label || "?" });
+  const who = p.label || t("name unclear");
+  return d.parts.some((q) => q.page !== p.page)
+    ? t("{name} — page {n}, row {r}: {who}", { name: d.name, n: p.page, r: p.row, who })
+    : t("{name} — row {r}: {who}", { name: d.name, r: p.row, who });
+}
+
+function payrollChoices() {
+  const ticked = (ref) => pr.plan.employees.some((x) => x.jobs.includes(ref));
+  const out = [];
+  pr.documents.forEach((d) => {
+    const doc = { id: d.id, base: d.id, whole: true, company: d.company, name: d.name };
+    if (!(d.parts && d.parts.length)) { out.push(doc); return; }
+    d.parts.forEach((p) => out.push({ id: p.ref, base: d.id, whole: false, company: d.company, name: partName(d, p) }));
+    if (ticked(d.id)) out.push(doc);                         // chosen whole before: still shown so it can be unticked
+  });
+  return out;
+}
+
+// --- the Company chosen in the top bar (app.js: companyFilter, companyMatches) decides which employees are shown
+const chosenCompany = () => (companyFilter && companyFilter !== NO_COMPANY ? companyFilter : "");
+// the employee's company: set on the employee, else the one company of their ticked files (as payroll.employee_company)
+function empCompany(e) { return e.company || startCompany(e); }
+function visibleIndexes() {
+  return pr.plan.employees.map((e, i) => (companyMatches(empCompany(e)) ? i : -1)).filter((i) => i >= 0);
+}
+
+function renderAutoCompany() {
+  const c = chosenCompany();
+  $("pr-auto-company").textContent = companyFilter === NO_COMPANY ? t("Choose a company at the top (or “All companies”).")
+    : c ? t("for {c}", { c }) : t("for all companies");
+  $("pr-auto").disabled = companyFilter === NO_COMPANY;
+}
+
+// Called by app.js when the Company at the top changes while this screen is open.
+function payrollCompanyChanged() {
+  prShowInfo("");
+  renderAutoCompany(); renderEmployees(); renderResults();
+}
+
+function prShowInfo(message) {
+  const box = $("pr-info");
+  box.hidden = !message; box.textContent = message || "";
+}
+
 function renderEmployees() {
-  const used = {};
-  pr.plan.employees.forEach((e) => e.jobs.forEach((j) => { used[j] = e; }));
+  const used = {}, wholeBy = {}, partsBy = {};
+  const choices = payrollChoices();
+  const baseOf = Object.fromEntries(choices.map((c) => [c.id, c]));
+  pr.plan.employees.forEach((e) => e.jobs.forEach((j) => {
+    used[j] = e;
+    const c = baseOf[j];
+    if (c) (c.whole ? wholeBy : partsBy)[c.base] = e;
+  }));
   const companies = [...new Set(pr.documents.map((d) => d.company).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const list = pr.plan.employees.map((e, i) => {
+    if (!companyMatches(empCompany(e))) return null;            // another company: hidden, not removed
     const filter = el("input", { type: "text", placeholder: t("Find a file…"), "aria-label": t("Find a file"), style: "flex:1 1 200px" });
-    if (!(e.id in prCompany)) prCompany[e.id] = startCompany(e);
+    if (!(e.id in prCompany)) prCompany[e.id] = empCompany(e) || chosenCompany();
     if (prCompany[e.id] && prCompany[e.id] !== NO_COMPANY && !companies.includes(prCompany[e.id])) prCompany[e.id] = "";
     const company = el("select", { "aria-label": t("Show files of company") },
       el("option", { value: "", text: t("All companies") }),
@@ -160,14 +218,16 @@ function renderEmployees() {
       const c = prCompany[e.id];
       const fits = (d) => (!q || d.name.toLowerCase().includes(q))
         && (!c || (c === NO_COMPANY ? !d.company : d.company === c));
-      const items = pr.documents.filter((d) => fits(d) || e.jobs.includes(d.id)).map((d) => {
-        const other = used[d.id] && used[d.id] !== e;
+      const items = choices.filter((d) => fits(d) || e.jobs.includes(d.id)).map((d) => {
+        // taken by another employee, or the whole document / one of its pages is already chosen
+        const clash = d.whole ? partsBy[d.base] : wholeBy[d.base];
+        const other = (used[d.id] && used[d.id] !== e) ? used[d.id] : (!e.jobs.includes(d.id) && clash) || null;
         const box = el("input", { type: "checkbox", checked: e.jobs.includes(d.id), disabled: !!other });
         box.addEventListener("change", () => {
           e.jobs = box.checked ? [...e.jobs, d.id] : e.jobs.filter((j) => j !== d.id);
           schedulePayrollSave(); renderEmployees();
         });
-        const who = other ? t(" (used for {who})", { who: used[d.id].emp_no || used[d.id].name || t("another employee") }) : "";
+        const who = other ? t(" (used for {who})", { who: other.emp_no || other.name || t("another employee") }) : "";
         return el("label", { class: other ? "used" : "" }, box, `${d.name}${who}`);
       });
       docs.replaceChildren(...(items.length ? items : [el("span", { class: "muted", text: pr.documents.length ? t("No file matches.") : t("No finished files yet. Read your time cards on the start page first.") })]));
@@ -195,8 +255,11 @@ function renderEmployees() {
         el("label", {}, t("Hours column"), colSel), remove),
       el("div", { class: "legend", text: t("Time-card files for this employee (tick every card of the month):") }),
       el("div", { class: "pick-bar" }, el("label", {}, t("Company "), company), filter), docs);
-  });
-  $("pr-employees").replaceChildren(...(list.length ? list : [el("p", { class: "muted", text: t("No employees yet. Press “Add employee”.") })]));
+  }).filter(Boolean);
+  const empty = pr.plan.employees.length
+    ? t("No employees for this company yet. Press “Add employees from files” or “Add employee”.")
+    : t("No employees yet. Press “Add employee”.");
+  $("pr-employees").replaceChildren(...(list.length ? list : [el("p", { class: "muted", text: empty })]));
 }
 
 // ------------------------------------------------------------------------------------------------------------ results
@@ -328,22 +391,37 @@ function allowanceTab(i) {
         el("label", { for: msg.id, class: "b", text: "Message" }), msg)));
 }
 
+// A clock-system report's figures for one day, named as on the Edit Payroll screen: "Lateness 0.25, OT 1.5 2.00"
+const PRINTED_NAMES = { lateness: "Lateness", early_departure: "Early Departure", ot_1: "OT 1", ot_1_5: "OT 1.5", ot_2: "OT 2", ot_3: "OT 3" };
+function printedText(p) {
+  return Object.entries(p).map(([k, v]) => `${PRINTED_NAMES[k] || k} ${fmt(v)}`).join(", ");
+}
+
 function renderResults() {
   const host = $("pr-results");
-  if (!pr.results.length) {
+  const vis = visibleIndexes().filter((k) => k < pr.results.length);   // only the chosen company's employees
+  $("pr-download").disabled = vis.length === 0;
+  $("pr-download-xls").disabled = vis.length === 0;
+  if (!vis.length) {
     host.replaceChildren(el("p", { class: "muted", text: t("Results appear here once you add an employee.") }));
-    $("pr-download").disabled = pr.plan.employees.length === 0;
     return;
   }
-  prIndex = Math.max(0, Math.min(prIndex, pr.results.length - 1));
+  if (!vis.includes(prIndex)) prIndex = vis.find((k) => k >= prIndex) ?? vis[vis.length - 1];
+  const pos = vis.indexOf(prIndex);
   const i = prIndex, r = pr.results[i];
   const { y, m } = monthParts();
 
-  const readOnly = (text) => el("div", { class: "ro", text: text || "" });
+  // Employee No. and Name can be typed here too: the same two boxes as in section 2 (which follows after the save).
+  const e = pr.plan.employees[i];
+  const idBox = (id, key, label, placeholder) => {
+    const input = el("input", { type: "text", id, value: e[key], placeholder, maxlength: "100" });
+    input.addEventListener("input", () => { e[key] = input.value; schedulePayrollSave(); });
+    return el("div", { class: "pw-id" }, el("label", { for: id, text: label }), input);
+  };
   const head = el("div", { class: "pw-head" },
     el("div", { class: "pw-ids" },
-      el("div", { class: "pw-id" }, el("span", { text: "Employee No." }), readOnly(r.emp_no)),
-      el("div", { class: "pw-id" }, el("span", { text: "Name" }), readOnly(r.name))),
+      idBox("pw-empno", "emp_no", "Employee No.", t("e.g. MJ(1)")),
+      idBox("pw-name", "name", "Name", t("Name as in Million Payroll"))),
     el("div", { class: "pw-month", text: `Month End Pay - ${MONTH_NAMES[m - 1]}, ${y}` }),
     el("span", { class: r.complete ? "pill good" : "pill check", text: r.complete ? t("Complete") : t("Needs checking") }));
 
@@ -373,21 +451,22 @@ function renderResults() {
     : el("p", { class: "legend", text: t("Nothing to check for this employee.") });
   const dayRows = r.days.map((d) => el("tr", { class: d.status === "ok" || (d.status === "missing" && d.type === "rest") ? "" : "bad" },
     el("td", { text: String(d.day) }), el("td", { text: DAY_WORDS[d.type] }),
-    el("td", { text: d.hours === null ? "" : String(d.hours) }), el("td", { text: STATUS_WORDS[d.status] || "" })));
+    el("td", { text: d.code ?? (d.hours === null ? "" : String(d.hours)) }),       // a grid mark (✓, PH…) or the hours
+    el("td", { text: STATUS_WORDS[d.status] || (d.printed ? t("From the report: {x}", { x: printedText(d.printed) }) : "") })));
   const details = el("details", {}, el("summary", { text: t("Day by day (how the figures were worked out)") }),
-    el("table", { class: "daytable" }, el("thead", {}, el("tr", {}, ...["Day", "Type", "Hours written", "Note"].map((h) => el("th", { text: t(h) })))), el("tbody", {}, ...dayRows)));
+    el("table", { class: "daytable" }, el("thead", {}, el("tr", {}, ...["Day", "Type", "Written on the card", "Note"].map((h) => el("th", { text: t(h) })))), el("tbody", {}, ...dayRows)));
 
   const go = (n) => { prIndex = n; renderResults(); };
-  const last = pr.results.length - 1;
+  const last = vis.length - 1;                                  // First/Previous/Next/Last move within the shown company
   const navBtn = (text, target, disabled) => {
     const b = el("button", { type: "button", text, disabled });
-    b.addEventListener("click", () => go(target));
+    b.addEventListener("click", () => go(vis[target]));
     return b;
   };
   const foot = el("div", { class: "pw-foot" },
-    el("div", { class: "pw-nav" }, navBtn("⏮ First", 0, i === 0), navBtn("◀ Previous", i - 1, i === 0),
-      el("span", { class: "muted", text: t("Employee {a} of {b}", { a: i + 1, b: pr.results.length }) }),
-      navBtn("Next ▶", i + 1, i === last), navBtn("Last ⏭", last, i === last)),
+    el("div", { class: "pw-nav" }, navBtn("⏮ First", 0, pos === 0), navBtn("◀ Previous", pos - 1, pos === 0),
+      el("span", { class: "muted", text: t("Employee {a} of {b}", { a: pos + 1, b: vis.length }) }),
+      navBtn("Next ▶", pos + 1, pos === last), navBtn("Last ⏭", last, pos === last)),
     el("span", { class: "muted", text: t("Changes are saved automatically.") }));
 
   const tab = (key, text) => {
@@ -402,16 +481,15 @@ function renderResults() {
       el("div", { class: "pw-check" }, issues, details));
 
   host.replaceChildren(el("div", { class: "pw" },
-    el("div", { class: "pw-title", text: `Edit Payroll # ${r.emp_no || "(no Employee No.)"} - ${r.name}` }),
+    el("div", { class: "pw-title", text: `Edit Payroll # ${e.emp_no || "(no Employee No.)"} - ${e.name}` }),
     head,
     el("div", { class: "pw-tabs", role: "tablist" }, tab("basic", "Basic Pay & Overtime"), tab("allow", "Allowance & Deduction")),
     el("div", { class: "pw-body" }, body),
     foot));
-  $("pr-download").disabled = pr.plan.employees.length === 0;
 }
 
 function renderPayroll() {
-  renderMonth(); renderEmployees(); renderResults();
+  renderMonth(); renderAutoCompany(); renderEmployees(); renderResults();
   setSaveState("");
 }
 
@@ -423,15 +501,83 @@ $("pr-add").addEventListener("click", () => {
   const id = newEmployeeId();
   if (prev && prCompany[prev.id]) prCompany[id] = prCompany[prev.id];   // usually the next worker of the same company
   pr.plan.employees.push({ id, emp_no: "", name: "", jobs: [], hours_column: null, overrides: {},
-    entries: {}, zakat: 0, levy: 0, message: "" });
+    entries: {}, zakat: 0, levy: 0, message: "", company: chosenCompany() });   // stays under the company chosen above
   prIndex = pr.plan.employees.length - 1;                      // show the new employee in the results window
   schedulePayrollSave(); renderEmployees(); renderResults();
 });
+$("pr-auto").addEventListener("click", async () => {
+  if (!(await savePayroll())) return;                        // keep what was typed before adding
+  const btn = $("pr-auto");
+  btn.disabled = true; prShowInfo("");
+  try {
+    const view = await api("POST", payrollUrl("/auto"), { company: chosenCompany() });
+    pr = view; prDirty = false;
+    const { added, skipped } = view.auto;
+    const unnamed = view.auto.unnamed || [];
+    const parts = [added ? tn(added, "Added {n} employee.", "Added {n} employees.")
+      : t("No new workers found: every readable file is already chosen for an employee.")];
+    if (skipped.length) {
+      parts.push(tn(skipped.length,
+        "{n} file was left out because Table Reader cannot work out the days from it yet (for example IN/OUT cards):",
+        "{n} files were left out because Table Reader cannot work out the days from them yet (for example IN/OUT cards):"),
+      skipped.join("; "));
+    }
+    if (unnamed.length) {
+      parts.push(tn(unnamed.length,
+        "{n} worker row was left out because the name in it is unclear (fix the name in the document, or tick the row for the right employee yourself):",
+        "{n} worker rows were left out because the names in them are unclear (fix the names in the document, or tick the rows for the right employees yourself):"),
+      unnamed.join("; "));
+    }
+    if (added) parts.push(t("Type the Employee No. where it is empty; it is remembered for next month."));
+    prShowInfo(parts.join(" "));
+    prIndex = Math.max(0, pr.plan.employees.length - added);   // show the first new employee
+    renderPayroll();
+  } catch (e) { prShowError(e.message); }
+  renderAutoCompany();
+});
 $("pr-download").addEventListener("click", async () => {
   if (!(await savePayroll())) return;
-  const unfinished = pr.results.filter((r) => !r.complete).length;
+  const unfinished = visibleIndexes().filter((k) => pr.results[k] && !pr.results[k].complete).length;
   if (unfinished && !confirm(tn(unfinished, "{n} employee is marked \"Needs checking\". In the file they are marked INCOMPLETE in the Notes column. Download anyway?", "{n} employees are marked \"Needs checking\". In the file they are marked INCOMPLETE in the Notes column. Download anyway?"))) return;
-  location.href = payrollUrl("/csv");
+  const c = chosenCompany();                                   // only the company chosen at the top, if one is
+  location.href = payrollUrl("/csv") + (c ? `?company=${encodeURIComponent(c)}` : "");
+});
+
+// The Million import file (.xls) for the office. Fetched rather than opened as a link, so that a refusal (what would
+// import wrong, listed one problem per line) is shown on this page; INCOMPLETE employees only after the user agrees.
+async function downloadMillion(allowIncomplete) {
+  const q = new URLSearchParams();
+  const c = chosenCompany();
+  if (c) q.set("company", c);
+  if (allowIncomplete) q.set("allow_incomplete", "true");
+  let res;
+  try { res = await fetch(payrollUrl("/xls") + (q.toString() ? `?${q}` : "")); }
+  catch { prShowError(t("Table Reader is not running any more. Close this tab and open Table Reader again.")); return; }
+  if (!res.ok) {
+    let data = null;
+    try { data = await res.json(); } catch { /* not JSON */ }
+    if (data && data.code === "MILLION_INCOMPLETE") {
+      if (confirm(tm(data.message) + "\n\n" + t("Make the Million file anyway?"))) await downloadMillion(true);
+      return;
+    }
+    prShowError(data && data.message ? tm(data.message) : t("Something went wrong. Reload the page and try again."));
+    return;
+  }
+  const blob = await res.blob();
+  const m = /filename\*=utf-8''([^;]+)|filename="?([^";]+)"?/i.exec(res.headers.get("content-disposition") || "");
+  const name = m ? decodeURIComponent(m[1] || m[2]) : "Payroll (Million).xls";
+  const a = el("a", { href: URL.createObjectURL(blob), download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  prShowError("");
+  prShowInfo(t("Million file made: {name}. A copy is kept in Documents\\Table Reader\\payroll. Back up Million before you import it.", { name }));
+}
+
+$("pr-download-xls").addEventListener("click", async () => {
+  if (!(await savePayroll())) return;
+  const btn = $("pr-download-xls");
+  btn.disabled = true;
+  try { await downloadMillion(false); } finally { btn.disabled = false; }
 });
 
 if (location.hash.startsWith("#/payroll")) route();      // the page was opened on this screen: app.js ran before this file

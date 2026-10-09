@@ -160,30 +160,47 @@ function companyBox(j, companies) {
     el("datalist", { id: "company-names" }, ...companies.map((c) => el("option", { value: c }))));
 }
 
-function renderCompanyFilter(jobs, companies) {
+// Does a file's / employee's company pass the Company chosen in the top bar?
+function companyMatches(company) {
+  return !companyFilter || (companyFilter === NO_COMPANY ? !company : company === companyFilter);
+}
+
+// The Company chooser in the top bar. It filters Recent files and the Payroll screen, and is remembered.
+let companySignature = "";
+function renderCompanyFilter(jobs) {
+  const companies = [...new Set(jobs.map((j) => j.company).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const count = (c) => jobs.filter((j) => (c === NO_COMPANY ? !j.company : j.company === c)).length;
   if (companyFilter && companyFilter !== NO_COMPANY && !companies.includes(companyFilter)) companyFilter = "";
   const none = count(NO_COMPANY);
+  const options = [["", t("All companies ({n})", { n: jobs.length })], ...companies.map((c) => [c, `${c} (${count(c)})`]),
+    ...(none ? [[NO_COMPANY, t("No company yet ({n})", { n: none })]] : [])];
+  const signature = JSON.stringify([options, companyFilter]);
+  $("company-box").hidden = jobs.length === 0;
+  if (signature === companySignature) return companies;          // unchanged: do not close an open list
+  companySignature = signature;
   const sel = el("select", { id: "company-filter", "aria-label": t("Show files of") },
-    el("option", { value: "", text: t("All companies ({n})", { n: jobs.length }) }),
-    ...companies.map((c) => el("option", { value: c, text: `${c} (${count(c)})`, selected: c === companyFilter })),
-    none ? el("option", { value: NO_COMPANY, text: t("No company yet ({n})", { n: none }), selected: companyFilter === NO_COMPANY }) : null);
+    ...options.map(([value, text]) => el("option", { value, text, selected: value === companyFilter })));
   sel.addEventListener("change", () => {
     companyFilter = sel.value;
+    companySignature = JSON.stringify([options, companyFilter]);
     try { localStorage.setItem("companyFilter", companyFilter); } catch (_) { /* private window */ }
-    loadRecent();
+    if (!$("home").hidden) loadRecent();
+    else if (!$("payroll").hidden && typeof payrollCompanyChanged === "function") payrollCompanyChanged();
   });
-  $("recent-filter").replaceChildren(el("label", {}, t("Company "), sel));
-  $("recent-filter").hidden = jobs.length === 0;
+  $("company-box").replaceChildren(el("label", {}, t("Company"), sel));
+  return companies;
+}
+
+async function refreshCompanies() {
+  try { renderCompanyFilter(await api("GET", "/api/jobs")); } catch (_) { /* shown elsewhere */ }
 }
 
 async function loadRecent() {
   if (editingCompany) return;
   let jobs;
   try { jobs = await api("GET", "/api/jobs"); } catch (e) { showMessages([e.message], "error"); return; }
-  const companies = [...new Set(jobs.map((j) => j.company).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  renderCompanyFilter(jobs, companies);
-  const shown = jobs.filter((j) => !companyFilter || (companyFilter === NO_COMPANY ? !j.company : j.company === companyFilter));
+  const companies = renderCompanyFilter(jobs);
+  const shown = jobs.filter((j) => companyMatches(j.company));
   const list = $("recent");
   list.replaceChildren(...shown.map((j) => {
     const cancelled = j.status === "failed" && j.error && j.error.code === "CANCELLED";
@@ -387,6 +404,7 @@ function showHome() {
 }
 
 function route() {
+  refreshCompanies();                                          // the Company chooser is on every screen
   const m = location.hash.match(/^#\/doc\/(.+)$/);
   const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?$/);
   if (m) openDoc(decodeURIComponent(m[1]));
