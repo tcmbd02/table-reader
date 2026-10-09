@@ -817,6 +817,103 @@ def test_a_name_that_is_someone_else_in_million_needs_an_explicit_yes():
     refused(plan, results, code="MILLION_UNKNOWN", names=names, known=set(names), allow_names=True)
 
 
+def test_the_month_run_puts_everyone_who_is_ready_into_one_file_and_says_why_for_the_rest():
+    plan, results = million(n=6)
+    results[1]["complete"] = False
+    results[1]["issues"] += [{"kind": "unclear", "text": "card, day 3: the hours are still unclear.", "job": "c"},
+                             {"kind": "missing", "text": "No entry found for day 9.", "job": None}]
+    results[2]["emp_no"] = ""
+    results[3]["emp_no"] = "MJ(9)"                                     # not in Million
+    results[5]["emp_no"] = "MJ(5)"                                     # the same number as employee 5
+    names = {"mj(1)": "WORKER 1", "mj(2)": "WORKER 2", "mj(4)": "WORKER 4", "mj(5)": "WORKER 5", "mj(6)": "SITI"}
+    companies = ["ACME", "ACME", "ACME", "BINA", "BINA", "BINA"]
+    run = payroll.month_run(plan, results, companies, mapping=MAPPING, known=set(names), names=names)
+    assert run["ready"] == [{"emp_no": "MJ(1)", "name": "WORKER 1", "company": "ACME"}]
+    sheet = read_xls(run["file"])
+    assert sheet.nrows == 2 and sheet.cell_value(1, 0) == "MJ(1)" and sheet.cell_value(1, col("AZ")) == ""
+    why = {h["name"]: h["reasons"] for h in run["held"]}
+    assert why["WORKER 2"] == ["Marked INCOMPLETE: card, day 3: the hours are still unclear. (and 1 more)"]
+    assert why["WORKER 3"] == ["Employee No. is empty. Type it exactly as in Million Payroll."]
+    assert why["WORKER 4"] == ["Employee No. MJ(9) is not in the Million employee list."]
+    assert why["WORKER 5"] == why["WORKER 6"] == ["Employee No. MJ(5) is used for 2 employees. Each employee needs their own."]
+    assert [h["company"] for h in run["held"]] == ["ACME", "ACME", "BINA", "BINA", "BINA"]
+    results[4]["emp_no"], results[5]["emp_no"] = "MJ(4)", "MJ(6)"      # a number that is someone else in Million
+    results[3]["emp_no"] = "MJ(5)"
+    why = {h["name"]: h["reasons"] for h in payroll.month_run(plan, results, companies, mapping=MAPPING,
+                                                              known=set(names), names=names)["held"]}
+    assert why["WORKER 4"] == ["In Million Payroll, Employee No. MJ(5) is WORKER 5."]
+    assert why["WORKER 5"] == ["In Million Payroll, Employee No. MJ(4) is WORKER 4."]
+    assert why["WORKER 6"] == ["In Million Payroll, Employee No. MJ(6) is SITI."]
+
+
+def test_the_month_run_with_nobody_ready_makes_no_file_and_without_a_list_checks_no_numbers():
+    plan, results = million(n=2)
+    for r in results:
+        r["emp_no"] = ""
+    run = payroll.month_run(plan, results, ["", ""], mapping=MAPPING)
+    assert run["file"] is None and run["ready"] == [] and len(run["held"]) == 2
+    plan, results = million(n=2)
+    assert len(payroll.month_run(plan, results, ["", ""], mapping=MAPPING)["ready"]) == 2      # no list: nothing to check
+
+
+def test_an_employee_no_is_suggested_only_when_one_name_in_million_fits():
+    def plan_with(*people):
+        p = plan_for()
+        p["employees"] = [employee(id=f"e{k}", emp_no=no, name=name) for k, (no, name) in enumerate(people)]
+        return p
+
+    listed = [{"emp_no": "E01", "name": "Ali bin Abu"}, {"emp_no": "E02", "name": "SITI"}, {"emp_no": "E03", "name": "Ali bin Omar"},
+              {"emp_no": "E04", "name": ""}, {"emp_no": "E05", "name": "Zul"}]
+    p = plan_with(("", "MAJU JAYA SITI"), ("", "ALI"), ("", "ali bin abu"), ("X1", "ZUL"), ("", ""), ("", "AMINAH"))
+    assert payroll.suggest_employee_nos(p, listed) == {
+        "e0": {"emp_no": "E02", "name": "SITI"},                       # the one name in Million with all of its words
+        "e2": {"emp_no": "E01", "name": "Ali bin Abu"}}                # "ALI" alone fits two people: no suggestion
+    # a number someone in the plan already has is not offered, and neither is one that two employees would share
+    assert payroll.suggest_employee_nos(plan_with(("e02", "X"), ("", "SITI")), listed) == {}
+    assert payroll.suggest_employee_nos(plan_with(("", "SITI"), ("", "SITI AMINAH")), listed) == {}
+
+
+def test_daily_rated_basic_pay_is_the_rate_times_days_worked_and_nothing_else():
+    p = holiday_16()
+    docs = [("card 1", card(1, 15, not_worked={6, 13})), ("card 2", card(16, 30, not_worked={20, 27}))]
+    r = payroll.calculate(p, docs, employee(daily_rate=65.5))
+    assert values(r)["days_worked"] == 25 and r["daily_rate"] == 65.5 and r["daily_basic_pay"] == 1637.5
+    assert payroll.calculate(p, docs, employee())["daily_basic_pay"] is None                    # no rate typed: no pay shown
+    typed = payroll.calculate(p, docs, employee(daily_rate=65.5, overrides={"days_worked": 20.0}))
+    assert typed["daily_basic_pay"] == 1310.0                         # a Days Worked figure typed over is the one used
+    plan = plan_for()
+    plan["employees"] = [employee(daily_rate=65.5)]
+    assert payroll.validate_plan(plan, set())["employees"][0]["daily_rate"] == 65.5
+    del plan["employees"][0]["daily_rate"]                            # a plan saved before daily rates
+    assert payroll.validate_plan(plan, set())["employees"][0]["daily_rate"] == 0.0
+    plan["employees"][0]["daily_rate"] = -1
+    with pytest.raises(ocr.OcrError):
+        payroll.validate_plan(plan, set())
+
+
+def test_the_daily_pay_table_lists_counts_rate_and_basic_pay():
+    p = holiday_16()
+    docs = [("card 1", card(1, 15, not_worked={6, 13})), ("card 2", card(16, 30, not_worked={20, 27}))]
+    results = [payroll.calculate(p, docs, employee(id="a", emp_no="MJ(1)", name="ALI", daily_rate=60.0)),
+               payroll.calculate(p, [], employee(id="b", emp_no="MJ(2)", name="SITI"))]
+    rows = list(csv.reader(io.StringIO(payroll.build_daily_csv(results, ["MAJU JAYA", ""]))))
+    assert rows[0][:6] == ["Company", "Employee No.", "Name", "Daily rate (RM)", "Days Worked", "Basic pay (RM) = rate x Days Worked"]
+    assert rows[1][:6] == ["MAJU JAYA", "MJ(1)", "ALI", "60.00", "25.00", "1500.00"]
+    by_head = dict(zip(rows[0], rows[1]))
+    assert by_head["Public holiday worked (days)"] == "1.00" and by_head["Overtime 1.5 (hours)"] == "25.00"
+    assert rows[2][3] == "" and rows[2][5] == "" and rows[2][-1].startswith("INCOMPLETE")       # no rate: no pay
+    assert rows[3][2] == "Total" and rows[3][5] == "1500.00"
+
+
+def test_a_daily_rate_is_remembered_for_next_month():
+    p = plan_for()
+    p["employees"] = [employee(worker_key="maju|name:ali", daily_rate=60.0), employee(id="e2", worker_key="maju|name:siti")]
+    directory = {}
+    assert payroll.remember_employees(p, directory)
+    assert directory == {"maju|name:ali": {"emp_no": "MJ(1)", "name": "Test", "daily_rate": 60.0},
+                         "maju|name:siti": {"emp_no": "MJ(1)", "name": "Test"}}
+
+
 def test_a_broken_mapping_file_is_reported(tmp_path):
     good_text = BUNDLED_MAPPING.read_text(encoding="utf-8")
     f = tmp_path / "office-mapping.csv"

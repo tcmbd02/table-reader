@@ -63,3 +63,29 @@ def million_listing(employees, total=None, per_page=2, title_col=2):
     out = io.BytesIO()
     book.save(out)
     return out.getvalue()
+
+
+def text_pdf(pages):
+    """A PDF made of real text, as bytes: ``pages`` = one list per page of (x, y, text), in points from the bottom-left
+    corner of an A4 page (Helvetica 9). What a program prints, not a scan."""
+    def literal(text):
+        return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    objects = ["<< /Type /Catalog /Pages 2 0 R >>", None, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    kids = []
+    for words in pages:
+        stream = "BT /F1 9 Tf " + " ".join(f"1 0 0 1 {x} {y} Tm ({literal(text)}) Tj" for x, y, text in words) + " ET"
+        objects.append(f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream")
+        objects.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents {len(objects)} 0 R "
+                       "/Resources << /Font << /F1 3 0 R >> >> >>")
+        kids.append(f"{len(objects)} 0 R")
+    objects[1] = f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(kids)} >>"
+    out, offsets = b"%PDF-1.4\n", []
+    for n, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{n} 0 obj\n{body}\nendobj\n".encode("latin-1")
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{o:010d} 00000 n \n".encode() for o in offsets)
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    return out

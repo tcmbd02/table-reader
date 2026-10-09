@@ -1,6 +1,7 @@
 """Table Reader web app: the API over `Jobs` plus the single page in static/. Runs only on this PC (localhost)."""
 from __future__ import annotations
 
+import os
 import hashlib
 import logging
 import re
@@ -15,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 import ocr
 import payroll
+from inbox import Inbox
 from jobs import Jobs, count_to_check, merged_pages, safe_name
 from ocr import OcrError
 
@@ -273,7 +275,11 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                     for page in cache[job_id][1]:
                         labels += [c for c in page["column_labels"] if c not in labels]
             r["columns"] = labels
-        return {"plan": plan, "documents": docs, "results": results, "million": plans.load_million(),
+        million = plans.load_million()
+        suggestions = payroll.suggest_employee_nos(plan, million["employees"]) if million else {}
+        for r in results:
+            r["suggest"] = suggestions.get(r["id"])                 # Million's Employee No. for this name, to offer
+        return {"plan": plan, "documents": docs, "results": results, "million": million,
                 "fields": [{"key": k, "label": label, "unit": unit} for k, label, unit in payroll.FIELDS],
                 "list_heads": {kind: {"title": title, "type": type_head} for kind, (title, type_head, _) in payroll.LISTS.items()}}
 
@@ -366,6 +372,16 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                                  text.encode("utf-8-sig"))
         return FileResponse(path, media_type="text/csv; charset=utf-8", filename=path.name)
 
+    @app.get("/api/payroll/{month}/daily")
+    def payroll_daily(month: str, company: str = ""):
+        """The daily-pay table (CSV): each employee's counts, daily rate and basic pay = rate x Days Worked."""
+        plan, results = payroll_of(month, company)
+        company_of_doc = {d["id"]: d["company"] for d in finished_documents()}
+        text = payroll.build_daily_csv(results, [payroll.employee_company(e, company_of_doc) for e in plan["employees"]])
+        path = save_payroll_file(f"Daily pay {month} {safe_name(company)}.csv" if company else f"Daily pay {month}.csv",
+                                 text.encode("utf-8-sig"))
+        return FileResponse(path, media_type="text/csv; charset=utf-8", filename=path.name)
+
     @app.get("/api/payroll/{month}/xls")
     def payroll_xls(month: str, company: str = "", allow_incomplete: bool = False, allow_unknown: bool = False,
                     allow_names: bool = False):
@@ -382,6 +398,58 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         name = f"Payroll {month} {safe_name(company)} (Million).xls" if company else f"Payroll {month} (Million).xls"
         path = save_payroll_file(name, data)
         return FileResponse(path, media_type="application/vnd.ms-excel", filename=path.name)
+
+    @app.post("/api/payroll/{month}/run")
+    def payroll_month_run(month: str):
+        """One Million file for the whole month (every company), with everyone who can go in; the others are listed
+        by company with the reason. See payroll.month_run."""
+        docs = finished_documents()
+        view = payroll_view(plans.load(month), docs)
+        plan, results = view["plan"], view["results"]
+        if not plan["employees"]:
+            raise OcrError("PAYROLL_EMPTY", "Add at least one employee before downloading the payroll file.")
+        company_of_doc = {d["id"]: d["company"] for d in docs}
+        companies = [payroll.employee_company(e, company_of_doc) for e in plan["employees"]]
+        listed = plans.load_million()
+        names = {e["emp_no"].casefold(): e["name"] for e in listed["employees"]} if listed else None
+        run = payroll.month_run(plan, results, companies, names=names,
+                                known=set(names) if names else payroll.load_million_employees())
+        name = None
+        if run["file"] is not None:
+            name = save_payroll_file(f"Payroll {month} (Million).xls", run["file"]).name
+        by_company: dict[str, dict] = {}
+        for kind in ("ready", "held"):
+            for who in run[kind]:
+                entry = by_company.setdefault(who["company"], {"company": who["company"], "ready": 0, "held": []})
+                if kind == "ready":
+                    entry["ready"] += 1
+                else:
+                    entry["held"].append({"emp_no": who["emp_no"], "name": who["name"], "reasons": who["reasons"]})
+        return {"file": name, "folder": str(plans.root), "ready": len(run["ready"]), "held": len(run["held"]),
+                "checked_with_million": bool(listed),
+                "companies": sorted(by_company.values(), key=lambda c: (c["company"] == "", c["company"].casefold()))}
+
+    # ------------------------------------------------------------------------------- the Inbox and Tables folders
+    watcher = Inbox(store)
+    app.state.inbox = watcher
+    FOLDERS = {"inbox": watcher.folder, "tables": watcher.tables}
+
+    @app.get("/api/folders")
+    def folders():
+        """Where files are taken in by themselves, and where every finished table is kept as a CSV."""
+        return {name: str(path) for name, path in FOLDERS.items()}
+
+    @app.post("/api/folders/{name}/open")
+    def open_folder(name: str):
+        """Show the folder in Windows Explorer (it is made first if it is not there yet)."""
+        if name not in FOLDERS:
+            raise OcrError("NOT_FOUND", "That folder is not one of Table Reader's.")
+        FOLDERS[name].mkdir(parents=True, exist_ok=True)
+        try:
+            os.startfile(FOLDERS[name])                             # noqa: S606 - a folder of the app's own, on this PC
+        except (OSError, AttributeError) as exc:
+            raise OcrError("FOLDER_NOT_OPENED", f"The folder could not be opened. Open it yourself: {FOLDERS[name]}") from exc
+        return {"opened": str(FOLDERS[name])}
 
     @app.post("/api/million/employees")
     def import_million_employees(file: UploadFile = File(...)):

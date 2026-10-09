@@ -40,6 +40,14 @@ async function api(method, url, body) {
   return data;
 }
 
+// The Inbox folder (files saved there are read by themselves) and the Tables folder (every finished table as a CSV)
+for (const [id, name] of [["open-inbox", "inbox"], ["open-tables", "tables"]]) {
+  $(id).addEventListener("click", async () => {
+    try { await api("POST", `/api/folders/${name}/open`); }
+    catch (e) { $("upload-messages").replaceChildren(el("div", { class: "banner error", text: e.message })); }
+  });
+}
+
 // ------------------------------------------------------------------------------------------------ Claude status
 let loginTimer = null;
 
@@ -304,7 +312,7 @@ function buildPage(doc, page) {
   notes.push(...page.notes);
   const right = el("div");
   if (notes.length) right.append(el("div", { class: "notes" }, el("strong", { text: t("Claude's notes") }),
-    el("ul", {}, ...notes.map((n) => el("li", { text: n })))));
+    el("ul", {}, ...notes.map((n) => el("li", { text: tm(n) })))));
 
   if (page.header_fields.length) {
     right.append(el("div", { class: "fields" }, ...page.header_fields.map((f, i) =>
