@@ -145,6 +145,14 @@ msgs += ["Payroll 2026-09 (Million).xls could not be saved. If it is open in Exc
          "The Million column table (C:\\x\\office-mapping.csv) could not be used: column 3 is used for both A and B. "
          "Fix it to match Million's File Format Setting, then try again."]
 
+# the month's Million file: the reason for each employee who is not in it (a problem line is shown without "- who: ")
+run = payroll.month_run(p, res + ok[:1] + [dict(ok[0], complete=True), dict(ok[1], complete=True, emp_no="OK0")],
+                        ["A"] * (len(res) + 3), mapping=mapping, known={"x2", "ok0", "ok1"}, names={"ok1": "SOMEONE ELSE"})
+for held in run["held"]:
+    msgs += [r if covered(r) else "- X: " + r for r in held["reasons"]]
+
+msgs.append("The folder could not be opened. Open it yourself: C:\\Users\\x\\Documents\\Table Reader\\Inbox")
+
 bad = [m for m in msgs if not covered(m)]
 print(f"{len(msgs)} messages checked, {len(bad)} not translated")
 for m in bad:

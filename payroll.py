@@ -399,18 +399,21 @@ def auto_employees(plan: dict, candidates: list[dict], directory: dict,
         plan["employees"].append({"id": new_id(), "emp_no": known.get("emp_no", ""), "name": known.get("name") or g["name"],
                                   "jobs": g["refs"], "hours_column": None, "overrides": {}, "entries": {},
                                   "zakat": 0.0, "levy": 0.0, "message": "", "worker_key": key,
-                                  "company": g["company"] or ""})
+                                  "company": g["company"] or "", "daily_rate": float(known.get("daily_rate") or 0.0)})
         added += 1
     return added, skipped, unnamed
 
 
 def remember_employees(plan: dict, directory: dict) -> bool:
-    """Keep each employee's Employee No. and name for next month (by worker_key). Returns True if anything changed."""
+    """Keep each employee's Employee No., name and daily rate for next month (by worker_key). Returns True if anything
+    changed."""
     changed = False
     for e in plan["employees"]:
         key = e.get("worker_key")
         if key and e["emp_no"]:
             entry = {"emp_no": e["emp_no"], "name": e["name"]}
+            if e.get("daily_rate"):
+                entry["daily_rate"] = e["daily_rate"]
             if directory.get(key) != entry:
                 directory[key] = entry
                 changed = True
@@ -488,6 +491,7 @@ def validate_plan(plan, known_jobs: set[str]) -> dict:
         employees.append({"id": e["id"], "emp_no": emp_no.strip(), "name": name.strip(), "jobs": list(jobs),
                           "hours_column": column or None, "overrides": overrides, "entries": entries,
                           "zakat": _figure(e.get("zakat", 0)), "levy": _figure(e.get("levy", 0)), "message": message,
+                          "daily_rate": _figure(e.get("daily_rate") or 0),
                           "company": " ".join(company.split()), **({"worker_key": key} if key else {})})
     return {"month": month, "normal_hours": float(hours), "break_hours": float(break_hours), "day_types": dict(types),
             "lists": lists, "employees": employees}
@@ -851,9 +855,40 @@ def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict) ->
     for key in FIELD_KEYS:
         edited = key in employee.get("overrides", {})
         final[key] = {"value": employee["overrides"][key] if edited else values[key], "computed": values[key], "edited": edited}
+    # Daily-rated employees: basic pay = the daily rate typed by the user x Days Worked. Nothing else is turned into
+    # money here (overtime, public holidays and rest days are paid by rules that differ per company).
+    rate = float(employee.get("daily_rate") or 0.0)
     return {"id": employee["id"], "emp_no": employee.get("emp_no", ""), "name": employee.get("name", ""), "values": final,
             "entries": employee.get("entries") or {}, "zakat": employee.get("zakat", 0.0), "levy": employee.get("levy", 0.0),
-            "message": employee.get("message", ""), "days": rows, "issues": issues, "complete": complete}
+            "message": employee.get("message", ""), "days": rows, "issues": issues, "complete": complete,
+            "daily_rate": rate, "daily_basic_pay": round(rate * final["days_worked"]["value"], 2) if rate else None}
+
+
+DAILY_COUNTS = [("days_worked", "Days Worked"), ("working_days", "Working Days"), ("public_holiday", "Public Holiday not worked (days)"),
+                ("ot_rest_day", "Rest day worked (days)"), ("ot_holiday", "Public holiday worked (days)"),
+                ("ot_1", "Overtime 1.0 (hours)"), ("ot_1_5", "Overtime 1.5 (hours)"), ("ot_2", "Overtime 2.0 (hours)"),
+                ("ot_3", "Overtime 3.0 (hours)")]
+
+
+def build_daily_csv(results: list[dict], companies: list[str]) -> str:
+    """The daily-pay table: one row per employee with the counts from the time cards, the daily rate typed by the user
+    and Basic pay = daily rate x Days Worked (empty while no rate is typed). ``companies`` in the order of ``results``.
+    UTF-8 text (the caller adds the BOM)."""
+    out = io.StringIO(newline="")
+    writer = csv.writer(out, lineterminator="\r\n")
+    writer.writerow(["Company", "Employee No.", "Name", "Daily rate (RM)", "Days Worked", "Basic pay (RM) = rate x Days Worked"]
+                    + [label for key, label in DAILY_COUNTS if key != "days_worked"] + ["Notes"])
+    total = 0.0
+    for r, company in zip(results, companies):
+        pay = r.get("daily_basic_pay")
+        total += pay or 0.0
+        writer.writerow([_csv_safe(company), _csv_safe(r["emp_no"]), _csv_safe(r["name"]),
+                         _number(r["daily_rate"]) if r.get("daily_rate") else "", _number(r["values"]["days_worked"]["value"]),
+                         _number(pay) if pay is not None else ""]
+                        + [_number(r["values"][key]["value"]) for key, _ in DAILY_COUNTS if key != "days_worked"]
+                        + [_csv_safe("; ".join(_notes(r)))])
+    writer.writerow(["", "", "Total", "", "", _number(total)])
+    return out.getvalue()
 
 
 def _ranges(days: list[int]) -> str:
@@ -1248,6 +1283,73 @@ def build_xls(plan: dict, results: list[dict], *, allow_incomplete: bool = False
     return buf.getvalue()
 
 
+def month_run(plan: dict, results: list[dict], companies: list[str], *, mapping: list[dict] | None = None,
+              known: set[str] | None = None, names: dict[str, str] | None = None) -> dict:
+    """One Million file for the whole month, so the office imports once instead of once per company.
+
+    Every employee who would go into a company's file without a question goes in. Everyone else is held back, with the
+    reason: something that would import wrong, an Employee No. Million does not know or that belongs to another name
+    there, an Employee No. used twice, or an employee still marked INCOMPLETE. Nobody is put in "anyway" here; that
+    stays a decision per company (the company's own Download button).
+    ``companies`` = each employee's company, in the order of ``results``. Returns {"file": bytes | None,
+    "ready": [{"emp_no", "name", "company"}], "held": [{"emp_no", "name", "company", "reasons": [text]}]}."""
+    mapping = mapping if mapping is not None else load_office_mapping()
+    count: dict[str, int] = {}
+    for r in results:
+        code = (r.get("emp_no") or "").strip()
+        if code:
+            count[code] = count.get(code, 0) + 1
+    ready, held, chosen = [], [], []
+    for r, company in zip(results, companies):
+        who = {"emp_no": r.get("emp_no") or "", "name": r.get("name") or "", "company": company}
+        reasons = []
+        if count.get(who["emp_no"].strip(), 0) > 1:
+            reasons.append(f"Employee No. {who['emp_no']} is used for {count[who['emp_no'].strip()]} employees. "
+                           "Each employee needs their own.")
+        else:
+            try:
+                build_xls(plan, [r], mapping=mapping, known=known, names=names)
+            except OcrError as exc:
+                if exc.code == "MILLION_REFUSED":
+                    reasons = [line[2:].split(": ", 1)[-1] for line in exc.message.split("\n")[1:]
+                               if line.startswith("- ") and not line.startswith("- Also marked INCOMPLETE")]
+                elif exc.code == "MILLION_UNKNOWN":
+                    reasons = [f"Employee No. {who['emp_no']} is not in the Million employee list."]
+                elif exc.code == "MILLION_NAME":
+                    reasons = [f"In Million Payroll, Employee No. {who['emp_no']} is "
+                               f"{names[who['emp_no'].casefold()]}."]
+                elif exc.code == "MILLION_INCOMPLETE":
+                    blocking = [i["text"] for i in r["issues"] if i["kind"] not in ("empno", "removed", "leave")]
+                    reasons = ["Marked INCOMPLETE: " + (blocking[0] if blocking else "check this employee.")
+                               + (f" (and {len(blocking) - 1} more)" if len(blocking) > 1 else "")]
+                else:
+                    raise
+        if reasons:
+            held.append({**who, "reasons": reasons})
+        else:
+            ready.append(who)
+            chosen.append(r)
+    data = build_xls(plan, chosen, mapping=mapping, known=known, names=names) if chosen else None
+    return {"file": data, "ready": ready, "held": held}
+
+
+def suggest_employee_nos(plan: dict, million: list[dict]) -> dict[str, dict]:
+    """For employees with no Employee No. yet: the one employee of Million's list with their name ({employee id:
+    {"emp_no", "name"}}). Offered to the user, never filled in: a suggestion is only made when exactly one name in
+    Million fits (one name has all the words of the other) and nobody in the plan has that Employee No. already."""
+    taken = {e["emp_no"].strip().casefold() for e in plan["employees"] if e["emp_no"].strip()}
+    out = {}
+    for e in plan["employees"]:
+        if e["emp_no"].strip() or not e["name"].strip():
+            continue
+        fits = [m for m in million if m.get("name", "").strip() and _same_person(e["name"], m["name"])]
+        if len(fits) == 1 and fits[0]["emp_no"].casefold() not in taken:
+            out[e["id"]] = {"emp_no": fits[0]["emp_no"], "name": fits[0]["name"]}
+    # two employees who fit the same person in Million: not clear who is who, so neither gets the suggestion
+    twice = {s["emp_no"] for s in out.values() if sum(o["emp_no"] == s["emp_no"] for o in out.values()) > 1}
+    return {k: s for k, s in out.items() if s["emp_no"] not in twice}
+
+
 # ------------------------------------------------------------------------------------------------------- the store
 class PayrollStore:
     """One JSON file per month under <root>/payroll."""
@@ -1279,6 +1381,7 @@ class PayrollStore:
             e.setdefault("zakat", 0.0)
             e.setdefault("levy", 0.0)
             e.setdefault("message", "")
+            e.setdefault("daily_rate", 0.0)
         return plan
 
     def _latest_lists(self, month: str) -> dict | None:

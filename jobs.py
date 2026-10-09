@@ -28,6 +28,7 @@ from typing import Callable
 
 import ocr
 import pages
+import pdftext
 from ocr import OcrError
 
 log = logging.getLogger(__name__)
@@ -325,23 +326,33 @@ class Jobs:
                 self._cancels.pop(job_id, None)
 
     def _read_pages(self, job_id: str, d: Path, cancel: threading.Event) -> None:
+        text = None
         try:
             original = next((d / "original").iterdir())
             page_images = pages.render_pages(original, d / "pages")
             total = len(page_images)
             self._update(job_id, pages_total=total, pages_done=self._count_readings(d))
+            # A PDF made by a program carries its own text: once Claude has read one page of it, later pages with the
+            # same layout are filled in from that text (pdftext). Pages already read teach the layout too (Continue).
+            text = pdftext.Document(original)
+            for number in range(1, total + 1):
+                if (d / "reading" / f"page-{number}.json").exists():
+                    text.learn(number, _read_json(d / "reading" / f"page-{number}.json"))
             for number, image in enumerate(page_images, start=1):
                 reading = d / "reading" / f"page-{number}.json"
                 if reading.exists():
                     continue
                 if cancel.is_set():
                     raise OcrError(_CANCELLED["code"], _CANCELLED["message"])
-                try:
-                    record = self._reader(image)
-                except OcrError as exc:
-                    if total > 1 and exc.code != _CANCELLED["code"]:
-                        raise OcrError(exc.code, f"Page {number} of {total}: {exc.message}") from exc
-                    raise
+                record = text.read(number)
+                if record is None:
+                    try:
+                        record = self._reader(image)
+                    except OcrError as exc:
+                        if total > 1 and exc.code != _CANCELLED["code"]:
+                            raise OcrError(exc.code, f"Page {number} of {total}: {exc.message}") from exc
+                        raise
+                    text.learn(number, record)
                 pages.turn_page(image, int(record.get("rotated_clockwise") or 0))   # before the reading is saved
                 record["page"] = number
                 _write_json(reading, record)
@@ -358,6 +369,9 @@ class Jobs:
             self._update(job_id, status="failed", error={
                 "code": "UNEXPECTED", "message": "Something went wrong while reading this document. Press Continue "
                                                  "to try again. If it keeps happening, tell your support person."})
+        finally:
+            if text is not None:
+                text.close()                                        # lets go of the PDF file
 
     def _stop_queue(self, exc: OcrError) -> None:
         """Every waiting document would fail the same way: mark them stopped so they can be continued later."""

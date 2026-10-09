@@ -1,5 +1,84 @@
 # Progress log
 
+## Session 12 — 2026-10-09 — Daily-rated pay table; Inbox folder (no clicks) and Tables folder
+365 tests pass; Malay checks pass (125 server messages). **Package rebuilt and restarted. Not committed (branch
+`pdf-text`, with sessions 10 and 11).**
+- **HR's request: employees paid by a daily basic rate.** Seen in Million (read-only): Employee > Employment tab has
+  Pay Basis (Monthly / Daily…), Basic Rate, Pay Period; one test employee is already set to Daily + Fortnightly, rate 0.
+  Not tested: whether Million multiplies the daily rate by the imported Days Worked.
+- **Section "4. Daily-rated pay"** on the Payroll screen: one row per employee with the counts from the time cards
+  (Days Worked, public holiday not worked, rest day / public holiday worked, OT 1.5 and 2.0 hours), a **Daily rate**
+  box, and **Basic pay = rate x Days Worked** with a total. `employee.daily_rate` in the plan (remembered for next
+  month with the Employee No.), `daily_rate` / `daily_basic_pay` on each result, `payroll.build_daily_csv`,
+  `GET /api/payroll/{month}/daily` -> `Daily pay <month> [company].csv` (all counts incl. OT 1.0 / 3.0 and Notes).
+  **Only basic pay is turned into money.** Overtime, public holidays and rest days stay counts: the rules (PH paid
+  when not worked? rest day 1x / 1.5x / 2x? OT from rate / normal hours?) were asked of HR and are not answered.
+  The Million file is unchanged by this.
+- **Inbox folder (`inbox.py`, started in `start.py`, every 5 s):** a file saved into
+  `Documents\Table Reader\Inbox\<company>\` is taken in like a dropped file, its company = the folder's name, then
+  moved to `Inbox\_Read\…` (never deleted; unusable files go to `Inbox\_Not read\…`). Files still being copied (changed
+  in the last 5 s), temporary files and other kinds are left alone. **It uses the Claude plan as soon as a file lands.**
+- **Tables folder:** every finished document's table (reading + corrections) is kept as
+  `Documents\Table Reader\Tables\<company>\<document id>.csv`, written again after a correction or a company change.
+  First run on this PC wrote 62 tables in 30 company folders.
+- Home page: one line explaining it, buttons "Open the Inbox folder" / "Open the Tables folder"
+  (`/api/folders`, `/api/folders/{name}/open`).
+- **Not tried with a real file through Claude** (it would spend plan tokens; the tests use a stand-in reader). The
+  daily rate box was not typed into on the real plan (unit and API tests cover it).
+
+## Session 11 — 2026-10-09 — "Automate more": one Million file per month, Employee No. suggestions
+356 tests pass; Malay checks pass (123 server messages). **Package rebuilt and restarted. Not committed (branch
+`pdf-text`, together with session 10).** Supervisor's aim: fewer clicks for staff; about 40 companies, 1-20 workers each.
+- **Month run** (`payroll.month_run`, `POST /api/payroll/{month}/run`, button "Make the month's Million file (all
+  companies)"): ONE file `Payroll <month> (Million).xls` for every company, so the office imports once instead of 40
+  times. Everyone who would pass a company's file without a question goes in; everyone else is held back and listed by
+  company with the reason (Employee No. empty / not in Million / another name in Million / used twice / INCOMPLETE /
+  a figure with no column). Nobody is put in "anyway" there: that stays the per-company Download button.
+- **Employee No. suggestions** (`payroll.suggest_employee_nos`, `suggest` on each result): for an employee with no
+  number, when exactly one name in Million's imported list fits (one name has all the words of the other) and nobody
+  in the plan has that number: a button "Use MJ(1) (… in Million)" beside the box; with 2 or more, also "Use all n …"
+  (asks first, listing them). Never filled in by itself.
+- **Real September plan in the packaged app:** 83 employees, 26 companies. Month run: file with 7 employees, 76 held (68
+  have no Employee No. yet; others: not in Million, placeholder names in Million, INCOMPLETE). Only 1 suggestion,
+  because this laptop's Million has 15 employees. At the office, where Million already holds everyone, the
+  suggestions should fill most numbers. Page checked in the browser: result panel and suggestion button are drawn.
+- **Item 2 (check the import automatically) is NOT built: Million cannot supply the figures.** Looked at in Million:
+  - a month that is not processed prints nothing ("No record to print!") in Management Reports;
+  - after processing, the reports show money (Basic Pay, Overtime RM, …), not the days and hours that were imported;
+    Working Days / Days Worked are in none of them; the Overtime Report prints nothing while the Basic Rate is 0;
+  - Excel output of these reports opens an unsaved workbook in Excel (no file); PDF output writes
+    `C:\million\Payroll\mycompany\PDF\Management Reports.pdf` (a text PDF, one click).
+  The check that remains is opening an employee in Million (guide, step E). The month run and the list checks remove
+  the known causes of a silent skip before the file is made.
+- Guides (EN + BM): the month run and the suggestion button.
+
+## Session 10 — 2026-10-09 — Text-only PDF pages read without Claude (branch `pdf-text`)
+352 tests pass; Malay checks pass. **Package rebuilt and restarted. Not committed (branch `pdf-text`, from `main`).**
+- **Why not a plain "PDF text -> table" reader:** the PDF gives words and positions, not columns, and the payroll needs
+  Claude's names for the columns and fields (e.g. "Shift Details / Actual", "Emp Code"). Claude itself names them
+  differently from page to page. So `pdftext.py` **learns the layout from one page Claude reads** and fills later pages
+  of the same PDF from their own text:
+  - Claude reads the first text page as usual. Its whole reading must be found in the page's own characters, row by
+    row (rows are matched character by character: two columns printed 0.7 pt apart come out of the PDF as one word).
+    That gives each column's extent, the shapes seen in each column ("9.9", "A-A"), the lines above/below the table
+    and where each field's value sits. Applying the layout to the same page must give Claude's reading back.
+  - A later page is taken from its text only if every character sits in one known column, every always-filled column
+    is filled, every value has a shape seen in its column, and the lines around the table have the same printed words.
+    Anything else: Claude reads that page, and its reading becomes one more layout for the document.
+  - Never for scans, photos, turned pages or scans with a hidden text layer (`is_text_page`). Pages read this way carry
+    `source: "pdf-text"` and the note "Read from the PDF's own text (no Claude)…"; cells are certain (not yellow).
+  - Wired into `jobs._read_pages` (also after Continue: pages already read teach the layout).
+- **Measured on the read September PDFs (27 text pages in 7 files), replaying Claude's stored readings, no tokens:**
+  **16 pages need no Claude** (the 17-page clock report: Claude 3, PDF 14; a 4-page report: 2 and 2). On those 16
+  pages all **7,508 cells equal Claude's reading**; the only differences are 3 fields Claude had doubted (the text is
+  clear) and Claude's own changing names for columns/fields between pages (the text reader keeps one set of names).
+  Payroll days are identical on all 27 pages. Single-page PDFs save nothing; 4 files give no layout because Claude's
+  reading is not word-for-word what is printed (a field reworded, a printed remark left out, ticks drawn as shapes,
+  two columns Claude ordered differently).
+- **Not done / ideas:** layouts are per document, in memory only. Keeping them between documents (next month's report
+  from the same clock system would then need no Claude at all) is the bigger saving, not built. Not tried with a real
+  read through Claude in the app (the replay used stored readings). The `download` branch still has the older zip.
+
 ## Session 9b — 2026-10-09 — Employee list imported from Million (name check, Employee Nos. offered)
 339 tests pass; Malay checks pass (111 server messages, 0 missing). **Package rebuilt and restarted (xlrd is inside
 now). Not committed.**

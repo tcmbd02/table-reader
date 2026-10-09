@@ -73,6 +73,7 @@ def main() -> int:
     # log_config=None: a packaged app without a console has no stdout/stderr for uvicorn's own logging to write to
     server = uvicorn.Server(uvicorn.Config(create_app(), host=HOST, port=port, log_level="warning", log_config=None))
     server.config.app.state.on_quit = lambda: setattr(server, "should_exit", True)
+    server.config.app.state.inbox.start()       # files saved into the Inbox folder are read by themselves
     threading.Thread(target=lambda: (time.sleep(1.0), webbrowser.open(f"http://localhost:{port}/")), daemon=True).start()
     logging.info("start: serving")
     print(f"Table Reader is running at http://localhost:{port}/ - use Quit in the page, or close this window, to stop it.")

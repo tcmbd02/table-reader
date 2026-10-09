@@ -69,7 +69,7 @@ async function savePayroll() {
     // the server takes off time cards that no longer exist: keep the page's copy the same
     view.plan.employees.forEach((saved, k) => { if (pr.plan.employees[k]) pr.plan.employees[k].jobs = saved.jobs; });
     prShowError(""); setSaveState(t("Saved"));
-    keepFocus(renderResults); renderDaysSummary();
+    keepFocus(renderResults); renderDaysSummary(); renderDaily();
     if (!$("pr-employees").contains(document.activeElement)) renderEmployees();     // refresh the "Hours column" choices
     return true;
   } catch (e) { prShowError(e.message); setSaveState(t("Not saved")); prDirty = true; return false; }
@@ -218,7 +218,7 @@ $("pr-million-file").addEventListener("change", async () => {
 // Called by app.js when the Company at the top changes while this screen is open.
 function payrollCompanyChanged() {
   prShowInfo("");
-  renderAutoCompany(); renderEmployees(); renderResults();
+  renderAutoCompany(); renderEmployees(); renderResults(); renderDaily();
 }
 
 function prShowInfo(message) {
@@ -284,8 +284,11 @@ function renderEmployees() {
       pr.plan.employees.splice(i, 1); pr.results.splice(i, 1);
       schedulePayrollSave(); renderEmployees(); renderResults();
     });
+    const s = suggestionFor(i);                                  // the one employee in Million's list with this name
+    const offer = s ? el("button", { type: "button", class: "suggest", text: t("Use {no} ({name} in Million)", { no: s.emp_no, name: s.name }) }) : null;
+    if (offer) offer.addEventListener("click", () => { e.emp_no = s.emp_no; schedulePayrollSave(); renderEmployees(); renderResults(); });
     return el("div", { class: "emp" },
-      el("div", { class: "row" }, el("label", {}, t("Employee No."), empNo), el("label", {}, t("Name"), name),
+      el("div", { class: "row" }, el("label", {}, t("Employee No."), empNo), offer, el("label", {}, t("Name"), name),
         el("label", {}, t("Hours column"), colSel), remove),
       el("div", { class: "legend", text: t("Time-card files for this employee (tick every card of the month):") }),
       el("div", { class: "pick-bar" }, el("label", {}, t("Company "), company), filter), docs);
@@ -294,7 +297,26 @@ function renderEmployees() {
     ? t("No employees for this company yet. Press “Add employees from files” or “Add employee”.")
     : t("No employees yet. Press “Add employee”.");
   $("pr-employees").replaceChildren(...(list.length ? list : [el("p", { class: "muted", text: empty })]));
+  const all = suggestedIndexes();
+  $("pr-suggest-all").hidden = all.length < 2;
+  $("pr-suggest-all").textContent = t("Use all {n} Employee Nos. suggested from Million", { n: all.length });
 }
+
+// Million's Employee No. for an employee who has none yet: offered, never filled in by itself. The server only
+// suggests when exactly one name in Million's list fits.
+function suggestionFor(i) {
+  const e = pr.plan.employees[i], r = pr.results[i];
+  return e && r && r.id === e.id && !e.emp_no.trim() && r.suggest ? r.suggest : null;
+}
+function suggestedIndexes() { return visibleIndexes().filter((i) => suggestionFor(i)); }
+
+$("pr-suggest-all").addEventListener("click", () => {
+  const all = suggestedIndexes();
+  const lines = all.map((i) => `${pr.plan.employees[i].name}  →  ${suggestionFor(i).emp_no} (${suggestionFor(i).name})`);
+  if (!confirm(t("Use these Employee Nos. from Million?") + "\n\n" + lines.join("\n"))) return;
+  all.forEach((i) => { pr.plan.employees[i].emp_no = suggestionFor(i).emp_no; });
+  schedulePayrollSave(); renderEmployees(); renderResults();
+});
 
 // ------------------------------------------------------------------------------------------------------------ results
 function fmt(v) { return (Math.round(v * 100) / 100).toFixed(2); }
@@ -444,6 +466,7 @@ function renderResults() {
   const vis = visibleIndexes().filter((k) => k < pr.results.length);   // only the chosen company's employees
   $("pr-download").disabled = vis.length === 0;
   $("pr-download-xls").disabled = vis.length === 0;
+  $("pr-run").disabled = pr.plan.employees.length === 0;
   if (!vis.length) {
     host.replaceChildren(el("p", { class: "muted", text: t("Results appear here once you add an employee.") }));
     return;
@@ -531,7 +554,7 @@ function renderResults() {
 }
 
 function renderPayroll() {
-  renderMonth(); renderAutoCompany(); renderMillion(); renderEmployees(); renderResults();
+  renderMonth(); renderAutoCompany(); renderMillion(); renderEmployees(); renderResults(); renderDaily();
   setSaveState("");
 }
 
@@ -543,7 +566,7 @@ $("pr-add").addEventListener("click", () => {
   const id = newEmployeeId();
   if (prev && prCompany[prev.id]) prCompany[id] = prCompany[prev.id];   // usually the next worker of the same company
   pr.plan.employees.push({ id, emp_no: "", name: "", jobs: [], hours_column: null, overrides: {},
-    entries: {}, zakat: 0, levy: 0, message: "", company: chosenCompany() });   // stays under the company chosen above
+    entries: {}, zakat: 0, levy: 0, message: "", daily_rate: 0, company: chosenCompany() });   // stays under the company chosen above
   prIndex = pr.plan.employees.length - 1;                      // show the new employee in the results window
   schedulePayrollSave(); renderEmployees(); renderResults();
 });
@@ -617,6 +640,101 @@ async function downloadMillion(allowed = []) {
   prShowError("");
   prShowInfo(t("Million file made: {name}. A copy is kept in Documents\\Table Reader\\payroll. Back up Million before you import it. Million only updates employees who are already in that month's payroll (Transaction > Payroll > Edit).", { name }));
 }
+
+// A reason from the month run, translated. Some are a line of the "file was not made" list without its "- who: "
+// start; those are translated as that line.
+function runReason(text) {
+  const line = "- \u0001: " + text, viaLine = tm(line);
+  return viaLine !== line ? viaLine.replace(/^- \u0001: /, "") : tm(text);
+}
+
+// ---------------------------------------------------------------------------------------------- daily-rated pay
+// One row per employee: the counts from the time cards, the daily rate (typed here) and basic pay = rate x Days Worked.
+const DAILY_COUNTS = [["days_worked", "Days Worked"], ["public_holiday", "Public holiday not worked"], ["ot_rest_day", "Rest day worked (days)"],
+  ["ot_holiday", "Public holiday worked (days)"], ["ot_1_5", "Overtime 1.5 (hours)"], ["ot_2", "Overtime 2.0 (hours)"]];
+function dailyPay(i) {
+  const e = pr.plan.employees[i], r = pr.results[i];
+  return e && r && e.daily_rate ? Math.round(e.daily_rate * r.values.days_worked.value * 100) / 100 : null;
+}
+function renderDaily() {
+  const host = $("pr-daily");
+  const vis = visibleIndexes().filter((k) => k < pr.results.length);
+  $("pr-daily-download").disabled = vis.length === 0;
+  const key = vis.map((i) => pr.plan.employees[i].id).join("|");
+  if (host.dataset.rows !== key || !host.firstChild) {            // other employees than before: draw the table again
+    host.dataset.rows = key;
+    if (!vis.length) { host.replaceChildren(el("p", { class: "muted", text: t("Results appear here once you add an employee.") })); return; }
+    const rows = vis.map((i) => {
+      const e = pr.plan.employees[i];
+      const rate = el("input", { type: "number", min: "0", step: "0.01", value: e.daily_rate ? String(e.daily_rate) : "", placeholder: "0.00",
+        style: "width:100px", "aria-label": t("Daily rate (RM)") });
+      rate.addEventListener("change", () => {
+        const v = rate.value === "" ? 0 : Number(rate.value);
+        if (v >= 0 && v <= 100000) { e.daily_rate = v; schedulePayrollSave(); renderDaily(); } else rate.value = e.daily_rate ? String(e.daily_rate) : "";
+      });
+      return el("tr", { "data-i": String(i) }, el("td", { class: "d-who" }), el("td", {}, rate), ...DAILY_COUNTS.map(() => el("td", { class: "n d-count" })),
+        el("td", { class: "n d-pay" }), el("td", { class: "d-state" }));
+    });
+    host.replaceChildren(el("table", { class: "daytable daily" },
+      el("thead", {}, el("tr", {}, ...[t("Employee"), t("Daily rate (RM)"), ...DAILY_COUNTS.map(([, label]) => t(label)), t("Basic pay (RM)"), ""].map((h) => el("th", { text: h })))),
+      el("tbody", {}, ...rows),
+      el("tfoot", {}, el("tr", {}, el("td", { text: t("Total") }), el("td"), ...DAILY_COUNTS.map(() => el("td")), el("td", { class: "n d-total" }), el("td")))));
+  }
+  let total = 0;
+  for (const tr of host.querySelectorAll("tbody tr")) {           // the figures only: a rate box being typed in is left alone
+    const i = Number(tr.dataset.i), e = pr.plan.employees[i], r = pr.results[i];
+    if (!e || !r) continue;
+    tr.querySelector(".d-who").textContent = [e.emp_no, e.name].filter(Boolean).join(" ") || "—";
+    tr.querySelectorAll(".d-count").forEach((td, k) => { td.textContent = fmt(r.values[DAILY_COUNTS[k][0]].value); });
+    const pay = dailyPay(i);
+    total += pay || 0;
+    tr.querySelector(".d-pay").textContent = pay === null ? "" : fmt(pay);
+    tr.querySelector(".d-state").textContent = r.complete ? "" : t("Needs checking");
+    tr.className = r.complete ? "" : "bad";
+  }
+  const cell = host.querySelector(".d-total");
+  if (cell) cell.textContent = fmt(total);
+}
+
+$("pr-daily-download").addEventListener("click", async () => {
+  if (!(await savePayroll())) return;
+  const c = chosenCompany();
+  location.href = payrollUrl("/daily") + (c ? `?company=${encodeURIComponent(c)}` : "");
+});
+
+// One Million file for the whole month: everyone who can go in, and for the others the reason, company by company.
+function showMonthRun(run) {
+  const box = $("pr-run-result");
+  const withFile = run.companies.filter((c) => c.ready).length;
+  const head = run.file
+    ? tn(run.ready, "Million file made for the whole month: {name}, with {n} employee from {c}.", "Million file made for the whole month: {name}, with {n} employees from {c}.",
+      { name: run.file, c: tn(withFile, "{n} company", "{n} companies") })
+    : t("No Million file was made: no employee is ready yet.");
+  const parts = [el("strong", { text: head })];
+  if (run.file) parts.push(el("p", { class: "legend", text: t("It is saved in {folder}. Back up Million, then import this one file: it covers every company.", { folder: run.folder }) }));
+  if (!run.checked_with_million) parts.push(el("p", { class: "legend", text: t("The Employee Nos. were not checked against Million: import Million's employee list first.") }));
+  if (run.held) {
+    parts.push(el("p", {}, el("strong", { text: tn(run.held, "{n} employee is not in the file yet:", "{n} employees are not in the file yet:") })));
+    for (const c of run.companies.filter((x) => x.held.length)) {
+      parts.push(el("div", { class: "run-company" }, el("strong", { text: c.company || t("No company") }),
+        el("ul", {}, ...c.held.map((h) => el("li", { text: `${[h.emp_no, h.name].filter(Boolean).join(" ") || t("An employee")}: ${h.reasons.map(runReason).join(" ")}` })))));
+    }
+    parts.push(el("p", { class: "legend", text: t("Fix what is listed and press the button again. Each run makes the whole file again; importing it again is harmless.") }));
+  } else if (run.file) {
+    parts.push(el("p", { class: "legend", text: t("Every employee of the month is in the file.") }));
+  }
+  box.replaceChildren(...parts); box.hidden = false;
+  box.scrollIntoView({ block: "nearest" });
+}
+
+$("pr-run").addEventListener("click", async () => {
+  if (!(await savePayroll())) return;
+  const btn = $("pr-run");
+  btn.disabled = true;
+  try { showMonthRun(await api("POST", payrollUrl("/run"))); prShowError(""); }
+  catch (e) { prShowError(e.message); }
+  finally { btn.disabled = false; }
+});
 
 $("pr-download-xls").addEventListener("click", async () => {
   if (!(await savePayroll())) return;

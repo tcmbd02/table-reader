@@ -23,6 +23,9 @@
     <input id="file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.bmp,application/pdf,image/*" multiple hidden>
   </div>
   <div id="upload-messages"></div>
+  <p class="legend"><span data-t>No clicks: save files into the Inbox folder (one folder per company) and they are read by themselves. Every finished table is also kept as a CSV in the Tables folder.</span>
+    <button id="open-inbox" type="button" data-t>Open the Inbox folder</button>
+    <button id="open-tables" type="button" data-t>Open the Tables folder</button></p>
 
   <h2 data-t>Recent files</h2>
   <ul id="recent" class="recent"></ul>
@@ -53,9 +56,11 @@
     <div class="doc-actions">
       <span id="pr-save" class="muted" aria-live="polite"></span>
       <button id="pr-download" data-t>Download payroll CSV</button>
-      <button id="pr-download-xls" class="primary" data-t>Download Million file (.xls)</button>
+      <button id="pr-download-xls" data-t>Download Million file (.xls)</button>
+      <button id="pr-run" class="primary" data-t>Make the month's Million file (all companies)</button>
     </div>
   </div>
+  <div id="pr-run-result" class="banner info" hidden></div>
   <p class="muted" data-t>Pick the month and mark the days, add each employee and tick their time-card files. Table Reader adds up
     days worked and overtime from the cells you have already checked. Anything it cannot work out is listed, never guessed,
     and you can type over any figure.</p>
@@ -67,6 +72,7 @@
       <span id="pr-auto-company" class="muted"></span>
       <button id="pr-million-import" type="button" data-t>Import employee list from Million</button>
       <input id="pr-million-file" type="file" accept=".xls" hidden>
+      <button id="pr-suggest-all" type="button" hidden></button>
     </div>
     <p id="pr-million" class="legend"></p>
     <datalist id="pr-million-list"></datalist>
@@ -75,6 +81,10 @@
     <div id="pr-employees"></div>
     <button id="pr-add" type="button" data-t>Add employee</button></section>
   <section class="card"><h3 data-t>3. Results</h3><div id="pr-results"></div></section>
+  <section class="card"><h3 data-t>4. Daily-rated pay</h3>
+    <p class="legend" data-t>For employees paid by the day: type the daily rate. Basic pay = daily rate × Days Worked. Overtime, public holidays and rest days are shown as counts only; they are not turned into money here.</p>
+    <div id="pr-daily"></div>
+    <button id="pr-daily-download" type="button" data-t>Download the daily pay table (CSV)</button></section>
 </main>
 
 <script src="i18n.js"></script>
