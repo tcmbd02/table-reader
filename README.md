@@ -27,6 +27,8 @@ To update, download the new zip and run **Install Table Reader** again. Your doc
 - **`Table Reader guide.pdf`**: adding files, checking the highlighted cells, downloading the table.
 - **`GUIDE - Table Reader to Million.html`**: from time cards to a checked import in Million Payroll, step by step
   (download it and open it in your browser).
+- **`PANDUAN - Table Reader ke Million.html`**: the same guide in Bahasa Melayu. Keep both guide files in one folder
+  and the language links at the top of each will work.
 
 ## Where your work is kept
 
