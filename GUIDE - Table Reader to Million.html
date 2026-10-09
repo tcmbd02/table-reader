@@ -37,6 +37,7 @@
 <body>
 <main>
 <h1>From time cards to Million Payroll</h1>
+<p class="small"><a href="PANDUAN - Table Reader ke Million.html">Bahasa Melayu</a></p>
 <p class="lead">How to turn scanned time cards into a file with Table Reader and import it into Million Payroll.
 Tested on 9 October 2026 with two client companies (6 employees): every figure arrived in Million exactly as in the file.</p>
 
@@ -100,8 +101,8 @@ and before the Million file is made Table Reader checks each number and name aga
 <div class="wide"><table>
   <tr><th>Table Reader says</th><th>What it means</th><th>What to do</th></tr>
   <tr><td>"The Million file was not made. Fix these first…"</td><td>Something would import wrong: an empty or repeated Employee No., or a figure Million's file has no column for.</td><td>Fix each listed line, then download again.</td></tr>
-  <tr><td>"… Employee Nos. are not in the Million employee list"</td><td>Million does not know these Employee Nos. and would skip them silently.</td><td>Answer <b>No</b>. Correct the Employee No., or add the employee in Million (D2) and import the employee list again (B0). Then download again.</td></tr>
-  <tr><td>"… another name in Million Payroll"</td><td>The Employee No. belongs to someone with a different name in Million. Million goes by the number only, so that person would get the figures.</td><td>Answer <b>No</b> and check the Employee No. If it really is the same person (a nickname, another spelling), answer Yes.</td></tr>
+  <tr><td>"… Employee Nos. are not in the Million employee list"</td><td>Million does not know these Employee Nos. and would skip them silently.</td><td>Press <b>Cancel</b>. Correct the Employee No., or add the employee in Million (D2) and import the employee list again (B0). Then download again.</td></tr>
+  <tr><td>"… another name in Million Payroll"</td><td>The Employee No. belongs to someone with a different name in Million. Million goes by the number only, so that person would get the figures.</td><td>Press <b>Cancel</b> and check the Employee No. If it really is the same person (a nickname, another spelling), press OK.</td></tr>
   <tr><td>"… marked INCOMPLETE"</td><td>Some days could not be worked out.</td><td>Best: fix them first. If you make the file anyway, the reason is written in its Notes column.</td></tr>
   <tr><td>"… could not be saved. If it is open in Excel…"</td><td>The earlier file is open in Excel.</td><td>Close it in Excel, download again.</td></tr>
 </table></div>
@@ -178,6 +179,7 @@ file showed the file's figures (for example 25 / 1 / 21), and employees who were
   <tr><td>A tick box will not tick</td><td>Clicking only selects the box.</td><td>Press <kbd>Space</kbd>.</td></tr>
   <tr><td>A button does nothing</td><td>Million missed the click.</td><td>Use the <kbd>Alt</kbd> key with the underlined letter.</td></tr>
   <tr><td>Wrong figures were imported</td><td>Wrong file or wrong month chosen.</td><td>Import the right file again; if needed, restore the backup (System &gt; Restore Database) - ask first.</td></tr>
+  <tr><td>Table Reader refuses the employee list ("This is not Million Payroll's employee list" or "Total Employees …")</td><td>The chosen file is not the Employment Listing / Payroll Information report, or the report is incomplete.</td><td>Make the file again in Million (B0) and import it again.</td></tr>
 </table></div>
 
 <p class="small">Tested on this laptop: Million Payroll System v3 (PMAX) and Table Reader as rebuilt on 9 October 2026.

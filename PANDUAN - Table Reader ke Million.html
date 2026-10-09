@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Table Reader ke Million Payroll - panduan</title>
+<style>
+  :root { --ink: #1c2530; --soft: #5b6775; --line: #d6dce3; --paper: #ffffff; --tint: #f3f6f9; --blue: #17508a;
+          --warn-bg: #fff6d6; --warn-line: #e0b400; --ok-bg: #e7f5ea; --ok-line: #3d9a55; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--tint); color: var(--ink); font: 16px/1.55 "Segoe UI", Arial, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; background: var(--paper); }
+  h1 { font-size: 28px; margin: 0 0 4px; color: var(--blue); }
+  h2 { font-size: 21px; margin: 36px 0 8px; padding-top: 14px; border-top: 2px solid var(--line); color: var(--blue); }
+  h3 { font-size: 17px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  .lead { color: var(--soft); margin-bottom: 18px; }
+  ol, ul { margin: 6px 0 10px; padding-left: 26px; }
+  li { margin: 5px 0; }
+  .path { font-weight: 600; white-space: nowrap; }
+  kbd { font: 600 14px "Segoe UI", Arial, sans-serif; border: 1px solid #9aa5b1; border-bottom-width: 2px; border-radius: 4px;
+        padding: 0 6px; background: #f7f9fb; white-space: nowrap; }
+  code { font: 14px Consolas, monospace; background: var(--tint); padding: 1px 5px; border-radius: 3px; }
+  .note, .ok { border-left: 5px solid var(--warn-line); background: var(--warn-bg); padding: 10px 14px; margin: 12px 0; border-radius: 3px; }
+  .ok { border-left-color: var(--ok-line); background: var(--ok-bg); }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 14px 0; padding: 0; list-style: none; }
+  .steps li { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin: 0; background: var(--tint); }
+  .steps b { display: block; color: var(--blue); }
+  .wide { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--tint); }
+  .small { color: var(--soft); font-size: 14px; }
+  @media print { body { background: #fff; } main { padding: 0; max-width: none; } h2 { break-after: avoid; } li, .note, .ok, tr { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Daripada kad perakam waktu ke Million Payroll</h1>
+<p class="small"><a href="GUIDE - Table Reader to Million.html">English</a></p>
+<p class="lead">Cara menukar kad perakam waktu yang diimbas kepada satu fail dengan Table Reader, dan mengimportnya ke dalam Million Payroll.
+Diuji pada 9 Oktober 2026 dengan dua syarikat pelanggan (6 pekerja): setiap angka masuk ke Million tepat seperti dalam fail.</p>
+<p class="small">Nama butang Table Reader ditulis dalam Bahasa Melayu, dengan nama Inggeris dalam kurungan. Million Payroll hanya ada bahasa Inggeris,
+jadi nama menu dan butangnya dikekalkan seperti pada skrin.</p>
+
+<ol class="steps">
+  <li><b>A. Baca</b>Masukkan imbasan ke dalam Table Reader dan semak sel kuning.</li>
+  <li><b>B. Gaji</b>Pilih bulan, tambah pekerja, taip No. Pekerja mereka.</li>
+  <li><b>C. Fail</b>Pilih syarikat dan muat turun fail Million (.xls).</li>
+  <li><b>D. Million</b>Buat sandaran, pastikan pekerja ada dalam bulan itu, import.</li>
+  <li><b>E. Semak</b>Buka seorang dua pekerja dalam Million dan bandingkan.</li>
+</ol>
+
+<div class="note"><b>Tiga perkara yang mesti betul sebelum import berjaya</b>
+<ol>
+  <li>Pekerja itu <b>wujud dalam Million</b> (tab Employee &gt; Employee).</li>
+  <li><b>No. Pekerja sama</b> dalam Table Reader dan dalam Million, huruf demi huruf (<code>MJ(1)</code> bukan <code>MJ1</code>).</li>
+  <li>Pekerja itu <b>ada dalam gaji bulan tersebut</b> dalam Million (Transaction &gt; Payroll &gt; bulan itu &gt; Edit).</li>
+</ol>
+Jika salah satu tiada, Million melangkau pekerja itu <b>tanpa sebarang amaran</b>, atau menyatakan tiada rekod dikemas kini.</div>
+
+<h2>A. Baca kad perakam waktu dalam Table Reader</h2>
+<ol>
+  <li>Buka <b>Table Reader</b>. Jika diminta, tekan <b>Log masuk</b> (Sign in, di kanan atas) dan log masuk ke Claude.</li>
+  <li>Letakkan imbasan atau foto (PDF, JPG atau PNG) pada halaman itu, dan pilih <b>syarikat</b> pemilik fail tersebut.</li>
+  <li>Tunggu sehingga setiap fail menunjukkan <b>Selesai</b> (Finished).</li>
+  <li>Buka setiap fail dan semak setiap <b>sel kuning</b> dengan gambarnya. Taip nilai yang betul, atau biarkan kosong jika memang tidak dapat dibaca.</li>
+</ol>
+<p class="small">Table Reader tidak pernah meneka. Hari yang tarikh, jam atau masa IN/OUT-nya masih kuning tidak dikira dalam gaji dan disenaraikan di bawah "Sila semak".</p>
+
+<h2>B. Sediakan gaji dalam Table Reader</h2>
+<h3>B0. Beri Table Reader senarai pekerja Million (sekali, dan sekali lagi selepas menambah pekerja dalam Million)</h3>
+<ol>
+  <li>Dalam Million: <span class="path">tab Employee &gt; Employee</span>, <kbd>Alt</kbd>+<kbd>P</kbd> (Print).</li>
+  <li>Klik <b>Employment Listing</b> (atau biarkan <b>Payroll Information</b> terpilih: kedua-duanya boleh), <kbd>Alt</kbd>+<kbd>P</kbd> (Print), kemudian <b>Excel</b>.</li>
+  <li>Pilih <b>File</b>, <kbd>Alt</kbd>+<kbd>O</kbd> (OK). Million tidak bertanya di mana hendak simpan: ia menulis
+      <code>rptempepmlist.xls</code> (Payroll Information: <code>rptemppsnlist.xls</code>) ke dalam folder syarikatnya (pada komputer riba ini <code>C:\million\Payroll\mycompany</code>).</li>
+  <li>Dalam Table Reader: <b>Gaji</b> (Payroll) &gt; <b>Import senarai pekerja daripada Million</b> (Import employee list from Million), dan pilih fail itu.</li>
+</ol>
+<p class="small">Table Reader hanya menyimpan No. Pekerja dan nama. Selepas itu setiap kotak No. Pekerja menawarkan senarai Million,
+dan sebelum fail Million dibuat, Table Reader menyemak setiap nombor dan nama dengan senarai itu.</p>
+<h3>B1. Bulan dan pekerja</h3>
+<ol>
+  <li>Tekan <b>Gaji</b> (Payroll, di bar atas).</li>
+  <li><b>1. Bulan dan hari</b>: pilih bulan dan tahun. Klik setiap <b>cuti umum</b> sehingga ia kuning (putih = hari bekerja, kelabu = hari rehat).</li>
+  <li>Semak dua peraturan di sebelah bulan:
+    <ul>
+      <li><b>Jam biasa dalam sehari bekerja</b> (kerja lebih masa bermula selepas ini).</li>
+      <li><b>Rehat yang ditolak daripada kad masa IN/OUT</b> (1 jam kecuali anda mengubahnya).</li>
+    </ul></li>
+  <li><b>2. Pekerja dan kad perakam waktu mereka</b>: tekan <b>Tambah pekerja daripada fail</b> (Add employees from files). Seorang pekerja ditambah bagi setiap pekerja dalam fail, dengan kad mereka sudah ditanda.</li>
+  <li>Taip setiap <b>No. Pekerja</b> tepat seperti dalam Million, atau pilih daripada senarai yang ditawarkan oleh kotak itu (B0). Ia diingati untuk bulan-bulan berikutnya.</li>
+  <li><b>3. Keputusan</b>: semak setiap pekerja. <b>Lengkap</b> (Complete) bermaksud sedia. Bagi <b>Perlu disemak</b> (Needs checking), baca "Sila semak" dan betulkan sel dalam dokumen, tambah kad yang tertinggal, atau taip sendiri angkanya.</li>
+</ol>
+
+<h2>C. Muat turun fail Million</h2>
+<ol>
+  <li>Pilih <b>syarikat</b> pada pemilih di bahagian atas, supaya fail hanya mengandungi pekerja syarikat itu.</li>
+  <li>Tekan <b>Muat turun fail Million (.xls)</b> (Download Million file).</li>
+  <li>Nama fail ialah <code>Payroll 2026-09 SYARIKAT (Million).xls</code>. Satu salinan sentiasa disimpan dalam
+      <span class="path">Documents &gt; Table Reader &gt; payroll</span>.</li>
+</ol>
+<div class="wide"><table>
+  <tr><th>Table Reader berkata</th><th>Maksudnya</th><th>Apa yang perlu dibuat</th></tr>
+  <tr><td>"Fail Million tidak dibuat. Betulkan perkara ini dahulu…"</td><td>Ada sesuatu yang akan diimport dengan salah: No. Pekerja kosong atau berulang, atau angka yang tiada lajurnya dalam fail Million.</td><td>Betulkan setiap baris yang disenaraikan, kemudian muat turun semula.</td></tr>
+  <tr><td>"… No. Pekerja tiada dalam senarai pekerja Million"</td><td>Million tidak mengenali No. Pekerja ini dan akan melangkaunya secara senyap.</td><td>Jawab <b>Cancel</b>. Betulkan No. Pekerja, atau tambah pekerja itu dalam Million (D2) dan import semula senarai pekerja (B0). Kemudian muat turun semula.</td></tr>
+  <tr><td>"… nama lain dalam Million Payroll"</td><td>No. Pekerja itu milik orang yang berlainan nama dalam Million. Million hanya mengikut nombor, jadi orang itu yang akan menerima angka tersebut.</td><td>Jawab <b>Cancel</b> dan semak No. Pekerja. Jika memang orang yang sama (nama panggilan, ejaan lain), jawab OK.</td></tr>
+  <tr><td>"… ditanda INCOMPLETE (belum lengkap)"</td><td>Ada hari yang tidak dapat dikira.</td><td>Sebaiknya betulkan dahulu. Jika anda membuat fail itu juga, sebabnya ditulis dalam lajur Notes.</td></tr>
+  <tr><td>"… tidak dapat disimpan. Jika ia sedang dibuka dalam Excel…"</td><td>Fail yang terdahulu sedang dibuka dalam Excel.</td><td>Tutup fail itu dalam Excel, muat turun semula.</td></tr>
+</table></div>
+
+<h2>D. Import ke dalam Million Payroll</h2>
+<div class="note"><b>Butang Million sering tidak menyahut klik tetikus.</b> Gunakan papan kekunci: <kbd>Alt</kbd>+<kbd>S</kbd> Save, <kbd>Alt</kbd>+<kbd>C</kbd> Close,
+<kbd>Alt</kbd>+<kbd>E</kbd> Edit, <kbd>Alt</kbd>+<kbd>A</kbd> Add, <kbd>Alt</kbd>+<kbd>Y</kbd> Yes, <kbd>Alt</kbd>+<kbd>O</kbd> OK. Klik pertama pada sesuatu tetingkap hanya mengaktifkannya.</div>
+
+<h3>D1. Buat sandaran dahulu</h3>
+<ol>
+  <li>Tutup semua tetingkap Million yang terbuka, kemudian klik <b>Backup Database</b> di sebelah kiri.</li>
+  <li><kbd>Alt</kbd>+<kbd>O</kbd> (OK), <kbd>Alt</kbd>+<kbd>Y</kbd> (Yes). Tunggu sehingga "Backup database complete".</li>
+</ol>
+<p class="small">Setiap sandaran menggantikan <code>C:\million\Payroll\mycompany\mycompany.bak</code>. Untuk menyimpan sandaran lama, salin ia ke nama lain dahulu.</p>
+
+<h3>D2. Adakah setiap pekerja wujud dalam Million?</h3>
+<ol>
+  <li><span class="path">tab Employee &gt; Employee</span>. Cari setiap No. Pekerja dalam fail anda.</li>
+  <li>Tiada? Tekan <kbd>Alt</kbd>+<kbd>A</kbd> (Add), taip <b>Employee No.</b> dan <b>Name</b>, kemudian <kbd>Alt</kbd>+<kbd>S</kbd> (Save).
+      Million boleh menyimpan dengan dua maklumat ini sahaja. Lengkapkan yang lain (I/C No., jantina, Basic Rate, EPF, SOCSO…) sebelum gaji sebenar diproses.</li>
+</ol>
+
+<h3>D3. Adakah setiap pekerja ada dalam gaji bulan itu?</h3>
+<ol>
+  <li><span class="path">tab Transaction &gt; Payroll</span>. Klik bulan itu, kemudian <kbd>Alt</kbd>+<kbd>E</kbd> (Edit). Senarai menunjukkan siapa yang ada dalam bulan itu.</li>
+  <li>Ada yang tertinggal? Tekan <kbd>Alt</kbd>+<kbd>A</kbd> (Add). Senarai menunjukkan pekerja yang belum ada dalam bulan itu.</li>
+  <li><b>Tandakan mereka dengan papan kekunci:</b> klik kotak kecil di hujung baris (ini hanya memilihnya), kemudian tekan <kbd>Space</kbd>.
+      Gunakan <kbd>&darr;</kbd> dan <kbd>Space</kbd> untuk baris seterusnya.</li>
+  <li><kbd>Alt</kbd>+<kbd>S</kbd> (Save), kemudian <kbd>Alt</kbd>+<kbd>Y</kbd> (Yes). Mereka kini muncul dalam bulan itu dengan status <b>New</b>.</li>
+</ol>
+<div class="note">Bulan yang sudah <b>Processed</b> tiada butang Add: tiada sesiapa boleh ditambah dan import tidak mengemas kini apa-apa.
+Gunakan bulan yang belum diproses, atau tanya dahulu sebelum membatalkan proses sesuatu bulan.</div>
+
+<h3>D4. Import fail</h3>
+<ol>
+  <li>Tutup tetingkap gaji (<kbd>Alt</kbd>+<kbd>C</kbd>).</li>
+  <li>Menu <span class="path">System &gt; Administrative Tools</span>, klik <b>9. Import Data from External File</b>, <kbd>Alt</kbd>+<kbd>O</kbd> (OK).
+      <br><span class="small">Berhati-hati supaya klik baris 9, bukan "5. Clear All Records".</span></li>
+  <li>Klik <b>bulan</b> bagi angka tersebut, kemudian <kbd>Alt</kbd>+<kbd>I</kbd> (Import).</li>
+  <li>Dalam tetingkap Open, tukar <b>Files of type</b> kepada <b>Excel 97-2003 (*.xls)</b>. Ia bermula dengan "Text (*.txt)" setiap kali, dan folder kelihatan kosong sehingga anda menukarnya.</li>
+  <li>Pergi ke <span class="path">Documents &gt; Table Reader &gt; payroll</span>, pilih fail itu, tekan <b>OK</b>.</li>
+  <li>"Are you sure you want to update?": <kbd>Alt</kbd>+<kbd>Y</kbd> (Yes).</li>
+  <li>Tunggu <b>"Update complete."</b>, tekan <kbd>Enter</kbd>, kemudian <kbd>Alt</kbd>+<kbd>C</kbd> untuk menutup.</li>
+</ol>
+<div class="note">"Update complete" muncul walaupun ada pekerja yang dilangkau. Sentiasa buat langkah E.</div>
+
+<h2>E. Semak hasilnya dalam Million</h2>
+<ol>
+  <li><span class="path">tab Transaction &gt; Payroll</span>, klik bulan itu, <kbd>Alt</kbd>+<kbd>E</kbd>.</li>
+  <li>Klik seorang pekerja, <kbd>Alt</kbd>+<kbd>E</kbd>. Bandingkan <b>Working Days, Public Holiday, Days Worked</b> dan jadual <b>Overtime</b> dengan bahagian Keputusan dalam Table Reader
+      (elaun dan potongan ada pada tab <b>Allowance &amp; Deduction</b>).</li>
+  <li><b>Next</b> (<kbd>Alt</kbd>+<kbd>N</kbd>) pergi ke pekerja seterusnya. Keluar dengan <kbd>Alt</kbd>+<kbd>C</kbd> (Close), bukan Save.</li>
+</ol>
+<div class="ok"><b>Apa yang ditunjukkan oleh ujian.</b> Pekerja baharu bermula dengan Working Days 26, Public Holiday 0, Days Worked 26. Selepas import, pekerja dalam
+fail menunjukkan angka fail itu (contohnya 25 / 1 / 21), dan pekerja yang tiada dalam fail tidak disentuh.</div>
+
+<h2>Perkara yang elok diketahui</h2>
+<ul>
+  <li><b>Import menggantikan angka.</b> Setiap angka yang ada lajurnya dalam fail ditulis ke dalam Million, <b>termasuk sifar</b>. Elaun atau potongan yang ditaip sendiri dalam Million
+      sebelum import akan kembali menjadi 0 kecuali ia juga ada dalam Table Reader. Import dahulu, kemudian taip tambahan itu, atau taipkannya dalam Table Reader.</li>
+  <li>Pekerja yang <b>tiada dalam fail</b> tidak diubah, jadi syarikat boleh diimport satu demi satu ke dalam bulan yang sama.</li>
+  <li>Mengimport fail yang sama sekali lagi tidak memudaratkan: ia menulis angka yang sama.</li>
+  <li>Gunakan hanya fail <b>.xls</b> daripada "Muat turun fail Million". Import CSV Million tidak mengikut tetapan lajur.</li>
+  <li><b>Basic Rate</b>, yuran pengarah (Director Fee) dan Back Pay tiada pada kad perakam waktu: simpan dalam Million.</li>
+  <li>Lajur fail mengikut <span class="path">File Format Setting</span> dalam Million (di dalam tetingkap Import). Jika sesiapa mengubah tetapan itu, fail tidak lagi sepadan: beritahu orang yang menjaga Table Reader.</li>
+</ul>
+
+<h2>Jika ada masalah</h2>
+<div class="wide"><table>
+  <tr><th>Apa yang anda lihat</th><th>Punca yang mungkin</th><th>Apa yang perlu dibuat</th></tr>
+  <tr><td>"No record updated", atau angka tidak berubah</td><td>Pekerja tiada dalam gaji bulan itu, atau bulan itu sudah Processed.</td><td>D3: tambah mereka ke dalam bulan itu (bulan yang belum diproses).</td></tr>
+  <tr><td>Seorang pekerja tidak berubah, yang lain berubah</td><td>No. Pekerja berbeza daripada Million, atau pekerja itu tiada dalam bulan tersebut.</td><td>Bandingkan No. Pekerja huruf demi huruf (D2), kemudian D3. Import semula.</td></tr>
+  <tr><td>Tetingkap Open tidak menunjukkan sebarang fail</td><td>"Files of type" masih Text (*.txt).</td><td>Pilih Excel 97-2003 (*.xls).</td></tr>
+  <tr><td>Kotak tanda tidak mahu bertanda</td><td>Klik hanya memilih kotak itu.</td><td>Tekan <kbd>Space</kbd>.</td></tr>
+  <tr><td>Butang tidak berbuat apa-apa</td><td>Million terlepas klik itu.</td><td>Gunakan kekunci <kbd>Alt</kbd> bersama huruf yang bergaris.</td></tr>
+  <tr><td>Angka yang salah telah diimport</td><td>Fail atau bulan yang salah dipilih.</td><td>Import semula fail yang betul; jika perlu, pulihkan sandaran (System &gt; Restore Database) - tanya dahulu.</td></tr>
+  <tr><td>Table Reader menolak senarai pekerja ("Ini bukan senarai pekerja Million Payroll" atau "Total Employees …")</td><td>Fail yang dipilih bukan laporan Employment Listing / Payroll Information, atau laporan itu tidak lengkap.</td><td>Buat semula fail itu dalam Million (B0) dan import sekali lagi.</td></tr>
+</table></div>
+
+<p class="small">Diuji pada komputer riba ini: Million Payroll System v3 (PMAX) dan Table Reader seperti yang dibina semula pada 9 Oktober 2026.
+Komputer pejabat mungkin berbeza dari segi senarai pekerja dan File Format Setting.</p>
+</main>
+</body>
+</html>
