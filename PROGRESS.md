@@ -1,5 +1,32 @@
 # Progress log
 
+## Session 9b — 2026-10-09 — Employee list imported from Million (name check, Employee Nos. offered)
+339 tests pass; Malay checks pass (111 server messages, 0 missing). **Package rebuilt and restarted (xlrd is inside
+now). Not committed.**
+- **Million can export its employee list** (looked at through desktop control, read-only): Employee > Print >
+  "Employment Listing" > Print > Excel > File > OK. No save dialog: it writes `rptempepmlist.xls` into Million's company
+  folder (`C:\million\Payroll\mycompany` here), replacing the previous one. Printed-report layout: heading row
+  ("Emp no.", "Name", Gender, D.O.B., …, Basic Rate) again on every page, one employee every four rows, last line
+  "Total Employees : n".
+- **"Import employee list from Million"** (Payroll screen, section 2): `payroll.parse_million_employees` (xlrd) keeps
+  **only Employee No. and name** in `payroll\million-employees.json`; refused when it is not that report or when the
+  count differs from the report's own total. `POST /api/million/employees`; the payroll view carries `million`.
+- **Used for:** (1) every Employee No. box offers Million's list (datalist, name shown beside the number; nothing is
+  filled in by itself); (2) before the Million file: unknown numbers are checked against this list (employees.txt is
+  only used when no list was imported); (3) **name check** `MILLION_NAME` / `allow_names`: asked when the name is
+  someone else's in Million. Same person = one name has all the words of the other, case ignored; an empty name is
+  not compared. Order of questions: unknown number, name, INCOMPLETE.
+- Real export on this laptop: 9 of 9 employees read (2 more than at the tests; the user added them). In the packaged
+  app: the two tested companies download with no question, a company whose number is not in Million is asked about.
+- **Not done:** the button's file chooser was not clicked in a browser (the upload was sent to the same endpoint
+  directly; the page shows the list and the 9 choices). Allowance/deduction lists and the File Format Setting are not
+  imported. `learn-million\million-import-tools\employees.txt` (office checker) still lists 7 codes.
+- PR #1 title and description brought up to date (session 9 work); guide: new step B0 and the name question.
+- **User's first try failed** ("Total Employees : 14, but 17 could be read"): they had exported the first report in
+  Million's list, **Payroll Information** (`rptemppsnlist.xls`), whose title, company name and total line sit in the
+  Emp No. column. Fix: a row is an employee only when it also has something under another heading. Both reports are
+  read now (real files: 14 of 14 and 9 of 9); test added. Rebuilt; the 14-employee list is imported.
+
 ## Session 9 — 2026-10-09 — Import cause found, Employee No. warning, IN/OUT time cards
 335 tests pass; Malay checks pass (106 server messages, 0 missing). **Package rebuilt and restarted. Not committed.**
 - **"No record updated" — cause confirmed in Million itself** (looked at through desktop control, nothing changed):

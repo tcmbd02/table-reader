@@ -189,6 +189,32 @@ function renderAutoCompany() {
   $("pr-auto").disabled = companyFilter === NO_COMPANY;
 }
 
+// Million Payroll's own employee list (imported by the user): its Employee Nos. are offered in every Employee No. box.
+function renderMillion() {
+  const m = pr.million;
+  $("pr-million").textContent = m
+    ? tn(m.employees.length, "Employee list from Million: {n} employee, imported on {d}. Import it again after you add an employee in Million.",
+      "Employee list from Million: {n} employees, imported on {d}. Import it again after you add an employee in Million.",
+      { d: m.imported.split("-").reverse().join("/") })
+    : t("No employee list from Million yet. In Million Payroll: Employee > Print > Employment Listing > Print > Excel > File. Then import the file rptempepmlist.xls from Million's company folder (for example C:\\million\\Payroll\\mycompany). Table Reader then offers the Employee Nos. and checks them before the Million file is made.");
+  $("pr-million-list").replaceChildren(...(m ? m.employees : []).map((x) => el("option", { value: x.emp_no, label: x.name })));
+}
+
+$("pr-million-import").addEventListener("click", () => $("pr-million-file").click());
+$("pr-million-file").addEventListener("change", async () => {
+  const input = $("pr-million-file");
+  const file = input.files[0];
+  input.value = "";                                          // the same file can be chosen again later
+  if (!file) return;
+  const body = new FormData();
+  body.append("file", file);
+  try {
+    pr.million = await api("POST", "/api/million/employees", body);
+    prShowError(""); renderMillion();
+    prShowInfo(tn(pr.million.employees.length, "Imported {n} employee from Million.", "Imported {n} employees from Million."));
+  } catch (e) { prShowError(e.message); }
+});
+
 // Called by app.js when the Company at the top changes while this screen is open.
 function payrollCompanyChanged() {
   prShowInfo("");
@@ -243,7 +269,7 @@ function renderEmployees() {
     filter.addEventListener("input", paintDocs);
     paintDocs();
 
-    const empNo = el("input", { type: "text", value: e.emp_no, placeholder: t("e.g. MJ(1)"), maxlength: "100" });
+    const empNo = el("input", { type: "text", value: e.emp_no, placeholder: t("e.g. MJ(1)"), maxlength: "100", list: "pr-million-list" });
     const name = el("input", { type: "text", value: e.name, placeholder: t("Name as in Million Payroll"), maxlength: "100" });
     empNo.addEventListener("input", () => { e.emp_no = empNo.value; schedulePayrollSave(); });
     name.addEventListener("input", () => { e.name = name.value; schedulePayrollSave(); });
@@ -430,7 +456,7 @@ function renderResults() {
   // Employee No. and Name can be typed here too: the same two boxes as in section 2 (which follows after the save).
   const e = pr.plan.employees[i];
   const idBox = (id, key, label, placeholder) => {
-    const input = el("input", { type: "text", id, value: e[key], placeholder, maxlength: "100" });
+    const input = el("input", { type: "text", id, value: e[key], placeholder, maxlength: "100", list: key === "emp_no" ? "pr-million-list" : null });
     input.addEventListener("input", () => { e[key] = input.value; schedulePayrollSave(); });
     return el("div", { class: "pw-id" }, el("label", { for: id, text: label }), input);
   };
@@ -505,7 +531,7 @@ function renderResults() {
 }
 
 function renderPayroll() {
-  renderMonth(); renderAutoCompany(); renderEmployees(); renderResults();
+  renderMonth(); renderAutoCompany(); renderMillion(); renderEmployees(); renderResults();
   setSaveState("");
 }
 
@@ -560,9 +586,9 @@ $("pr-download").addEventListener("click", async () => {
 });
 
 // The Million import file (.xls) for the office. Fetched rather than opened as a link, so that a refusal (what would
-// import wrong, listed one problem per line) is shown on this page; Employee Nos. that are not in employees.txt and
+// import wrong, listed one problem per line) is shown on this page; Employee Nos. that are not in Million's employee list, names that differ from Million's and
 // INCOMPLETE employees only after the user agrees (each is asked once).
-const MILLION_ASKS = { MILLION_UNKNOWN: "allow_unknown", MILLION_INCOMPLETE: "allow_incomplete" };
+const MILLION_ASKS = { MILLION_UNKNOWN: "allow_unknown", MILLION_NAME: "allow_names", MILLION_INCOMPLETE: "allow_incomplete" };
 async function downloadMillion(allowed = []) {
   const q = new URLSearchParams();
   const c = chosenCompany();

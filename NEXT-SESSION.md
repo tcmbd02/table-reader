@@ -5,7 +5,7 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 **To continue, paste this into the new session:**
 
-> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (session 9), then let's continue.
+> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 and 9b), then let's continue.
 
 ---
 
@@ -20,6 +20,8 @@ workers are not in that month's payroll, so there was nothing to update. Details
   in Million -> is added to the month's payroll -> import with file type "Excel 97-2003 (*.xls)".
 - A second company (4 new employees created in Million with Employee No. + Name only) passed the same test. Staff
   guide: `GUIDE - Table Reader to Million.html`. Million now has 7 employees; the 4 new ones still need their details.
+- **Session 9b:** "Import employee list from Million" built (Employment Listing export -> Employee Nos. offered,
+  unknown-number and name checks before download). Details and what is not done: PROGRESS.md session 9b.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -43,7 +45,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | **Million import file (.xls)** for the office | **Done (session 7).** Button "Download Million file (.xls)"; the office checker says READY on invented figures. Real September file not made yet (needs Employee Nos.). |
 | Browser check | Never clicked through by Claude (Chrome extension was not connected). All checks were tests + API + real-data scripts. |
 
-Tests: **335 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 9. **Session 9 is not committed.**
+Tests: **339 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 9. Session 9 is committed and pushed (02ebcfc); **session 9b is not committed.**
 
 ## 2. Git / GitHub
 

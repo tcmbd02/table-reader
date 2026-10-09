@@ -9,7 +9,7 @@ import xlrd
 import jobs
 import ocr
 import payroll
-from helpers import cell, good, record
+from helpers import cell, good, million_listing, record
 
 
 def merged(rows, labels=("Date", "Total")):
@@ -762,11 +762,11 @@ def test_an_employee_no_that_is_not_in_employees_txt_needs_an_explicit_yes(tmp_p
     assert known == {"mj(1)", "mj(3)"}                               # case does not matter, brackets do
     plan, results = million()
     msg = refused(plan, results, code="MILLION_UNKNOWN", known=known)
-    assert msg.startswith("1 Employee No. is not in the Million employee list (employees.txt): MJ(2) WORKER 2. ")
+    assert msg.startswith("1 Employee No. is not in the Million employee list: MJ(2) WORKER 2. ")
     assert read_xls(payroll.build_xls(plan, results, mapping=MAPPING, known=known, allow_unknown=True)).nrows == 4
     results[0]["emp_no"] = "MJ1"
     assert refused(plan, results, code="MILLION_UNKNOWN", known=known).startswith(
-        "2 Employee Nos. are not in the Million employee list (employees.txt): MJ1 WORKER 1, MJ(2) WORKER 2. ")
+        "2 Employee Nos. are not in the Million employee list: MJ1 WORKER 1, MJ(2) WORKER 2. ")
     results[2]["complete"] = False                                    # asked about first, then INCOMPLETE
     refused(plan, results, code="MILLION_UNKNOWN", known=known, allow_incomplete=True)
     refused(plan, results, code="MILLION_INCOMPLETE", known=known, allow_unknown=True)
@@ -781,6 +781,40 @@ def test_no_employee_list_means_no_check(tmp_path, monkeypatch):
     payroll.build_xls(*million(), mapping=MAPPING, known=None)
     monkeypatch.delenv("TABLE_READER_MILLION_EMPLOYEES")
     assert payroll.million_employees_path().parts[-3:] == ("learn-million", "million-import-tools", "employees.txt")
+
+
+def test_millions_employee_list_is_read_from_its_printed_report_layout():
+    people = [("MJ(1)", "ALI BIN ABU"), ("MJ(2)", "AMINAH"), (100, "ZUL"), ("B01", "")]
+    assert payroll.parse_million_employees(million_listing(people)) == [
+        {"emp_no": "MJ(1)", "name": "ALI BIN ABU"}, {"emp_no": "MJ(2)", "name": "AMINAH"},
+        {"emp_no": "100", "name": "ZUL"}, {"emp_no": "B01", "name": ""}]      # three pages, headings not taken as people
+    # Million's "Payroll Information" report: its title, company name and total line sit in the Emp no. column
+    assert [e["emp_no"] for e in payroll.parse_million_employees(million_listing(people, title_col=1))] == [
+        "MJ(1)", "MJ(2)", "100", "B01"]
+
+
+def test_an_employee_list_that_cannot_be_trusted_is_refused():
+    with pytest.raises(ocr.OcrError) as e:
+        payroll.parse_million_employees(million_listing([("MJ(1)", "ALI"), ("MJ(2)", "AMINAH")], total=3))
+    assert e.value.code == "MILLION_LIST" and "Total Employees : 3, but 2 could be read" in e.value.message
+    for not_the_list in (b"not an excel file", payroll.build_xls(*million(n=1), mapping=MAPPING), million_listing([])):
+        with pytest.raises(ocr.OcrError) as e:
+            payroll.parse_million_employees(not_the_list)
+        assert e.value.message.startswith("This is not Million Payroll's employee list.")
+
+
+def test_a_name_that_is_someone_else_in_million_needs_an_explicit_yes():
+    names = {"mj(1)": "Worker 1", "mj(2)": "SITI", "mj(3)": ""}        # as in Million; MJ(3) has no name there
+    plan, results = million()
+    msg = refused(plan, results, code="MILLION_NAME", names=names, known=set(names))
+    assert msg.startswith("1 employee has another name in Million Payroll: MJ(2) WORKER 2 (in Million: SITI). ")
+    assert read_xls(payroll.build_xls(plan, results, mapping=MAPPING, names=names, allow_names=True)).nrows == 4
+    names["mj(2)"] = "WORKER 2 BIN ABU"                                # all the words of one name are in the other
+    payroll.build_xls(plan, results, mapping=MAPPING, names=names)
+    names.update({"mj(1)": "A", "mj(2)": "B"})
+    assert refused(plan, results, code="MILLION_NAME", names=names).startswith("2 employees have another name")
+    results[0]["emp_no"] = "MJ(9)"                                     # an unknown number is asked about first
+    refused(plan, results, code="MILLION_UNKNOWN", names=names, known=set(names), allow_names=True)
 
 
 def test_a_broken_mapping_file_is_reported(tmp_path):

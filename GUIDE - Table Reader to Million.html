@@ -66,6 +66,17 @@ If one of them is missing, Million skips that employee <b>without any warning</b
 <p class="small">Table Reader never guesses. A day whose date, hours or IN/OUT time is still yellow is left out of the payroll and listed under "Please check".</p>
 
 <h2>B. Prepare the payroll in Table Reader</h2>
+<h3>B0. Give Table Reader Million's employee list (once, and again after adding employees in Million)</h3>
+<ol>
+  <li>In Million: <span class="path">Employee tab &gt; Employee</span>, <kbd>Alt</kbd>+<kbd>P</kbd> (Print).</li>
+  <li>Click <b>Employment Listing</b> (or leave <b>Payroll Information</b> selected: both work), <kbd>Alt</kbd>+<kbd>P</kbd> (Print), then <b>Excel</b>.</li>
+  <li>Choose <b>File</b>, <kbd>Alt</kbd>+<kbd>O</kbd> (OK). Million does not ask where to save: it writes
+      <code>rptempepmlist.xls</code> (Payroll Information: <code>rptemppsnlist.xls</code>) into its company folder (on this laptop <code>C:\million\Payroll\mycompany</code>).</li>
+  <li>In Table Reader: <b>Payroll</b> &gt; <b>Import employee list from Million</b>, and choose that file.</li>
+</ol>
+<p class="small">Table Reader keeps only the Employee No. and the name. From then on every Employee No. box offers Million's list,
+and before the Million file is made Table Reader checks each number and name against it.</p>
+<h3>B1. The month and the employees</h3>
 <ol>
   <li>Press <b>Payroll</b> (top bar).</li>
   <li><b>1. Month and days</b>: choose the month and year. Click each <b>public holiday</b> until it is yellow (white = working day, grey = rest day).</li>
@@ -75,7 +86,7 @@ If one of them is missing, Million skips that employee <b>without any warning</b
       <li><b>Break taken off IN/OUT time cards</b> (1 hour unless you change it).</li>
     </ul></li>
   <li><b>2. Employees and their time cards</b>: press <b>Add employees from files</b>. One employee is added for each worker, with their cards ticked.</li>
-  <li>Type each <b>Employee No.</b> exactly as in Million. It is remembered for the following months.</li>
+  <li>Type each <b>Employee No.</b> exactly as in Million, or pick it from the list the box offers (B0). It is remembered for the following months.</li>
   <li><b>3. Results</b>: go through the employees. <b>Complete</b> is ready. For <b>Needs checking</b>, read "Please check" and fix the cells in the document, add the missing card, or type the figure yourself.</li>
 </ol>
 
@@ -89,11 +100,11 @@ If one of them is missing, Million skips that employee <b>without any warning</b
 <div class="wide"><table>
   <tr><th>Table Reader says</th><th>What it means</th><th>What to do</th></tr>
   <tr><td>"The Million file was not made. Fix these first…"</td><td>Something would import wrong: an empty or repeated Employee No., or a figure Million's file has no column for.</td><td>Fix each listed line, then download again.</td></tr>
-  <tr><td>"… Employee Nos. are not in the Million employee list (employees.txt)"</td><td>Million does not know these Employee Nos. and would skip them silently.</td><td>Answer <b>No</b>. Add the employee in Million (D2) or correct the Employee No., add the code to <code>employees.txt</code>, download again.</td></tr>
+  <tr><td>"… Employee Nos. are not in the Million employee list"</td><td>Million does not know these Employee Nos. and would skip them silently.</td><td>Answer <b>No</b>. Correct the Employee No., or add the employee in Million (D2) and import the employee list again (B0). Then download again.</td></tr>
+  <tr><td>"… another name in Million Payroll"</td><td>The Employee No. belongs to someone with a different name in Million. Million goes by the number only, so that person would get the figures.</td><td>Answer <b>No</b> and check the Employee No. If it really is the same person (a nickname, another spelling), answer Yes.</td></tr>
   <tr><td>"… marked INCOMPLETE"</td><td>Some days could not be worked out.</td><td>Best: fix them first. If you make the file anyway, the reason is written in its Notes column.</td></tr>
   <tr><td>"… could not be saved. If it is open in Excel…"</td><td>The earlier file is open in Excel.</td><td>Close it in Excel, download again.</td></tr>
 </table></div>
-<p class="small"><code>employees.txt</code> is in <span class="path">Documents &gt; learn-million &gt; million-import-tools</span>: one Employee No. per line, the same list as Million's Employee screen. Keep it up to date when you add an employee in Million.</p>
 
 <h2>D. Import into Million Payroll</h2>
 <div class="note"><b>Million's buttons often ignore the mouse.</b> Use the keyboard: <kbd>Alt</kbd>+<kbd>S</kbd> Save, <kbd>Alt</kbd>+<kbd>C</kbd> Close,

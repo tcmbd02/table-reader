@@ -1,4 +1,5 @@
 import pytest
+import json
 import xlrd
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -414,11 +415,46 @@ def test_million_xls_download_asks_about_an_employee_no_that_is_not_in_employees
         c.put("/api/payroll/2026-09", json=view["plan"])
         r = c.get("/api/payroll/2026-09/xls", params={"allow_incomplete": "true"})
         assert r.status_code == 400 and r.json()["code"] == "MILLION_UNKNOWN"
-        assert "(employees.txt): MJ(1) MAJU JAYA ALI." in r.json()["message"]
+        assert "employee list: MJ(1) MAJU JAYA ALI." in r.json()["message"]
         r = c.get("/api/payroll/2026-09/xls", params={"allow_incomplete": "true", "allow_unknown": "true"})
         assert r.status_code == 200
         listed.write_text("MJ(7)\nmj(1)\n", encoding="utf-8")                # added to the list: no question
         assert c.get("/api/payroll/2026-09/xls", params={"allow_incomplete": "true"}).status_code == 200
+
+
+def test_millions_employee_list_is_imported_offered_and_checked_before_download(tmp_path):
+    from tests.helpers import million_listing
+
+    def card(image):
+        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
+
+    store = Jobs(tmp_path / "jobs", reader=card)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        assert c.get("/api/payroll/2026-09").json()["million"] is None
+        r = c.post("/api/million/employees", files={"file": ("notes.xls", b"hello", "application/vnd.ms-excel")})
+        assert r.status_code == 400 and r.json()["code"] == "MILLION_LIST"
+        listing = million_listing([("MJ(1)", "SITI"), ("MJ(2)", "ALI")])
+        r = c.post("/api/million/employees", files={"file": ("rptempepmlist.xls", listing, "application/vnd.ms-excel")})
+        assert r.status_code == 200 and r.json()["employees"] == [{"emp_no": "MJ(1)", "name": "SITI"},
+                                                                  {"emp_no": "MJ(2)", "name": "ALI"}]
+        assert c.get("/api/payroll/2026-09").json()["million"]["source"] == "rptempepmlist.xls"
+        saved = json.loads((tmp_path / "payroll" / "million-employees.json").read_text(encoding="utf-8"))
+        assert set(saved) == {"imported", "source", "employees"} and set(saved["employees"][0]) == {"emp_no", "name"}
+
+        upload(c, tmp_path, name="MAJU JAYA ALI SEPT 26.png")
+        store.wait_idle()
+        view = c.post("/api/payroll/2026-09/auto", json={"company": ""}).json()
+        ok = {"allow_incomplete": "true"}
+        for emp_no, code in (("MJ(7)", "MILLION_UNKNOWN"), ("MJ(1)", "MILLION_NAME")):     # not in Million / someone else
+            view["plan"]["employees"][0]["emp_no"] = emp_no
+            c.put("/api/payroll/2026-09", json=view["plan"])
+            r = c.get("/api/payroll/2026-09/xls", params=ok)
+            assert r.status_code == 400 and r.json()["code"] == code, r.json()
+        assert "MJ(1) MAJU JAYA ALI (in Million: SITI)" in r.json()["message"]
+        assert c.get("/api/payroll/2026-09/xls", params={**ok, "allow_names": "true"}).status_code == 200
+        view["plan"]["employees"][0]["emp_no"] = "mj(2)"                 # the right person: no question
+        c.put("/api/payroll/2026-09", json=view["plan"])
+        assert c.get("/api/payroll/2026-09/xls", params=ok).status_code == 200
 
 
 def test_payroll_csv_for_one_company(tmp_path):

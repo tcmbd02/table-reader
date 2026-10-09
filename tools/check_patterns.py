@@ -131,9 +131,15 @@ for n in (1, 2):
     except ocr.OcrError as exc:
         msgs.append(exc.message)
     try:
-        payroll.build_xls(p, ok[:n], mapping=mapping, known={"zz"})   # not in employees.txt: asks too
+        payroll.build_xls(p, ok[:n], mapping=mapping, known={"zz"})   # not in Million's list: asks too
     except ocr.OcrError as exc:
         msgs.append(exc.message)
+    try:
+        payroll.build_xls(p, ok[:n], mapping=mapping, names={"ok0": "SOMEONE ELSE", "ok1": "ANOTHER ONE"})
+    except ocr.OcrError as exc:
+        msgs.append(exc.message)
+msgs += ["The employee list says Total Employees : 9, but 8 could be read. Nothing was imported. Make the file again in "
+         "Million Payroll and import it again."]
 msgs += ["Payroll 2026-09 (Million).xls could not be saved. If it is open in Excel, close it and try again.",
          "The Million column table office-mapping.csv was not found.",
          "The Million column table (C:\\x\\office-mapping.csv) could not be used: column 3 is used for both A and B. "

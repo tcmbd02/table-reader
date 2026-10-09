@@ -65,7 +65,11 @@
     <div class="auto-bar">
       <button id="pr-auto" type="button" class="primary" data-t>Add employees from files</button>
       <span id="pr-auto-company" class="muted"></span>
+      <button id="pr-million-import" type="button" data-t>Import employee list from Million</button>
+      <input id="pr-million-file" type="file" accept=".xls" hidden>
     </div>
+    <p id="pr-million" class="legend"></p>
+    <datalist id="pr-million-list"></datalist>
     <p class="legend" data-t>One employee is added for each worker in the files, with their time cards ticked. Employee No. is filled in from earlier months; type it once for new workers.</p>
     <div id="pr-info" class="banner info" hidden></div>
     <div id="pr-employees"></div>

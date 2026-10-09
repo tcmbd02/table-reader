@@ -1056,6 +1056,65 @@ def load_million_employees(path: Path | None = None) -> set[str] | None:
     return {line.strip().casefold() for line in lines if line.strip() and not line.lstrip().startswith("#")} or None
 
 
+MILLION_LIST_FILE = "million-employees.json"
+_TOTAL_EMPLOYEES = re.compile(r"total employees?\s*:\s*(\d+)", re.IGNORECASE)
+_CODE_HEADS = ("emp no.", "emp no", "employee no.", "employee no")
+
+
+def parse_million_employees(data: bytes) -> list[dict]:
+    """Million Payroll's own employee list -> [{"emp_no", "name"}]. The file is Million's "Employment Listing" saved as
+    Excel (Employee > Print > Employment Listing > Print > Excel > File): a printed-report layout with the heading row
+    ("Emp no." … "Name" …) repeated on every page and "Total Employees : n" at the end. Only the Employee No. and the
+    name are taken. Refused (OcrError) when it is not that report, or when the number of employees read differs from
+    the report's own total: a list with someone missing would raise false alarms."""
+    import xlrd
+
+    bad = OcrError("MILLION_LIST", "This is not Million Payroll's employee list. In Million Payroll choose Employee > "
+                   "Print > Employment Listing > Print > Excel > File, then choose the file rptempepmlist.xls here.")
+    try:
+        sheets = xlrd.open_workbook(file_contents=data).sheets()
+    except Exception as exc:                                         # not an .xls file at all
+        raise bad from exc
+
+    def text(cell) -> str:
+        value = cell.value
+        if cell.ctype == xlrd.XL_CELL_NUMBER and float(value).is_integer():
+            value = int(value)                                       # an Employee No. such as 100 kept as a number
+        return " ".join(str(value).split())
+
+    found, total, code_col, name_col, others = {}, None, None, None, []
+    for sheet in sheets:
+        for r in range(sheet.nrows):
+            row = [text(c) for c in sheet.row(r)]
+            keys = [_key(v) for v in row]
+            for v in row:
+                m = _TOTAL_EMPLOYEES.search(v)
+                if m:
+                    total = int(m.group(1))
+            if "name" in keys and any(k in _CODE_HEADS for k in keys):
+                code_col = next(i for i, k in enumerate(keys) if k in _CODE_HEADS)
+                name_col = keys.index("name")                        # the heading row (again on every page)
+                others = [i for i, k in enumerate(keys) if k and i != code_col]
+            elif code_col is not None and code_col < len(row) and row[code_col] \
+                    and any(i < len(row) and row[i] for i in others):
+                # an employee's row has something under another heading too (name, gender, basic rate…); the report
+                # title, the company name and the total line can sit in the Employee No. column, alone
+                found.setdefault(row[code_col], row[name_col] if name_col < len(row) else "")
+    if code_col is None or not found:
+        raise bad
+    if total is not None and total != len(found):
+        raise OcrError("MILLION_LIST", f"The employee list says Total Employees : {total}, but {len(found)} could be "
+                       "read. Nothing was imported. Make the file again in Million Payroll and import it again.")
+    return [{"emp_no": code, "name": name} for code, name in found.items()]
+
+
+def _same_person(a: str, b: str) -> bool:
+    """Two names for one Employee No. count as the same person when one has all the words of the other ("ALI" and
+    "MAJU JAYA ALI", upper/lower case ignored). An empty name cannot be compared, so it is not called different."""
+    wa, wb = set(_key(a).split()), set(_key(b).split())
+    return not wa or not wb or wa <= wb or wb <= wa
+
+
 def _line_key(name: str) -> str:
     """Line names compared without case or extra spaces, letter O = digit 0 ("RECAB 2.O" = "RECAB 2.0")."""
     return " ".join(name.split()).casefold().replace("o", "0")
@@ -1066,7 +1125,8 @@ def _is_figure(value) -> bool:
 
 
 def build_xls(plan: dict, results: list[dict], *, allow_incomplete: bool = False,
-              mapping: list[dict] | None = None, known: set[str] | None = None, allow_unknown: bool = False) -> bytes:
+              mapping: list[dict] | None = None, known: set[str] | None = None, allow_unknown: bool = False,
+              names: dict[str, str] | None = None, allow_names: bool = False) -> bytes:
     """The Million import file for the office: an Excel 97-2003 workbook, one sheet "Import", row 1 = headers, one row
     per employee in the columns of the office File Format Setting, and a Notes column after the last one (not imported).
 
@@ -1074,7 +1134,9 @@ def build_xls(plan: dict, results: list[dict], *, allow_incomplete: bool = False
     empty, has spaces around it or is used twice; a figure that is not a number of 0 or more; a non-zero figure the
     office file has no column for (it would be lost silently). Employees marked INCOMPLETE are refused too, unless
     ``allow_incomplete``; their note is then in the Notes column. With ``known`` (load_million_employees), an Employee
-    No. that is not in that list is refused as well, unless ``allow_unknown``: Million would skip the row silently."""
+    No. that is not in that list is refused as well, unless ``allow_unknown``: Million would skip the row silently.
+    With ``names`` ({Employee No. in lower case: name in Million}), an employee whose name is another one in Million
+    is refused unless ``allow_names``: Million goes by the Employee No. only."""
     import xlwt
 
     mapping = mapping if mapping is not None else load_office_mapping()
@@ -1143,10 +1205,17 @@ def build_xls(plan: dict, results: list[dict], *, allow_incomplete: bool = False
                if known and r["emp_no"].casefold() not in known]
     if unknown and not allow_unknown:
         raise OcrError("MILLION_UNKNOWN", (f"{len(unknown)} Employee Nos. are" if len(unknown) > 1 else
-                                           "1 Employee No. is") + f" not in the Million employee list ({EMPLOYEES_FILE}): "
+                                           "1 Employee No. is") + " not in the Million employee list: "
                        + ", ".join(unknown) + ". Million skips an Employee No. it does not know and gives no warning. "
-                       "Check it in Million Payroll (Employee > Employee). If it is right there, add it to "
-                       f"{EMPLOYEES_FILE}, or make the file anyway.")
+                       "Check it in Million Payroll (Employee > Employee). If it is right there, import the employee "
+                       "list from Million again, or make the file anyway.")
+    other = [f"{r['emp_no']} {r['name']} (in Million: {names[r['emp_no'].casefold()]})" for r in results
+             if names and not _same_person(r.get("name") or "", names.get(r["emp_no"].casefold(), ""))]
+    if other and not allow_names:
+        raise OcrError("MILLION_NAME", (f"{len(other)} employees have" if len(other) > 1 else "1 employee has")
+                       + " another name in Million Payroll: " + ", ".join(other) + ". Million goes by the Employee No. "
+                       "only, so the figures go to the person named in Million. Check the Employee No., or make the "
+                       "file anyway.")
     if incomplete and not allow_incomplete:
         raise OcrError("MILLION_INCOMPLETE", (f"{len(incomplete)} employees are" if len(incomplete) > 1 else
                                               "1 employee is") + " marked INCOMPLETE: " + ", ".join(incomplete) + ". "
@@ -1231,6 +1300,20 @@ class PayrollStore:
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(tmp, path)
+
+    # Million's own employee list, imported by the user (parse_million_employees): Employee No. and name only
+    def load_million(self) -> dict | None:
+        """{"imported": "yyyy-mm-dd", "source": file name, "employees": [{"emp_no", "name"}]}, or None."""
+        try:
+            data = json.loads((self.root / MILLION_LIST_FILE).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return data if isinstance(data, dict) and isinstance(data.get("employees"), list) and data["employees"] else None
+
+    def save_million(self, employees: list[dict], source: str) -> dict:
+        data = {"imported": date.today().isoformat(), "source": source, "employees": employees}
+        self._write(self.root / MILLION_LIST_FILE, data)
+        return data
 
     # the Employee No. / name of each worker, as typed by the user (see remember_employees)
     def load_directory(self) -> dict:

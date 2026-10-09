@@ -273,7 +273,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                     for page in cache[job_id][1]:
                         labels += [c for c in page["column_labels"] if c not in labels]
             r["columns"] = labels
-        return {"plan": plan, "documents": docs, "results": results,
+        return {"plan": plan, "documents": docs, "results": results, "million": plans.load_million(),
                 "fields": [{"key": k, "label": label, "unit": unit} for k, label, unit in payroll.FIELDS],
                 "list_heads": {kind: {"title": title, "type": type_head} for kind, (title, type_head, _) in payroll.LISTS.items()}}
 
@@ -367,16 +367,30 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         return FileResponse(path, media_type="text/csv; charset=utf-8", filename=path.name)
 
     @app.get("/api/payroll/{month}/xls")
-    def payroll_xls(month: str, company: str = "", allow_incomplete: bool = False, allow_unknown: bool = False):
+    def payroll_xls(month: str, company: str = "", allow_incomplete: bool = False, allow_unknown: bool = False,
+                    allow_names: bool = False):
         """The Million import file for the office (.xls, the office File Format Setting's columns). Refused, with every
-        problem listed, when it would import wrong; INCOMPLETE employees only with ``allow_incomplete``, Employee Nos.
-        that are not in employees.txt only with ``allow_unknown``."""
+        problem listed, when it would import wrong. Asked about first (``allow_…``): Employee Nos. that are not in
+        Million's employee list (the imported one, else employees.txt), employees whose name is another one in
+        Million, and INCOMPLETE employees."""
         plan, results = payroll_of(month, company)
-        data = payroll.build_xls(plan, results, allow_incomplete=allow_incomplete,
-                                 known=payroll.load_million_employees(), allow_unknown=allow_unknown)
+        listed = plans.load_million()
+        names = {e["emp_no"].casefold(): e["name"] for e in listed["employees"]} if listed else None
+        data = payroll.build_xls(plan, results, allow_incomplete=allow_incomplete, allow_unknown=allow_unknown,
+                                 known=set(names) if names else payroll.load_million_employees(),
+                                 names=names, allow_names=allow_names)
         name = f"Payroll {month} {safe_name(company)} (Million).xls" if company else f"Payroll {month} (Million).xls"
         path = save_payroll_file(name, data)
         return FileResponse(path, media_type="application/vnd.ms-excel", filename=path.name)
+
+    @app.post("/api/million/employees")
+    def import_million_employees(file: UploadFile = File(...)):
+        """Million Payroll's employee list (its Employment Listing saved as Excel): Employee No. and name are kept, to
+        offer the Employee Nos. on the Payroll screen and to check them before the Million file is made."""
+        content = file.file.read(MAX_UPLOAD_BYTES + 1)
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise OcrError("MILLION_LIST", "This file is too large to be Million Payroll's employee list.")
+        return plans.save_million(payroll.parse_million_employees(content), safe_name(file.filename or "file"))
 
     @app.get("/", response_class=HTMLResponse)
     @app.get("/index.html", response_class=HTMLResponse)

@@ -6,5 +6,5 @@ pillow
 pytest
 xlwt          # the Million import file (Excel 97-2003 .xls)
 pyinstaller   # only to build the Windows app (packaging\build.ps1)
-xlrd          # only for tests (reads the .xls back)
+xlrd          # reads Million's employee list (.xls); also used by the tests
 httpx2   # only for tests (FastAPI TestClient)
