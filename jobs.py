@@ -66,6 +66,20 @@ def safe_name(name: str, limit: int = 80) -> str:
     return name[:limit].strip(" .") or "document"
 
 
+def _norm(text: str) -> str:
+    return " ".join((text or "").replace("_", " ").split()).casefold()
+
+
+def company_for(filename: str, companies: list[str]) -> str:
+    """The known company a file name starts with ("MAJU JAYA ALI SEPT 26.pdf" -> "MAJU JAYA"), longest first, or "".
+    Only companies the user has already confirmed are matched: a new company is never worked out from the name."""
+    name = _norm(Path(filename).stem)
+    for c in sorted(companies, key=len, reverse=True):
+        if c and (name == _norm(c) or name.startswith(_norm(c) + " ")):
+            return c
+    return ""
+
+
 def _write_json(path: Path, data) -> None:
     """Write atomically so a page that polls progress never sees half a file."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -143,6 +157,7 @@ class Jobs:
             raise OcrError("EMPTY_FILE", f"{name} is empty. Check the file and add it again.")
         stem = safe_name(Path(name).stem)
         original_name = f"{stem}{Path(name).suffix.lower()}"
+        company = company_for(name, self.companies())
         base = f"{datetime.now():%Y-%m-%d_%H%M}_{stem}"
         with self._lock:
             job_id, n = base, 1
@@ -156,7 +171,8 @@ class Jobs:
             d = self.root / job_id
             (d / "original").mkdir()
             (d / "original" / original_name).write_bytes(content)
-            meta = {"id": job_id, "name": name, "stem": stem, "created": datetime.now().isoformat(timespec="seconds"),
+            meta = {"id": job_id, "name": name, "stem": stem, "company": company,
+                    "created": datetime.now().isoformat(timespec="seconds"),
                     "status": "queued", "pages_total": None, "pages_done": 0, "error": None}
             _write_json(d / "job.json", meta)
             self._enqueue(job_id)
@@ -169,7 +185,36 @@ class Jobs:
                 out.append(_read_json(d / "job.json"))
             except (OSError, ValueError):
                 continue
+        for m in out:
+            m.setdefault("company", "")                            # files added before companies existed
         return sorted(out, key=lambda m: (m.get("created", ""), m.get("id", "")), reverse=True)
+
+    # ------------------------------------------------------------------------------------------- companies
+    def companies(self) -> list[str]:
+        """The client companies the user has given to files, each once (whatever the capitals or spaces)."""
+        seen: dict[str, str] = {}
+        for m in self.list_jobs():
+            if m["company"]:
+                seen.setdefault(_norm(m["company"]), m["company"])
+        return sorted(seen.values(), key=str.casefold)
+
+    def set_company(self, job_id: str, company) -> int:
+        """Files this document under ``company`` ("" = none). Files that have no company yet and whose name starts with
+        the same company are filed under it too (the user confirmed the company once). Returns how many others moved."""
+        if not isinstance(company, str) or len(company) > 80:
+            raise OcrError("BAD_COMPANY", "The company name could not be saved. Use up to 80 characters.")
+        company = " ".join(company.split())
+        with self._lock:
+            known = {_norm(c): c for c in self.companies()}
+            company = known.get(_norm(company), company)            # "maju jaya" joins the existing "MAJU JAYA"
+            self._update(job_id, company=company)
+            moved = 0
+            if company:
+                for m in self.list_jobs():
+                    if not m["company"] and m["id"] != job_id and company_for(m["name"], [company]):
+                        self._update(m["id"], company=company)
+                        moved += 1
+            return moved
 
     def get_job(self, job_id: str) -> dict:
         """Status and progress, plus how many cells the user still has to check."""

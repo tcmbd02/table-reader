@@ -8,8 +8,8 @@ $py = Join-Path $root ".venv\Scripts\python.exe"
 & $py -m PyInstaller start.py `
     --name "Table Reader" --noconfirm --clean --windowed `
     --icon "$root\packaging\table-reader.ico" `
-    --add-data "$root\static;static" `
-    --collect-submodules uvicorn --collect-all pypdfium2 --hidden-import multipart `
+    --add-data "$root\static;static" --add-data "$root\million;million" `
+    --collect-submodules uvicorn --collect-all pypdfium2 --hidden-import multipart --hidden-import xlwt --hidden-import xlrd `
     --distpath "$root\dist" --workpath "$root\build\pyinstaller" --specpath "$root\build"
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
 

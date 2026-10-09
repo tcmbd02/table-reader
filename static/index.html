@@ -9,32 +9,36 @@
 <body>
 <header>
   <h1>Table Reader</h1>
-  <div id="claude-box" class="claude-box" aria-live="polite">Checking Claude…</div>
-  <button id="quit" class="link" title="Close Table Reader on this computer">Quit Table Reader</button>
+  <div id="claude-box" class="claude-box" aria-live="polite" data-t>Checking Claude…</div>
+  <div id="company-box" class="company-box" hidden></div>
+  <a id="nav-payroll" class="navlink" href="#/payroll" data-t>Payroll</a>
+  <button id="lang" class="link" type="button">Bahasa Melayu</button>
+  <button id="quit" class="link" title="Close Table Reader on this computer" data-t data-t-title>Quit Table Reader</button>
 </header>
 
 <main id="home">
-  <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose files to read">
-    <p class="drop-big">Drop scans or photos here</p>
-    <p>PDF, JPG or PNG — or <u>click to choose files</u></p>
+  <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose files to read" data-t-aria>
+    <p class="drop-big" data-t>Drop scans or photos here</p>
+    <p><span data-t>PDF, JPG or PNG — or</span> <u data-t>click to choose files</u></p>
     <input id="file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.bmp,application/pdf,image/*" multiple hidden>
   </div>
   <div id="upload-messages"></div>
 
-  <h2>Recent files</h2>
+  <h2 data-t>Recent files</h2>
   <ul id="recent" class="recent"></ul>
-  <p id="recent-empty" class="muted" hidden>Nothing here yet. Add a file above to get started.</p>
+  <p id="recent-empty" class="muted" hidden data-t>Nothing here yet. Add a file above to get started.</p>
+  <p id="recent-none" class="muted" hidden data-t>No files for this company. Choose “All companies” to see every file.</p>
 </main>
 
 <main id="doc" hidden>
   <div class="doc-bar">
-    <button id="back" class="link">&larr; All files</button>
+    <button id="back" class="link" data-t>&larr; All files</button>
     <h2 id="doc-name"></h2>
     <div class="doc-actions">
       <button id="next-check" class="secondary" hidden>Go to next cell to check</button>
-      <button id="cancel" hidden>Cancel reading</button>
-      <button id="continue" hidden>Continue reading</button>
-      <button id="download" class="primary">Download CSV</button>
+      <button id="cancel" hidden data-t>Cancel reading</button>
+      <button id="continue" hidden data-t>Continue reading</button>
+      <button id="download" class="primary" data-t>Download CSV</button>
     </div>
   </div>
   <p id="doc-status" class="doc-status"></p>
@@ -42,6 +46,39 @@
   <div id="pages"></div>
 </main>
 
+<main id="payroll" hidden>
+  <div class="doc-bar">
+    <button id="pr-back" class="link" data-t>&larr; All files</button>
+    <h2 data-t>Payroll for Million Payroll</h2>
+    <div class="doc-actions">
+      <span id="pr-save" class="muted" aria-live="polite"></span>
+      <button id="pr-download" data-t>Download payroll CSV</button>
+      <button id="pr-download-xls" class="primary" data-t>Download Million file (.xls)</button>
+    </div>
+  </div>
+  <p class="muted" data-t>Pick the month and mark the days, add each employee and tick their time-card files. Table Reader adds up
+    days worked and overtime from the cells you have already checked. Anything it cannot work out is listed, never guessed,
+    and you can type over any figure.</p>
+  <div id="pr-error" class="banner error" hidden></div>
+  <section class="card"><h3 data-t>1. Month and days</h3><div id="pr-month"></div></section>
+  <section class="card"><h3 data-t>2. Employees and their time cards</h3>
+    <div class="auto-bar">
+      <button id="pr-auto" type="button" class="primary" data-t>Add employees from files</button>
+      <span id="pr-auto-company" class="muted"></span>
+      <button id="pr-million-import" type="button" data-t>Import employee list from Million</button>
+      <input id="pr-million-file" type="file" accept=".xls" hidden>
+    </div>
+    <p id="pr-million" class="legend"></p>
+    <datalist id="pr-million-list"></datalist>
+    <p class="legend" data-t>One employee is added for each worker in the files, with their time cards ticked. Employee No. is filled in from earlier months; type it once for new workers.</p>
+    <div id="pr-info" class="banner info" hidden></div>
+    <div id="pr-employees"></div>
+    <button id="pr-add" type="button" data-t>Add employee</button></section>
+  <section class="card"><h3 data-t>3. Results</h3><div id="pr-results"></div></section>
+</main>
+
+<script src="i18n.js"></script>
 <script src="app.js"></script>
+<script src="payroll.js"></script>
 </body>
 </html>

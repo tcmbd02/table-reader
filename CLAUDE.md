@@ -3,6 +3,7 @@
 Small Windows app for HR/accounting staff: upload scans/photos → Claude reads the table (incl. handwriting) →
 user checks highlighted cells → download CSV. Full plan, phases and open decisions: **`PLAN.md`** (read first).
 Progress log: `PROGRESS.md` (create/update at the end of every session).
+**Continuing work? Read `NEXT-SESSION.md` first** (current state, open items, next step, how to build/run).
 
 ## Rules
 - **Never guess.** Unreadable or uncertain cells stay blank, keep the raw marks (`raw_text`, `?` for unreadable
@@ -14,6 +15,9 @@ Progress log: `PROGRESS.md` (create/update at the end of every session).
   sees or stores Claude credentials; sign-in is Claude's own browser flow (`claude auth login --claudeai`).
 - Keep it simple for non-technical users: no settings screens, no accounts, plain-language messages that say what
   happened and what to do next.
+- Payroll step (`payroll.py`): pure, visible calculation from *confirmed* cells (rules shown to the user, any figure can be
+  overridden). Never fill gaps: unclear/missing/conflicting days are reported and the row is marked INCOMPLETE. OCR itself
+  still never calculates.
 - Documents may contain personal data: keep everything on the local PC; don't echo personal details in chat.
 
 ## Reference code

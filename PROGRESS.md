@@ -1,5 +1,274 @@
 # Progress log
 
+## Session 9b — 2026-10-09 — Employee list imported from Million (name check, Employee Nos. offered)
+339 tests pass; Malay checks pass (111 server messages, 0 missing). **Package rebuilt and restarted (xlrd is inside
+now). Not committed.**
+- **Million can export its employee list** (looked at through desktop control, read-only): Employee > Print >
+  "Employment Listing" > Print > Excel > File > OK. No save dialog: it writes `rptempepmlist.xls` into Million's company
+  folder (`C:\million\Payroll\mycompany` here), replacing the previous one. Printed-report layout: heading row
+  ("Emp no.", "Name", Gender, D.O.B., …, Basic Rate) again on every page, one employee every four rows, last line
+  "Total Employees : n".
+- **"Import employee list from Million"** (Payroll screen, section 2): `payroll.parse_million_employees` (xlrd) keeps
+  **only Employee No. and name** in `payroll\million-employees.json`; refused when it is not that report or when the
+  count differs from the report's own total. `POST /api/million/employees`; the payroll view carries `million`.
+- **Used for:** (1) every Employee No. box offers Million's list (datalist, name shown beside the number; nothing is
+  filled in by itself); (2) before the Million file: unknown numbers are checked against this list (employees.txt is
+  only used when no list was imported); (3) **name check** `MILLION_NAME` / `allow_names`: asked when the name is
+  someone else's in Million. Same person = one name has all the words of the other, case ignored; an empty name is
+  not compared. Order of questions: unknown number, name, INCOMPLETE.
+- Real export on this laptop: 9 of 9 employees read (2 more than at the tests; the user added them). In the packaged
+  app: the two tested companies download with no question, a company whose number is not in Million is asked about.
+- **Not done:** the button's file chooser was not clicked in a browser (the upload was sent to the same endpoint
+  directly; the page shows the list and the 9 choices). Allowance/deduction lists and the File Format Setting are not
+  imported. `learn-million\million-import-tools\employees.txt` (office checker) still lists 7 codes.
+- PR #1 title and description brought up to date (session 9 work); guide: new step B0 and the name question.
+- **User's first try failed** ("Total Employees : 14, but 17 could be read"): they had exported the first report in
+  Million's list, **Payroll Information** (`rptemppsnlist.xls`), whose title, company name and total line sit in the
+  Emp No. column. Fix: a row is an employee only when it also has something under another heading. Both reports are
+  read now (real files: 14 of 14 and 9 of 9); test added. Rebuilt; the 14-employee list is imported.
+
+## Session 9 — 2026-10-09 — Import cause found, Employee No. warning, IN/OUT time cards
+335 tests pass; Malay checks pass (106 server messages, 0 missing). **Package rebuilt and restarted. Not committed.**
+- **"No record updated" — cause confirmed in Million itself** (looked at through desktop control, nothing changed):
+  Employee tab > Employee lists 3 employees, the two codes of the import file among them. But the **September payroll
+  is Processed and lists only the first employee** (it was created before the two were added), so Million had no
+  payroll row to update. October (status New) also lists only that one employee, and has an **Add** button in
+  Transaction > Payroll > October > Edit; the processed September window has no Add/Edit. Not tried: how to get the
+  two workers into September (un-process / Organize / delete and re-create) — that changes payroll data, the user decides.
+- **End-to-end test passed (user's OK, ~12:30):** Payroll screen, one company chosen -> "Download Million file (.xls)"
+  (2 employees, no warnings) -> Million backed up (previous backup kept as
+  `mycompany_2026-10-09_1014_before-table-reader-test.bak`) -> the two workers added to the **October** payroll
+  (Transaction > Payroll > October > Edit > Add; tick = select the box cell, then Space; Alt+S, Yes) -> System >
+  Administrative Tools > 9. Import > October > Import, **Files of type "Excel 97-2003 (*.xls)"** (the dialog opens on
+  "Text (*.txt)") -> "Update complete". Both employees went from Working Days 26 / PH 0 / Days Worked 26 to
+  **25 / 1 / 21**, exactly the file; the third employee (not in the file) kept its figures. October now holds these
+  September figures as test data (not processed).
+- **Second company, same test, passed (~12:38, user's OK):** its 4 Employee Nos. were not in Million -> Table Reader
+  asked "4 Employee Nos. are not in the Million employee list" (answered No) -> 4 employees created in Million
+  (Employee > Add: Employee No. + Name only, Million saves with just these; **everything else is Million's default,
+  e.g. Gender Male, Basic Rate 0 — to be completed by the user**) -> codes added to employees.txt -> download with no
+  question -> added to October -> import -> "Update complete": all 4 went 26/0/26 -> 25/1/25 = the file; the first
+  company's two and the third employee unchanged. The Open dialog resets to "Text (*.txt)" on every import.
+- **Guide for staff:** `GUIDE - Table Reader to Million.html` (project folder; no real names; prints well).
+- `learn-million\million-import-tools\employees.txt`: now all 7 codes of this laptop's Million.- **Warning before download** (`payroll.load_million_employees`, `build_xls(known=, allow_unknown=)`, endpoint
+  `allow_unknown`): an Employee No. that is not in `employees.txt` -> 400 `MILLION_UNKNOWN`, the page asks "Make the
+  Million file anyway?" (asked before the INCOMPLETE question). No employees.txt (or no codes in it) = no check. Path:
+  `TABLE_READER_MILLION_EMPLOYEES`, else the learn-million tools folder. Tests never read this PC's list
+  (`tests/conftest.py`). The "Million file made" message now also says Million only updates employees who are already
+  in that month's payroll. Checked in the packaged app: whole-month file -> MILLION_UNKNOWN (5 codes), page draws.
+- **IN/OUT time cards** (`clock_pairs`, `parse_clock`, `_clock_day`; used only when the page has no hours column):
+  pairs "IN|OUT", "Time In|…|Time Out", "MORNING / IN|MORNING / OUT|AFTERNOON / …", Masuk/Keluar. Clock formats seen
+  on the real cards and accepted: 07:55, 7.55, 17:02:10, 5.30 PM / 5:30pm / 5,30 p.m. One pair on a day: OUT − IN −
+  break (`plan.break_hours`, default 1, 0–5, box next to Normal hours; a day shorter than the break keeps its hours).
+  Several pairs: added up, no break. Reported and left out, never guessed: yellow cell, only one time of a pair, not a
+  clock time (e.g. "530 PM", a time with a tick after it), OUT not later than IN (night shift, or afternoon written
+  without PM). "Day by day" shows the times and how the hours were worked out. `readable()` now includes these cards,
+  so "Add employees from files" picks them up. Dates written year-first (2026-09-16, door systems) are read now.
+- **Real cards (counts only):** 11 documents now readable; typical worked day 8.3–8.8 h after the break. Left out:
+  40 days with a yellow cell, 20 "OUT not later than IN" (one card writes afternoon times without PM), 5 not a clock
+  time, 6 unclear dates, 2 conflicts.
+- **Still not readable:** one cell holding several stamps ("Times | Time", 4 pages), day-per-column job sheets, tables
+  whose headers were read as COL1…, a leave form.
+- **To confirm with the user:** (1) morning/afternoon pairs: no break taken off; (2) a half day with one IN/OUT pair
+  still has the break taken off (only matters for overtime); (3) a few minutes early/late each day become overtime
+  fractions (e.g. 0.17 h) — no rounding rule yet; (4) cards that print their own "Work"/"Work Hour" figure: Table
+  Reader works from IN/OUT unless the user picks that column in the Hours column list.
+
+## Session 8 — 2026-10-09 — Million import said "no record updated" (diagnosis only, no code changed)
+The user imported a real September Million file for one company (2 employees) on this laptop: nothing was updated.
+- **The file is built correctly** (compared by shape with `learn-million\import-test\Million import test 2026-10.xls`,
+  which imported correctly today: same sheet name, same 51 headers, text in A, numbers in C–AY).
+- **Likely cause: the Employee Nos. are not in Million on this laptop.** Both rows have a short 3-character code;
+  `employees.txt` holds only the one code confirmed in Million. Million skips unknown codes silently. The office
+  checker had already said "Fix 2 errors" (both codes not in employees.txt) before the import.
+- Not confirmed directly: Million's own employee list could not be read from here (no database access, no desktop
+  control in this session).
+- Second possible cause, same message: this laptop's September payroll is already processed and holds one employee;
+  workers who are not in that month's payroll cannot be updated. How Million adds a new employee to an existing
+  month is not known yet.
+- **Next (user):** in Million check Employee tab > Employee for the two workers; add them or correct the codes in
+  Table Reader; check they are listed in the month's payroll; add the codes to `employees.txt`; checker READY; import.
+- **Offered, not built:** Table Reader warns before download when an Employee No. is not in `employees.txt`.
+- IN/OUT time cards still not started.
+
+## Session 7b — 2026-10-09 — Office checker run, package rebuilt, ready to commit
+303 tests pass. **Package rebuilt** (10:25, includes month grids + Million .xls). **Not committed yet** (waiting for the
+user's OK; repo is public).
+- **Office checker run** on Million files made from invented figures (`payroll.build_xls` + the office mapping):
+  "READY TO IMPORT", all 51 headers match, every figure in the column the office setting reads (D/E 25, K 25, O 1,
+  Q 2, AC 50, AK 30, AY 12.5). With invented Employee Nos. it reports each one as "not in employees.txt" — as it should.
+  Only the real September file is still to be checked (needs the user's Employee Nos. first).
+- **Rebuilt package checked** on an empty scratch data folder: the packaged .exe makes the .xls (xlwt and
+  `million\office-mapping.csv` are inside), refuses an INCOMPLETE employee without allow_incomplete.
+- `.gitignore`: `*.csv` was hiding the bundled `million/office-mapping.csv` (a fresh clone could not build or pass the
+  mapping test) -> exception added.
+- Before committing to the public repo: real client-company names taken out of this log and of a docstring in
+  `payroll.py` (invented names instead). Scan of all added lines: no worker names, no document contents.
+- Note: "Hours of Worked" is never worked out (0 unless the user types it) — by design since session 5.
+- **3. Results: Employee No. and Name are typing boxes** (`pw-empno`, `pw-name` in `static/payroll.js`; same plan
+  fields as section 2, which follows after the save).
+- **"Download Million file (.xls)" did nothing** (user's report). The server answered correctly (September: 400
+  MILLION_INCOMPLETE, 200 with allow_incomplete). Likely cause: the page and scripts were served with no Cache-Control,
+  so after the rebuild the browser showed the new page (with the button) beside an old `payroll.js` (no click handler).
+  Now every non-API answer has `Cache-Control: no-cache` (test added, 304 pass). Package rebuilt again (10:4x).
+  Checked in headless Edge on the real plan: both boxes drawn, button enabled. **Not clicked in a browser** (Chrome
+  extension still not connected) — the user should confirm the button now works.
+- **User: "both still not working".** Only one app was running and it served the new code, so the browser was still
+  running an old script (a plain reload keeps scripts it already has). Now `app.page_html` serves index.html with each
+  script/style address stamped with the file's fingerprint (`payroll.js?v=…`), so an update always loads. Test added
+  (305 pass); package rebuilt and restarted (opens a fresh tab).
+- **Type-and-click test in headless Edge** (scratch data, app from source, test script added to the page): typing in
+  the Results boxes keeps focus through the save, section 2 + title + server follow; the Million button asks about the
+  INCOMPLETE employee, then downloads `Payroll 2026-09 (Million).xls`; no script errors. Scripts for this are scratch
+  only (not in the repo).
+- **Next:** user's OK -> commit + push + update PR #1. User: fill September payroll (Employee Nos., PH) -> download the
+  Million .xls -> `Check Office File.bat`. Then IN/OUT time cards (still not started; rule in NEXT-SESSION.md §4).
+
+## Session 7 — 2026-10-09 — Month grids (several workers per sheet) + Million .xls export
+303 tests pass; Malay checks pass (96 server messages, 0 missing). **Not committed, package NOT rebuilt, office checker
+NOT run yet.**
+- **Month grids** ("Name | 1…31 | Remark", one row per worker): `payroll.grid_columns/grid_mark/document_parts`, refs
+  `<id>#p<page>r<row>` (`split_part`, `part_suffix`). Each worker's row is offered separately in the picker and by
+  "Add employees from files" (name from the row, never from the header; unclear-name rows listed as `unnamed`). Marks:
+  ✓ / P / 1 = worked (normal day, no OT), hours = hours, 0/O/-/x = absent, PH, OFF/RO/RD, leave AL/MC/… ; anything
+  else (S, SU…) = unclear, reported. PH on a calendar working day -> `daytype` (blocks Complete). Remark/Total checked
+  against worked or worked+PH. Whole multi-worker grid on one employee -> issue. Real data: one company's grid -> 4 workers,
+  each 25 working / 25 worked / 1 PH, complete (scan checked by eye: all four rows really identical). All files: 12
+  multi-worker grids, 43 rows offered, 12 with an unclear name.
+- **Million .xls** (`payroll.build_xls`, `GET /api/payroll/{month}/xls?company=&allow_incomplete=`, button "Download
+  Million file (.xls)"): xlwt BIFF8, sheet "Import", columns from office-mapping.csv (learn-million, else bundled
+  `million/office-mapping.csv`, else `OFFICE_MAPPING`), A text, C–AY numbers (0 written), AZ Notes. Refuses with every
+  problem listed (empty/spaced/duplicate Employee No., bad numbers, non-zero figure with no office column: Encashing
+  Leave, Maternity Leave, loan cleaner, Zakat/Levy paid by individual, unknown lines); INCOMPLETE only with
+  allow_incomplete. New default lines: Transport Allowance, use and claim, PENALTY, RENTAL CAR, rental hostel, ZAKAT.
+  Saved as `Payroll <month> [<company>] (Million).xls` in Documents\Table Reader\payroll. `xlwt` + `xlrd` (tests) added.
+- Real September plan (2 employees: one empty leftover, one INCOMPLETE) is refused, as it should be.
+- **Next:** user fills the September payroll (Add employees from files, Employee Nos., mark PH) -> make the .xls ->
+  run the office checker (`million-import-checker.ps1 -Mapping office-mapping.csv -Path <xls> -NoOpen -NoPause`) ->
+  rebuild with `packaging\build.ps1` (quit the running app first) -> commit. OCR engine bake-off (session 6, `ocr-lab\`)
+  is paused.
+
+## Session 6 — 2026-10-09 — Plan: open-source OCR instead of Claude (for server hosting)
+Plan only, no code changed: `PLAN-OCR-ENGINE.md`. Sample folder counted (counts only): 91 photos, 82 scanned PDFs,
+30 digital PDFs with a real text layer (79 of 220 PDF pages), 10 Excel files. Key points: Tesseract cannot keep
+today's handwriting quality, so the plan uses engines chosen per page (Excel/text layer exact → classic OCR for print →
+self-hosted document model on a GPU for handwriting, Claude kept as a fallback), all feeding the existing never-guess
+normaliser. First step is a measured bake-off (O0). Waiting on the user's decisions in its §9.
+
+## Session 5f — 2026-10-07 — Payroll: save bug, clock-system reports, one worker per page
+261 tests pass; package rebuilt. Not committed yet (branch `payroll-companies-malay`, PR #1).
+- **Bug:** a ticked document that no longer existed (history reset) made `validate_plan` refuse *every* save, so the
+  results never changed. Now `app.drop_gone_documents` takes such documents off the employee (on GET and PUT) with an
+  issue of kind `removed`; the page copies the cleaned `jobs` back after each save.
+- Real Sept A–D data (85 pages): only 29 pages had a daily-total column. Card types: clock-system reports (17 pages,
+  printed Actual/Late/EarlyOut/OverTime per day), IN/OUT cards, month grids "Name | 1…31" (many workers per sheet).
+- **Clock-system reports** (user's choice, done): columns matched by label (`REPORT_*` in payroll.py). Printed daily
+  figures are decimal hours — proved by the report totals (h.mm reading never matched). Late→lateness,
+  EarlyOut→early_departure, OverTime 1.0/1.5/2.0/3.0→ot_1/ot_1_5/ot_2/ot_3, Actual→days worked; normal-hours rule and
+  rest/holiday day counts not applied on report days (no double pay). Column sums checked against printed totals
+  (kind `total`, blocks Complete); Flat OT reported (kind `flat`), allowance columns not used. Real data: all 17
+  worker pages give exactly the printed totals.
+- **One worker per page:** a document whose pages show different Emp Code/Name is offered page by page in the
+  picker (`payroll.worker_parts`, refs `<id>#p<page>`, `split_ref`); a page and its whole document cannot both be chosen.
+- **"Add employees from files"** (section 2 of Payroll, per company or all): `payroll.auto_employees` makes one
+  employee per worker among the readable documents (those with an hours column), cards ticked; documents it cannot
+  read yet are listed. Same worker = same printed Emp Code, else same printed name (`_WORKER_LABEL`: Name, Nama / name,
+  Cleaner Name, Emp Code…), else same file name without company/month/year/copy numbers (`name_from_file`); a card
+  with nothing printed joins the one worker whose other card has its file name. `worker_key` is kept on the employee;
+  `remember_employees` saves Employee No./name per worker_key in `payroll/employees.json` on every save and the next
+  month's auto-add fills them in. Employee No. is never taken from the clock system's Emp Code.
+  Dry run on Sept A–D: 34 employees (one company 17 by code, two others 3×2 and 6×2 cards), 34 files left
+  out (IN/OUT cards, grids, other forms). 266 tests.
+- **Company chooser in the top bar** (user's request; replaces the filter above Recent files): `#company-box`,
+  remembered in localStorage (`companyFilter`), redrawn only when its options change. It filters Recent files and the
+  Payroll screen: employees list + results navigation show only that company's employees (`empCompany`: the
+  employee's `company`, else the one company of their ticked files — same rule as `payroll.employee_company`);
+  "Add employees from files" uses it; new employees get it as `company`; "Download payroll CSV" sends `?company=` and
+  the file is "Payroll <month> <company>.csv". 268 tests.
+- **Next (user chose 1-hour break rule for later):** IN/OUT cards (hours = OUT − IN − break, rule shown and
+  changeable); month grids (pick a row per employee).
+
+## Session 5e — 2026-10-07 — Bahasa Melayu
+253 tests pass; package rebuilt. Not checked in a browser (Chrome extension not connected).
+- Header button "Bahasa Melayu" / "English" switches the language (kept in the browser's localStorage, page reloads).
+- `static/i18n.js` (loaded first): `t(text, vars)` page text keyed by the English text, `tn(n, one, many)` plurals,
+  `tm(text)` server messages: exact entries, then `MS_PATTERNS` for sentences with names/numbers (also old error messages
+  saved in job.json). Unknown text stays English. `index.html` text marked `data-t` / `data-t-title` / `data-t-aria`.
+  Server and CSV unchanged (English).
+- Kept in English on purpose: the payroll results window (copy of Million Payroll's Edit Payroll screen) and both CSVs
+  (import into Million Payroll), and Claude's own notes/cell reasons (Claude's reading). The guide PDF is English only.
+- Checks (scratch scripts, not in tests/): all scripts parse (esprima); every `t()`/`tn()`/`data-t` text has a Malay
+  entry (167 texts); 49 server messages incl. real payroll issues match an entry or pattern. When adding UI text, add
+  the Malay entry to `MS` in `static/i18n.js`.
+
+## Session 5d — 2026-10-07 — Recent files filtered by client company
+252 tests pass (3 new); package rebuilt. Not checked in a browser (Chrome extension not connected).
+- Each file has a `company` in `job.json` ("" = none; older files read as ""). The company is **never worked out from the
+  name on its own**: the user sets it once ("Set company" chip → box pre-filled with a suggestion: month/year and the last
+  word taken off, e.g. "MAJU JAYA ALI SEPT 26" → "MAJU JAYA"). Then `Jobs.set_company` also files every file with no
+  company whose name starts with that company (whole words, any capitals/spaces), and new uploads are matched against
+  known companies (`company_for`, longest first). Same company typed differently joins the existing spelling.
+- `PUT /api/jobs/{id}/company {"company": "..."}` → `{"moved": n}`.
+- Home: "Company" dropdown beside "Recent files" (All / each company with counts / No company yet), remembered in the
+  browser. The list does not refresh while a company box is open.
+- Payroll file picker: a "Company" dropdown beside "Find a file…" for each employee (screen only, not saved). It starts on
+  the company of the employee's ticked files (if they share one); a new employee starts on the previous employee's company.
+  Ticked files always stay visible. `documents` in the payroll API now carry `company`. 253 tests; package rebuilt.
+
+## Session 5c — 2026-10-07 — Leave table + Allowance & Deduction tab
+249 tests pass (3 new). Package **not** rebuilt yet. Page not checked in a browser (Chrome extension not connected);
+API checked with a throwaway data folder.
+- Basic Pay & Overtime tab: Leave table (Leave | Type | Taken | Balance) bottom-left; "Please check" and day-by-day moved
+  below the two tables. Balance is greyed out (kept in Million Payroll). Taken is typed by the user (never read from cards).
+- New Allowance & Deduction tab: Allowance, Deduction, Benefit In Kind (BIK) tables (Rate typed per employee), User Defined
+  Entry (Zakat / Levy paid by individual), Message.
+- The lines are company lists in the month plan (`plan.lists`, defaults = the lines on the user's screenshots; the
+  Deduction list there was cut off by a scrollbar). "+ Add a … line" / "×" change the list for every employee; a new month
+  copies the lists of the latest saved month. Per employee: `entries`, `zakat`, `levy`, `message`.
+- CSV: one column per line (`Leave: Annual Leave (Day)`, `Allowance: …`, `Deduction: …`, `Benefit In Kind (BIK): …`),
+  then Zakat, Levy, Message, Notes.
+- Still not reproduced: Arrears tab, Overtime Pay Period dates.
+
+## Session 5b — 2026-10-07 — two fixes from the first real use
+246 tests pass; package rebuilt.
+- **Claude console windows popping up** (packaged app only): the windowed .exe has no console, so every `claude` start
+  (status check + each page) opened one. Fixed with `creationflags=CREATE_NO_WINDOW` (`ocr.NO_WINDOW`) on the status check
+  and the page runner (tests added). Checked with the rebuilt .exe during a real read: `claude.exe` ran, no visible window.
+- **Payroll results now look like Million Payroll's Edit Payroll screen** (`static/payroll.js`, `app.css`): title bar,
+  Employee No./Name boxes, "Month End Pay - September, 2026", the Basic Pay & Overtime tab with the three grey panels
+  (Basic Rate/Director Fee/Back Pay greyed out — not on time cards; Working Days/Public Holiday/Days Worked/Hours of Worked;
+  Lateness/Early Departure/No Pay Hour/Encashing Leave with Hour(s)/Day(s)), the Overtime table (Overtime | Unit | Hrs/Days),
+  First/Previous/Next/Last between employees. Bottom-left slot (Leave table on the real screen) shows "Please check" and
+  the day-by-day working. Not reproduced: Leave table, Allowance & Deduction and Arrears tabs, Overtime Pay Period dates
+  (nothing to fill them from).
+
+## Session 5 — 2026-10-07 — Payroll step (Million Payroll month-end figures)
+244 tests pass (`tests/test_payroll.py` + payroll API tests).
+- Flow kept: read → user corrects → generic CSV. New **Payroll** screen (header link, `#/payroll/yyyy-mm`) turns the
+  *confirmed* cells into one row per employee in the Edit Payroll screen's terms and downloads `Payroll yyyy-mm.csv`.
+- The "template" was taken from the 3 screenshots in `screenshots\` (Edit Payroll: Basic Pay & Overtime, Allowance &
+  Deduction, Arrears). **No real Million Payroll import file was available**, so the column headings follow the screen
+  labels (Employee No., Name, Month End Pay, Working Days, Public Holiday, Days Worked, Hours of Worked, Lateness,
+  Early Departure, No Pay Hour, Encashing Leave, six overtime rates, Notes). If its importer needs other headings/order,
+  change `payroll.FIELDS` / `build_csv`. Allowances, deductions, arrears, rates, leave balances are not on time cards: not output.
+- `payroll.py` rules (worked out from a real sample employee: 2 half-month cards ↔ Days Worked 25, Working Days 25, OT 1.5 = 25 h,
+  2 Times Work on Holiday = 1 day): per employee, daily hours come from the cards' Total column (or a chosen column);
+  Working Days = days marked work; Days Worked = work days with hours > 0; OT 1.5 Times = hours above the normal hours
+  (default 8, editable) on those days; rest-day work and public-holiday work are counted in days (not hours); Public
+  Holiday = holidays not worked. Sundays start as rest days; the user marks public holidays on a calendar (Malaysia Day
+  16 Sept in the example). Any figure can be typed over (`overrides`, shown with a blue edge and "use worked-out value").
+- Never-guess in the calculation: a day whose hours cell is still yellow/unclear, a date for another month, text that is
+  not hours, a day written twice with different hours, days with no entry, no hours column, or no Employee No. is listed
+  under "Please check" and the row is marked **INCOMPLETE** in the CSV Notes column; unclear days are left out, not assumed.
+  Corrections made in the document view flow through automatically.
+- Employees are typed in the screen (Employee No. exactly as in Million Payroll); several documents (cards) can belong to
+  one employee, each document to one employee only. Plans are saved per month in `Documents\Table Reader\payroll\`.
+- Checked: example reproduces 25/25/25 h/1 day in tests; visual check in headless Edge (an unclear day 28 gives 24 and
+  "Needs checking"). Live check with real Claude readings of the sample employee's two cards: totals read as 9/dash, but several
+  Totals were flagged this run → user presses "Use this" first (then 25/25/25/1 expected; not yet confirmed end to end).
+- Open: real import file format; other form types (tick grids, salary lists, logbooks) need their own mapping; leave /
+  lateness / early departure are not derived (type over); employee list is typed by hand (could import Million Payroll's list).
+
 ## Session 4 — 2026-10-07 — Phase 5 (packaging) built; clean-PC test still to do
 **Status: package built and tested on this laptop only.** 209 tests pass.
 - Build: `.\packaging\build.ps1` → `dist\Table Reader\` (PyInstaller onedir, no console window, ~49 MB) and

@@ -3,10 +3,14 @@
 9. SEPTEMBER 2026*.zip
 Table Reader/
 *.csv
+!million/office-mapping.csv
 result.json
 edits.json
 reading/
 *.log
+
+# OCR engine trials: copies of real pages, engine outputs, downloaded programs and models
+ocr-lab/
 
 # Earlier project's code (kept on this laptop only)
 reference/
@@ -19,3 +23,6 @@ build/
 dist/
 *.pyc
 *.spec
+
+# Screenshots of the payroll program (real employee names and pay)
+screenshots/

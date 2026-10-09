@@ -529,3 +529,30 @@ def test_cancel_on_a_finished_document_does_nothing(tmp_path):
     meta = make(s, pages_=1, tmp_path=tmp_path)
     assert s.wait_idle()
     assert s.cancel(meta["id"])["status"] == "done"
+
+
+# ------------------------------------------------------------------------------------------------------ companies
+def test_company_for_matches_only_confirmed_companies_longest_first():
+    assert jobs.company_for("MAJU JAYA ALI SEPT 26.pdf", ["MAJU JAYA", "MAJU"]) == "MAJU JAYA"
+    assert jobs.company_for("maju  jaya_ali sept 26.jpg", ["MAJU JAYA"]) == "MAJU JAYA"
+    assert jobs.company_for("MAJU JAYAX ALI.pdf", ["MAJU JAYA"]) == ""          # whole words only
+    assert jobs.company_for("MAJU JAYA ALI SEPT 26.pdf", []) == ""            # never worked out from the name
+
+
+def test_setting_a_company_files_matching_files_and_new_uploads_under_it(store, tmp_path):
+    a = make(store, "MAJU JAYA ALI SEPT 26.pdf", 1, tmp_path)
+    b = make(store, "MAJU JAYA AMIN SEPT 26.pdf", 1, tmp_path)
+    c = make(store, "OTHER CO ALI SEPT 26.pdf", 1, tmp_path)
+    assert a["company"] == "" and store.companies() == []
+    assert store.set_company(a["id"], "  MAJU   JAYA ") == 1
+    by_id = {m["id"]: m["company"] for m in store.list_jobs()}
+    assert by_id == {a["id"]: "MAJU JAYA", b["id"]: "MAJU JAYA", c["id"]: ""}
+    d = make(store, "maju jaya zul oct 26.pdf", 1, tmp_path)
+    assert d["company"] == "MAJU JAYA"
+    store.set_company(c["id"], "maju jaya")                                     # same company, other spelling
+    assert store.companies() == ["MAJU JAYA"]
+    store.set_company(c["id"], "")
+    assert store.get_job(c["id"])["company"] == ""
+    with pytest.raises(ocr.OcrError):
+        store.set_company(a["id"], "x" * 81)
+    store.wait_idle()
