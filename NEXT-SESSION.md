@@ -57,6 +57,10 @@ Tests: **339 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in se
   app), `Table Reader guide.pdf`, `GUIDE - Table Reader to Million.html` and a user README. No code, no notes. After a
   change that users should get: rebuild, then replace those files on `download` (use a separate worktree; update the
   build date and commit in its README), scan, commit, push. Link: https://github.com/tcmbd02/table-reader/tree/download
+- **`download` is the repository's DEFAULT branch (user asked, 2026-10-09)**, so visitors see the installer first. The
+  code stays on `main`. Consequences: a new pull request aims at `download` unless told otherwise — **always open
+  PRs with `--base main`**; a fresh clone checks out `download` (`git checkout main` for the code); `origin/HEAD`
+  points to `download` here.
 - History of PR #1 (https://github.com/tcmbd02/table-reader/pull/1):
   - Pushed 2026-10-09 (user asked): everything up to session 7b (save-bug fix, clock reports, page-by-page picker,
     "Add employees from files", Company chooser, month grids, Million .xls, editable Employee No./Name in Results,
