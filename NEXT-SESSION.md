@@ -51,7 +51,13 @@ Tests: **339 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in se
 
 - Repo is **PUBLIC**: `tcmbd02/table-reader`. Never commit real names, documents, results or screenshots
   (`screenshots/` is git-ignored; examples use made-up names such as "MAJU JAYA", "ALI", "MJ(1)").
-- Branch `payroll-companies-malay`, **PR #1** open: https://github.com/tcmbd02/table-reader/pull/1
+- **PR #1 was merged into `main` on 2026-10-09** (user asked; merge commit 626a4c5, includes sessions 9 and 9b). The
+  local checkout is on `main`. New work: make a new branch from `main` first. The old branch was deleted.
+- **Branch `download` (for normal users, made 2026-10-09):** an orphan branch with only `Table Reader.zip` (the built
+  app), `Table Reader guide.pdf`, `GUIDE - Table Reader to Million.html` and a user README. No code, no notes. After a
+  change that users should get: rebuild, then replace those files on `download` (use a separate worktree; update the
+  build date and commit in its README), scan, commit, push. Link: https://github.com/tcmbd02/table-reader/tree/download
+- Old line, kept for the link:
   - Pushed 2026-10-09 (user asked): everything up to session 7b (save-bug fix, clock reports, page-by-page picker,
     "Add employees from files", Company chooser, month grids, Million .xls, editable Employee No./Name in Results,
     script fingerprints). Scanned for real names first (clean).
