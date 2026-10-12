@@ -93,8 +93,6 @@ td.rownum { padding: 6px 8px; color: var(--muted); text-align: right; font-size:
 .cell.edited { box-shadow: inset 3px 0 0 var(--edited); }
 .cell .tools { display: flex; gap: 4px; flex-wrap: wrap; padding: 0 6px 6px; font-size: .8rem; }
 .cell .tools button { font-size: .8rem; padding: 1px 8px; }
-.cell .seen { width: 100%; color: var(--muted); }
-.cell .reason { width: 100%; color: var(--muted); font-style: italic; }
 .field { border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
 .field label { display: block; padding: 4px 8px 0; font-size: .8rem; color: var(--muted); }
 .field .cell { min-width: 0; }

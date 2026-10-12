@@ -62,8 +62,26 @@ function addedByThemselves(info) {
       "{n} newly read files were not put in a payroll month, so tick them for an employee yourself:"),
     info.no_month.map((f) => `${f.name} (${tm(f.why)})`).join("; "));
   }
-  if (info.added.length) parts.push(t("Type the Employee No. where it is empty; it is remembered for next month."));
+  if (info.added.length) parts.push(...employeeNoHint(info.from_million, info.new_numbers));
   return parts.join(" ");
+}
+
+// After employees were made from files: how many got their Employee No. from Million's list, how many got a new one,
+// and what is left to type.
+function employeeNoHint(fromMillion, newNumbers) {
+  const parts = [];
+  if (newNumbers) {
+    parts.push(tn(newNumbers,
+      "{n} employee without an Employee No. was given a new one (the company's first 7 letters and a number). Create that employee in Million with this number before you import.",
+      "{n} employees without an Employee No. were given new ones (the company's first 7 letters and a number). Create those employees in Million with these numbers before you import."));
+  }
+  if (fromMillion) {
+    parts.push(tn(fromMillion,
+      "{n} Employee No. was filled in from Million's list, because the name on the card is that employee's whole name there. Check it.",
+      "{n} Employee Nos. were filled in from Million's list, because the name on the card is that employee's whole name there. Check them."));
+  }
+  parts.push(t("Type the Employee No. where it is empty; it is remembered for next month."));
+  return parts;
 }
 
 function setSaveState(text) { $("pr-save").textContent = text; }
@@ -299,7 +317,17 @@ function renderEmployees() {
 
     const empNo = el("input", { type: "text", value: e.emp_no, placeholder: t("e.g. MJ(1)"), maxlength: "100", list: "pr-million-list" });
     const name = el("input", { type: "text", value: e.name, placeholder: t("Name as in Million Payroll"), maxlength: "100" });
-    empNo.addEventListener("input", () => { e.emp_no = empNo.value; schedulePayrollSave(); });
+    // an Employee No. Table Reader took from Million's list by itself says so until it is changed
+    const fromMillion = () => Boolean(e.emp_no_million) && e.emp_no.trim() === e.emp_no_million;
+    const source = el("span", { class: "muted from-million", text: t("From Million's list (same name). Change it if this is another person.") });
+    source.hidden = !fromMillion();
+    // and so does a new number Table Reader made from the company's name
+    const isNew = () => Boolean(e.emp_no_new) && e.emp_no.trim() === e.emp_no_new;
+    const made = el("span", { class: "muted from-million", text: t("New number made by Table Reader. Create this employee in Million with this number before you import.") });
+    made.hidden = !isNew();
+    empNo.addEventListener("input", () => {
+      e.emp_no = empNo.value; source.hidden = !fromMillion(); made.hidden = !isNew(); schedulePayrollSave();
+    });
     name.addEventListener("input", () => { e.name = name.value; schedulePayrollSave(); });
     const columns = (pr.results[i] && pr.results[i].columns) || [];
     const colSel = el("select", { "aria-label": t("Column with the daily hours") },
@@ -316,7 +344,7 @@ function renderEmployees() {
     const offer = s ? el("button", { type: "button", class: "suggest", text: t("Use {no} ({name} in Million)", { no: s.emp_no, name: s.name }) }) : null;
     if (offer) offer.addEventListener("click", () => { e.emp_no = s.emp_no; schedulePayrollSave(); renderEmployees(); renderResults(); });
     return el("div", { class: "emp" },
-      el("div", { class: "row" }, el("label", {}, t("Employee No."), empNo), offer, el("label", {}, t("Name"), name),
+      el("div", { class: "row" }, el("label", {}, t("Employee No."), empNo), offer, source, made, el("label", {}, t("Name"), name),
         el("label", {}, t("Hours column"), colSel), remove),
       el("div", { class: "legend", text: t("Time-card files for this employee (tick every card of the month):") }),
       el("div", { class: "pick-bar" }, el("label", {}, t("Company "), company), filter), docs);
@@ -328,10 +356,31 @@ function renderEmployees() {
   const all = suggestedIndexes();
   $("pr-suggest-all").hidden = all.length < 2;
   $("pr-suggest-all").textContent = t("Use all {n} Employee Nos. suggested from Million", { n: all.length });
+  const fresh = assignableIndexes();
+  $("pr-assign-all").hidden = !fresh.length;
+  $("pr-assign-all").textContent = tn(fresh.length, "Give {n} employee without an Employee No. a new one",
+    "Give {n} employees without an Employee No. a new one");
 }
 
-// Million's Employee No. for an employee who has none yet: offered, never filled in by itself. The server only
-// suggests when exactly one name in Million's list fits.
+// A new Employee No. (the company's letters and the next number) for an employee who has none and whom Million's list
+// has no number to offer for. Employees made from the files get it by themselves; this is for the ones already here.
+function assignFor(i) {
+  const e = pr.plan.employees[i], r = pr.results[i];
+  return e && r && r.id === e.id && !e.emp_no.trim() && !r.suggest && r.assign ? r.assign : null;
+}
+function assignableIndexes() { return visibleIndexes().filter((i) => assignFor(i)); }
+
+$("pr-assign-all").addEventListener("click", () => {
+  const all = assignableIndexes();
+  const lines = all.map((i) => `${pr.plan.employees[i].name}  →  ${assignFor(i)}`);
+  if (!confirm(t("Give these employees new Employee Nos.? Create them in Million with the same numbers before you import.") + "\n\n" + lines.join("\n"))) return;
+  all.forEach((i) => { const no = assignFor(i); pr.plan.employees[i].emp_no = no; pr.plan.employees[i].emp_no_new = no; });
+  schedulePayrollSave(); renderEmployees(); renderResults();
+});
+
+// Million's Employee No. for an employee who has none yet: offered, not filled in (the server fills in only a whole
+// name read on the card, when the employee is made from the files). It suggests when exactly one name in Million's
+// list fits.
 function suggestionFor(i) {
   const e = pr.plan.employees[i], r = pr.results[i];
   return e && r && r.id === e.id && !e.emp_no.trim() && r.suggest ? r.suggest : null;
@@ -636,7 +685,7 @@ $("pr-auto").addEventListener("click", async () => {
         "{n} worker rows were left out because the names in them are unclear (fix the names in the document, or tick the rows for the right employees yourself):"),
       unnamed.join("; "));
     }
-    if (added) parts.push(t("Type the Employee No. where it is empty; it is remembered for next month."));
+    if (added) parts.push(...employeeNoHint(view.auto.from_million, view.auto.new_numbers));
     prShowInfo(parts.join(" "));
     prIndex = Math.max(0, pr.plan.employees.length - added);   // show the first new employee
     renderPayroll();

@@ -50,13 +50,14 @@
   <div class="step" style="grid-column: 1 / 3;">
     <h2><span class="num">3</span>Check the <span class="yellow">yellow</span> cells</h2>
     <p>The original page is on the left and the table on the right. Table Reader <b>never guesses</b>: when it is not sure
-       about a cell, it leaves the cell empty and turns it <span class="yellow">yellow</span>, with the reason and what it saw.</p>
+       about a cell, it turns the cell <span class="yellow">yellow</span> and shows what it saw in it. A yellow cell does not
+       count yet: it is left out of the downloaded table and the payroll until you accept or correct it.</p>
     <div class="cols">
       <ul>
-        <li><b>Type</b> the right value and press <b>Enter</b>.</li>
-        <li><b>Use this</b> &mdash; accept what Claude saw (check it first; <b>?</b> marks letters it could not read). When the
-            <b>?</b> is only at the start or end, as in 18:50?, the button names the value without it: <b>Use &ldquo;18:50&rdquo;</b>.</li>
-        <li><b>It&rsquo;s empty</b> &mdash; the cell really is blank.</li>
+        <li>Right? Click the cell and press <b>Enter</b> (check it first; a <b>?</b> inside marks a letter it could not read).</li>
+        <li>Wrong? <b>Type</b> the right value and press <b>Enter</b>.</li>
+        <li>Really blank? Clear the cell and press <b>Enter</b>.</li>
+        <li>Point at a yellow cell to see why Claude was not sure.</li>
       </ul>
       <ul>
         <li><b>Undo my change</b> brings back the original reading.</li>

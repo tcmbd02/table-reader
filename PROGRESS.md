@@ -1,5 +1,49 @@
 # Progress log
 
+## Session 17 - 2026-10-12 - A new worker's Employee No. filled in from Million's list (whole name only)
+402 tests pass; Malay checks pass. **Not committed, app not rebuilt** (main folder, branch `pdf-text`, on top of 9d298bc).
+- The user asked for the Employee No. to be put on an employee by itself after reading. Already there: a number typed
+  once is remembered per worker; a partly fitting name gets the "Use ..." button. The user chose: fill in by itself
+  only on a whole-name match.
+- **Built (`payroll.fill_employee_nos`, called from `auto_employees`):** when an employee is made from the files
+  ("Add employees from files" and files that join by themselves), the number comes from Million's imported list when
+  the name **read on the card** (confirmed cell, not the file name) is the whole name of exactly one employee there
+  (case and spacing aside), no other employee in the plan has that name, and nobody in the plan has that number. The
+  number typed in an earlier month still wins. Marked `emp_no_million` on the employee: the page writes "From Million's
+  list (same name). Change it if this is another person." beside the box until the number is changed (validate_plan
+  drops the mark then). The message after adding says how many were filled in. Everything else stays a button.
+- Only at the moment the employee is made: an employee already in the payroll, or a list imported later, gets the
+  button as before.
+- Real data, dry run in memory (counts only, single-worker files): 34 employees, 24 named on the card, 2 would get a
+  number from Million's list (15 employees), 0 left to the button.
+- **New Employee Nos. (user's request, same session; this replaces the earlier decision that a number is only ever
+  typed):** an employee with no number gets one made from the company: first 7 letters and digits of its name in
+  capitals + the next number, 3 digits (`payroll.company_prefix`, `new_employee_nos`; MAJU JAYA -> MAJUJAY001). Order
+  when an employee is made from the files: number remembered from an earlier month -> Million's number on a whole-name
+  match -> new number. Not when Million's list has a number to offer (the "Use ..." button), nor without a name or a
+  company. The next number is one above the highest with that start in every saved month, the remembered workers and
+  Million's list (`PayrollStore.used_employee_nos`), and a new number is remembered at once (`number_new_employees` in
+  app.py), so another month cannot hand it to someone else. Marked `emp_no_new`; the page says "New number made by
+  Table Reader. Create this employee in Million ..." until it is changed. Employees already in a payroll are not
+  touched by themselves: a button "Give N employees without an Employee No. a new one" (confirm list) does it.
+  402 tests pass; Malay checks pass.
+- Real September payroll, dry run in memory (counts only): 84 employees, 17 have a number, 1 has a Million suggestion,
+  62 would get a new number by the button, 4 stay empty (no company / no name). 26 companies, 26 different starts, 8
+  shorter than 7 characters; longest number 10 characters.
+- **Not checked: whether Million accepts a 10-character Employee No.** (numbers used so far are short). Try one
+  employee in Million before relying on it. Companies whose names start with the same 7 letters share one number run.
+  Million's imported list is one file: a worker of a company whose list was not imported looks "not recorded".
+- **Yellow cells show what Claude saw, nothing else (user's request, same session):** the reason text, "Claude saw:",
+  "Use this" and "It's empty" are gone from the document page (`paintCell` in app.js). The yellow box holds the marks
+  Claude saw (a "?" at the start or end dropped, as the old button did); the reason is the tooltip. Enter in the box
+  accepts what it shows (an empty box = the cell is empty); typing over it corrects it; just passing through does
+  nothing. **Unchanged on purpose: a yellow cell is still unconfirmed** - blank in the CSV (with its note) and
+  "unclear" in the payroll - because of the never-guess rule. **Asked the user** whether yellow readings should count
+  without being accepted; not changed until they say so. `packaging/guide/guide.html` updated, its PDF not regenerated.
+- Not clicked through in the browser (tests + syntax check only). Guides (EN, BM) say it; the PDF guide does not.
+- Still open from this session: the `download` branch (new zip + guides, uncommitted in `.claude\worktrees\download`)
+  and the PR #2 description were prepared but not published (the commands were blocked by the permission check).
+
 ## Session 16b - 2026-10-12 - Phase B: newly read files go into their month's payroll by themselves
 397 tests pass; Malay checks pass (130 messages). **Committed and pushed on `pdf-text` (0045a5d, PR #2); app rebuilt
 and restarted 2026-10-12** (nothing was being read). First start of the new app wrote the index: all 62 documents

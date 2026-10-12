@@ -279,11 +279,36 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                         labels += [c for c in page["column_labels"] if c not in labels]
             r["columns"] = labels
         suggestions = payroll.suggest_employee_nos(plan, million["employees"]) if million else {}
+        new = new_numbers(plan, docs)
         for r in results:
             r["suggest"] = suggestions.get(r["id"])                 # Million's Employee No. for this name, to offer
+            r["assign"] = new.get(r["id"])                          # else a new one (company letters + number), to offer
         return {"plan": plan, "documents": docs, "results": results, "million": million,
                 "fields": [{"key": k, "label": label, "unit": unit} for k, label, unit in payroll.FIELDS],
                 "list_heads": {kind: {"title": title, "type": type_head} for kind, (title, type_head, _) in payroll.LISTS.items()}}
+
+    def new_numbers(plan: dict, docs: list[dict], only: set[str] | None = None) -> dict[str, str]:
+        """{employee id: a new Employee No.} for employees without one (``only``: among these), from the company's name
+        (payroll.new_employee_nos). Not for an employee Million's list has a number to offer for."""
+        million = (plans.load_million() or {}).get("employees") or []
+        offered = payroll.suggest_employee_nos(plan, million) if million else {}
+        company_of_doc = {d["id"]: d["company"] for d in docs}
+        companies = {e["id"]: payroll.employee_company(e, company_of_doc) for e in plan["employees"]
+                     if e["id"] not in offered and (only is None or e["id"] in only)}
+        return payroll.new_employee_nos(plan, companies, plans.used_employee_nos() | {m["emp_no"] for m in million})
+
+    def number_new_employees(plan: dict, docs: list[dict], before: set[str]) -> int:
+        """Employees just made from the files (not in ``before``) who are still without an Employee No. get a new one,
+        marked ``emp_no_new``. The numbers are remembered at once, so another month never gives them to someone else.
+        Returns how many."""
+        new = new_numbers(plan, docs, {e["id"] for e in plan["employees"]} - before)
+        for e in plan["employees"]:
+            if e["id"] in new:
+                e["emp_no"] = e["emp_no_new"] = new[e["id"]]
+        directory = plans.load_directory()
+        if payroll.remember_employees(plan, directory):
+            plans.save_directory(directory)
+        return len(new)
 
     def candidates_of(d: dict) -> list[dict]:
         """What "Add employees from files" chooses from in one finished document: the document, or its parts."""
@@ -336,18 +361,22 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                 mine.append(d)
             elif month is None:
                 no_month.append({"name": d["name"], "why": why})
-        info = {"added": [], "joined": [], "skipped": [], "unnamed": [], "no_month": no_month}
+        info = {"added": [], "joined": [], "skipped": [], "unnamed": [], "no_month": no_month, "from_million": 0,
+                "new_numbers": 0}
         if mine:
             before = {e["id"]: len(e["jobs"]) for e in plan["employees"]}
             linked = [{"ref": r, "name": d["name"], "company": d["company"], "pages": []}
                       for d in docs if d["id"] in taken for r in [d["id"]] + [p["ref"] for p in d["parts"]]]
             new = [c for d in mine for c in candidates_of(d)]
             _, info["skipped"], info["unnamed"] = payroll.auto_employees(
-                plan, linked + new, plans.load_directory(), lambda: "e" + uuid.uuid4().hex[:12], {c["ref"] for c in new})
+                plan, linked + new, plans.load_directory(), lambda: "e" + uuid.uuid4().hex[:12], {c["ref"] for c in new},
+                (plans.load_million() or {}).get("employees"))
             for e in plan["employees"]:
                 grown = len(e["jobs"]) - before.get(e["id"], 0)
                 if grown > 0:
                     info["added" if e["id"] not in before else "joined"].append({"name": e["name"], "cards": grown})
+            info["from_million"] = sum(1 for e in plan["employees"] if e["id"] not in before and e.get("emp_no_million"))
+            info["new_numbers"] = number_new_employees(plan, docs, set(before))
             plans.save(payroll.validate_plan(plan, known_refs(docs)))
             for d in mine:
                 index[d["id"]] = plan["month"]
@@ -398,12 +427,16 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         plan, docs = plans.load(month), finished_documents()
         drop_gone_documents(plan, known_refs(docs))
         candidates = [c for d in docs if not company or d["company"] == company for c in candidates_of(d)]
+        before = {e["id"] for e in plan["employees"]}
         added, skipped, unnamed = payroll.auto_employees(plan, candidates, plans.load_directory(),
-                                                         lambda: "e" + uuid.uuid4().hex[:12])
+                                                         lambda: "e" + uuid.uuid4().hex[:12],
+                                                         million=(plans.load_million() or {}).get("employees"))
+        new_numbers_made = number_new_employees(plan, docs, before)
         plan = payroll.validate_plan(plan, known_refs(docs))
         plans.save(plan)
         view = payroll_view(plan, docs)
-        view["auto"] = {"added": added, "skipped": skipped, "unnamed": unnamed}
+        view["auto"] = {"added": added, "skipped": skipped, "unnamed": unnamed, "new_numbers": new_numbers_made,
+                        "from_million": sum(1 for e in plan["employees"] if e["id"] not in before and e.get("emp_no_million"))}
         return view
 
     def payroll_of(month: str, company: str) -> tuple[dict, list[dict]]:

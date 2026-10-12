@@ -411,11 +411,12 @@ def readable(page: dict) -> bool:
 
 
 def auto_employees(plan: dict, candidates: list[dict], directory: dict, new_id: Callable[[], str],
-                   addable: set[str] | None = None) -> tuple[int, list[str], list[str]]:
+                   addable: set[str] | None = None, million: list[dict] | None = None) -> tuple[int, list[str], list[str]]:
     """Add an employee for every worker found in ``candidates`` ([{ref, name, company, pages}]: documents, one page of
     a multi-worker report, or one worker's row of a month grid) that no employee has yet, with their cards ticked.
     Employee No. and name come from ``directory`` (what the user typed in earlier months) when known; the Employee No.
-    is never made up. ``addable``: only these refs may be added (the others only show, by their file names, whose
+    is never made up: for a worker not known yet it is taken from ``million`` (Million's employee list) only when the
+    name read on the card is one employee's whole name there (fill_employee_nos). ``addable``: only these refs may be added (the others only show, by their file names, whose
     cards are already chosen, so a card with no name printed joins its pair). Changes ``plan`` in place. Returns
     (employees added, names of documents left out because no days can be read from them, names of grid rows left out
     because the name in the row is unclear or empty)."""
@@ -458,12 +459,12 @@ def auto_employees(plan: dict, candidates: list[dict], directory: dict, new_id: 
         if not (code or name) and len(by_file.get(file_id, ())) == 1:
             key = next(iter(by_file[file_id]))           # nothing printed: the worker whose other card has this file name
         group = groups.setdefault(key, {"refs": [], "name": name or file_name, "code": code, "first": i,
-                                        "company": c["company"]})
+                                        "company": c["company"], "on_card": bool(name)})
         group["refs"].append(c["ref"])
         group["first"] = min(group["first"], i)
         if file_name:
             by_file.setdefault(file_id, set()).add(key)
-    added = 0
+    added, named_on_card = 0, set()
     for key, g in sorted(groups.items(), key=lambda kv: kv[1]["first"]):    # employees in the files' order
         g["refs"].sort(key=[c["ref"] for c in candidates].index)
         if key in by_key:                                         # this worker is already an employee: add the cards
@@ -475,8 +476,66 @@ def auto_employees(plan: dict, candidates: list[dict], directory: dict, new_id: 
                                   "zakat": 0.0, "levy": 0.0, "message": "", "worker_key": key,
                                   "company": g["company"] or "", "pay_basis": known.get("pay_basis") or "monthly",
                                   "basic_rate": float(known.get("basic_rate") or 0.0)})
+        if g["on_card"] and not known.get("name"):
+            named_on_card.add(plan["employees"][-1]["id"])
         added += 1
+    if million:
+        fill_employee_nos(plan, million, named_on_card)
     return added, skipped, unnamed
+
+
+def fill_employee_nos(plan: dict, million: list[dict], ids: set[str]) -> int:
+    """Give the employees ``ids`` (just made from the files, named as read on their card) Million's Employee No. when
+    the name on the card is the whole name of exactly one employee in Million's list (upper/lower case and spacing
+    aside), nobody in the plan has that number, and no other employee in the plan has that name. Such a number is
+    marked ``emp_no_million`` so the page can say where it came from. A name that only partly fits is offered, not
+    filled in (suggest_employee_nos). Returns how many were filled in."""
+    in_million: dict[str, list[str]] = {}
+    for m in million:
+        if _key(m.get("name", "")):
+            in_million.setdefault(_key(m["name"]), []).append(m["emp_no"])
+    taken = {e["emp_no"].strip().casefold() for e in plan["employees"] if e["emp_no"].strip()}
+    in_plan: dict[str, int] = {}
+    for e in plan["employees"]:
+        in_plan[_key(e["name"])] = in_plan.get(_key(e["name"]), 0) + 1
+    filled = 0
+    for e in plan["employees"]:
+        fits = in_million.get(_key(e["name"]), [])
+        if e["id"] in ids and not e["emp_no"].strip() and len(fits) == 1 and in_plan[_key(e["name"])] == 1 \
+                and fits[0].casefold() not in taken:
+            e["emp_no"] = e["emp_no_million"] = fits[0]
+            filled += 1
+    return filled
+
+
+NEW_NO_LETTERS = 7      # how much of the company name starts an Employee No. made by Table Reader
+
+
+def company_prefix(company: str) -> str:
+    """What a new Employee No. of this company starts with: the first 7 letters and digits of its name, in capitals,
+    without spaces or signs ("MAJU JAYA" -> "MAJUJAY")."""
+    return "".join(ch for ch in (company or "").upper() if ch.isalnum())[:NEW_NO_LETTERS]
+
+
+def new_employee_nos(plan: dict, companies: dict[str, str], used: set[str]) -> dict[str, str]:
+    """A new Employee No. for each employee in ``companies`` ({employee id: company}) who has none: the company's
+    letters and the next free number, three digits ("MAJUJAY001", then "MAJUJAY002"). The next number is one more than
+    the highest such number in the plan or in ``used`` (every number known elsewhere: other months, earlier months'
+    workers, Million's list), so a number is never given twice. Nobody gets one without a name or a company.
+    Returns {employee id: Employee No.}; the plan is not changed."""
+    taken = [no.strip() for no in used] + [e["emp_no"].strip() for e in plan["employees"]]
+    last: dict[str, int] = {}
+    out = {}
+    for e in plan["employees"]:
+        prefix = company_prefix(companies.get(e["id"], ""))
+        if e["id"] not in companies or e["emp_no"].strip() or not e["name"].strip() or not prefix:
+            continue
+        if prefix not in last:
+            numbers = [re.fullmatch(re.escape(prefix) + r"(\d+)", no, re.IGNORECASE) for no in taken]
+            last[prefix] = max((int(m.group(1)) for m in numbers if m), default=0)
+        last[prefix] += 1
+        out[e["id"]] = f"{prefix}{last[prefix]:03d}"
+    return out
 
 
 def remember_employees(plan: dict, directory: dict) -> bool:
@@ -570,7 +629,11 @@ def validate_plan(plan, known_jobs: set[str]) -> dict:
                           "hours_column": column or None, "overrides": overrides, "entries": entries,
                           "zakat": _figure(e.get("zakat", 0)), "levy": _figure(e.get("levy", 0)), "message": message,
                           "pay_basis": basis, "basic_rate": _figure(e.get("basic_rate") or 0),
-                          "company": " ".join(company.split()), **({"worker_key": key} if key else {})})
+                          "company": " ".join(company.split()), **({"worker_key": key} if key else {}),
+                          # filled in from Million's list (fill_employee_nos): kept until the number is changed
+                          **({"emp_no_million": emp_no.strip()} if emp_no.strip() and e.get("emp_no_million") == emp_no.strip() else {}),
+                          # made by Table Reader (new_employee_nos): the same
+                          **({"emp_no_new": emp_no.strip()} if emp_no.strip() and e.get("emp_no_new") == emp_no.strip() else {})})
     return {"month": month, "normal_hours": float(hours), "break_hours": float(break_hours), "day_types": dict(types),
             "lists": lists, "employees": employees}
 
@@ -1509,7 +1572,8 @@ def month_run(plan: dict, results: list[dict], companies: list[str], *, mapping:
 
 def suggest_employee_nos(plan: dict, million: list[dict]) -> dict[str, dict]:
     """For employees with no Employee No. yet: the one employee of Million's list with their name ({employee id:
-    {"emp_no", "name"}}). Offered to the user, never filled in: a suggestion is only made when exactly one name in
+    {"emp_no", "name"}}). Offered to the user, not filled in (only a whole-name match is, when the employee is made
+    from the files: fill_employee_nos): a suggestion is only made when exactly one name in
     Million fits (one name has all the words of the other) and nobody in the plan has that Employee No. already."""
     taken = {e["emp_no"].strip().casefold() for e in plan["employees"] if e["emp_no"].strip()}
     out = {}
@@ -1603,3 +1667,13 @@ class PayrollStore:
 
     def save_directory(self, directory: dict) -> None:
         self._write(self.root / "employees.json", directory)
+
+    def used_employee_nos(self) -> set[str]:
+        """Every Employee No. in any saved month and in the remembered workers (so a new one is never one of these)."""
+        used = {str(w.get("emp_no") or "") for w in self.load_directory().values() if isinstance(w, dict)}
+        for path in self.root.glob("*.json"):
+            plan = self._read(path, path.stem) if _MONTH.match(path.stem) else None
+            for e in (plan or {}).get("employees") or []:
+                if isinstance(e, dict):
+                    used.add(str(e.get("emp_no") or ""))
+        return used - {""}

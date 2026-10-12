@@ -374,6 +374,82 @@ def test_the_employee_no_typed_once_is_used_next_month():
     assert payroll.validate_plan(octo, {"k1"})["employees"][0]["worker_key"] == "maju jaya|file:ali"
 
 
+def test_an_employee_no_is_filled_in_only_for_a_whole_name_read_on_the_card():
+    listed = [{"emp_no": "E01", "name": "Ali bin Abu"}, {"emp_no": "E02", "name": "SITI"}, {"emp_no": "E03", "name": "Zul bin Omar"},
+              {"emp_no": "E04", "name": "Zul bin Omar"}, {"emp_no": "E05", "name": "AMINAH OMAR"}, {"emp_no": "E06", "name": "TAN"}]
+    p = plan_for()
+    p["employees"] = [employee(id="old", emp_no="e06", name="SOMEONE")]
+    ids = iter("abcdef")
+    cands = [candidate("j1", "MAJU JAYA A SEPT 26.jpeg", header=[("Name", good("ALI  BIN ABU"))]),   # the whole name: filled
+             candidate("j2", "MAJU JAYA SITI SEPT 26.jpeg"),                                        # only in the file name
+             candidate("j3", "MAJU JAYA C SEPT 26.jpeg", header=[("Name", good("ZUL BIN OMAR"))]),    # two in Million
+             candidate("j4", "MAJU JAYA D SEPT 26.jpeg", header=[("Name", good("AMINAH"))]),          # part of a name
+             candidate("j5", "MAJU JAYA E SEPT 26.jpeg", header=[("Name", good("TAN"))])]             # number already used
+    payroll.auto_employees(p, cands, {}, lambda: next(ids), million=listed)
+    assert [(e["name"], e["emp_no"], e.get("emp_no_million")) for e in p["employees"][1:]] == [
+        ("ALI  BIN ABU", "E01", "E01"), ("SITI", "", None), ("ZUL BIN OMAR", "", None), ("AMINAH", "", None), ("TAN", "", None)]
+    assert payroll.suggest_employee_nos(p, listed)["b"] == {"emp_no": "E02", "name": "SITI"}    # still offered, by the button
+    # the mark stays while the number is the one filled in, and goes when the user types another
+    kept = payroll.validate_plan(p, {"j1", "j2", "j3", "j4", "j5"})["employees"][1]
+    assert kept["emp_no_million"] == "E01"
+    p["employees"][1]["emp_no"] = "E09"
+    assert "emp_no_million" not in payroll.validate_plan(p, {"j1", "j2", "j3", "j4", "j5"})["employees"][1]
+
+
+def test_an_employee_no_is_not_filled_in_for_a_known_worker_two_same_names_or_without_a_list():
+    listed = [{"emp_no": "E01", "name": "ALI BIN ABU"}]
+    ali = [("Name", good("ALI BIN ABU"))]
+    # two companies each have a worker of that name: not clear who is E01
+    p, ids = plan_for(), iter("ab")
+    payroll.auto_employees(p, [candidate("j1", "MAJU JAYA A SEPT 26.jpeg", header=ali),
+                               candidate("j2", "BINA A SEPT 26.jpeg", company="BINA", header=ali)], {}, lambda: next(ids), million=listed)
+    assert [e["emp_no"] for e in p["employees"]] == ["", ""]
+    # the number the user typed in an earlier month wins, and is not marked as Million's
+    p = plan_for()
+    directory = {"maju jaya|name:ali bin abu": {"emp_no": "MJ(7)", "name": "ALI BIN ABU"}}
+    payroll.auto_employees(p, [candidate("j1", "MAJU JAYA A SEPT 26.jpeg", header=ali)], directory, lambda: "a", million=listed)
+    assert p["employees"][0]["emp_no"] == "MJ(7)" and "emp_no_million" not in p["employees"][0]
+    # no list imported from Million: nothing to take a number from
+    p = plan_for()
+    payroll.auto_employees(p, [candidate("j1", "MAJU JAYA A SEPT 26.jpeg", header=ali)], {}, lambda: "a")
+    assert p["employees"][0]["emp_no"] == ""
+    # a mark the page sends for a number that was never filled in is not kept
+    p["employees"][0]["emp_no_million"] = "E01"
+    assert "emp_no_million" not in payroll.validate_plan(p, {"j1"})["employees"][0]
+
+
+def test_a_new_employee_no_is_the_companys_first_seven_letters_and_the_next_number():
+    assert payroll.company_prefix("Maju Jaya") == "MAJUJAY" and payroll.company_prefix("A & B (M) Sdn. Bhd.") == "ABMSDNB"
+    assert payroll.company_prefix("ACME") == "ACME" and payroll.company_prefix(" - ") == ""
+
+    def person(n, name, emp_no=""):
+        return employee(id=f"e{n}", emp_no=emp_no, name=name)
+
+    p = plan_for()
+    p["employees"] = [person(1, "ALI"), person(2, "SITI"), person(3, "ZUL", "X9"), person(4, ""), person(5, "AMIN"),
+                      person(6, "TAN"), person(7, "LIM", "majujay004"), person(8, "OMAR")]
+    companies = {"e1": "MAJU JAYA", "e2": "Maju  Jaya", "e3": "MAJU JAYA", "e4": "MAJU JAYA", "e5": "", "e6": "ACME", "e7": "MAJU JAYA"}
+    # 004 is in this plan and 012 somewhere else (another month, Million's list): the next ones follow the highest
+    assert payroll.new_employee_nos(p, companies, {"MAJUJAY012", "MAJUJAYA900", "ACME7", "OTHER001"}) == {
+        "e1": "MAJUJAY013", "e2": "MAJUJAY014", "e6": "ACME008"}     # not: has a number, no name, no company, not asked
+    assert [e["emp_no"] for e in p["employees"]][:2] == ["", ""]     # the plan itself is not changed
+    assert payroll.new_employee_nos(plan_for(employees=[person(1, "ALI")]), {"e1": "MAJU JAYA"}, set()) == {"e1": "MAJUJAY001"}
+    # the mark stays while the number is the one made, and goes when the user types another
+    p = plan_for(employees=[employee(id="e1", emp_no="MAJUJAY001", name="ALI", emp_no_new="MAJUJAY001")])
+    assert payroll.validate_plan(p, set())["employees"][0]["emp_no_new"] == "MAJUJAY001"
+    p["employees"][0]["emp_no"] = "MJ(1)"
+    assert "emp_no_new" not in payroll.validate_plan(p, set())["employees"][0]
+
+
+def test_every_saved_month_and_remembered_worker_counts_as_a_used_employee_no(tmp_path):
+    store = payroll.PayrollStore(tmp_path)
+    sept = plan_for(employees=[employee(id="e1", emp_no="MAJUJAY001", name="ALI"), employee(id="e2", emp_no="", name="SITI")])
+    store.save(payroll.validate_plan(sept, set()))
+    store.save_directory({"maju jaya|name:zul": {"emp_no": "MAJUJAY002", "name": "ZUL"}})
+    store.save_million([{"emp_no": "M1", "name": "X"}], "list.xls")              # not a month: read by the caller
+    assert store.used_employee_nos() == {"MAJUJAY001", "MAJUJAY002"}
+
+
 def test_a_card_with_an_unclear_printed_name_joins_its_pair_by_file_name():
     p = plan_for()
     cands = [candidate("j2", "MAJU JAYA ALI SEPT 26 2.jpeg"),                       # name unclear on this one

@@ -266,24 +266,17 @@ function paintCell(node, loc, cell) {
   node.className = "cell" + (cell.needs_review ? " flag" : "") + (cell.edited ? " edited" : "");
   node.title = cell.needs_review ? (tm(cell.unclear_reason) || t("Claude was not sure about this cell.")) : "";
   const input = node.querySelector("input");
-  if (document.activeElement !== input) input.value = cell.value ?? "";
-  input.dataset.original = cell.value ?? "";
-  input.setAttribute("aria-label", cell.needs_review ? t("Cell to check. Type the correct value.") : t("Cell value"));
+  // A cell Claude was not sure about: the yellow box shows what Claude saw, and nothing else (the reason is the
+  // tooltip). It stays yellow, and unconfirmed, until the user presses Enter in it or types over it. A "?" before or
+  // after the marks ("18:50?") is Claude's doubt, not part of the value, so it is not shown; a "?" inside ("1?:50") stays.
+  const shown = cell.needs_review ? (cell.raw_text || "").trim().replace(/^\?+|\?+$/g, "").trim() : cell.value ?? "";
+  if (cell.needs_review && cell.raw_text && cell.raw_text.trim() !== shown) node.title += " " + t("Claude saw: {x}", { x: cell.raw_text });
+  if (document.activeElement !== input) input.value = shown;
+  input.dataset.original = shown;
+  input.setAttribute("aria-label", cell.needs_review ? t("Cell to check. Press Enter to accept it, or type the correct value.") : t("Cell value"));
   node.querySelector(".tools")?.remove();
   const tools = el("div", { class: "tools" });
-  if (cell.needs_review) {
-    tools.append(el("span", { class: "reason", text: tm(cell.unclear_reason) || t("Please check this cell.") }));
-    if (cell.raw_text) {
-      tools.append(el("span", { class: "seen", text: t("Claude saw: {x}", { x: cell.raw_text }) }));
-      // A "?" before or after the marks ("18:50?") is Claude's doubt, not part of the value: the button keeps the value
-      // without it and names it, so the user sees exactly what is saved. A "?" inside ("1?:50") stays.
-      const seen = cell.raw_text.trim();
-      const use = seen.replace(/^\?+|\?+$/g, "").trim();
-      if (use) tools.append(el("button", { type: "button", text: use === seen ? t("Use this") : t("Use “{x}”", { x: use }),
-        onclick: () => saveCell(loc, use, node) }));
-    }
-    tools.append(el("button", { type: "button", text: t("It's empty"), onclick: () => saveCell(loc, "", node) }));
-  } else if (cell.edited) {
+  if (cell.edited) {
     tools.append(el("button", { type: "button", text: t("Undo my change"), onclick: () => saveCell(loc, null, node) }));
   }
   if (tools.children.length) node.append(tools);
@@ -293,15 +286,18 @@ function makeCell(loc, cell) {
   const input = el("input", { type: "text", autocomplete: "off", spellcheck: "false" });
   const node = el("div", {}, input);
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") input.blur();
-    else if (e.key === "Escape") { input.value = input.dataset.original; input.blur(); }
+    if (e.key === "Enter") {
+      // Enter in a yellow cell accepts what the box shows (an empty box: the cell is empty), also when nothing was typed
+      const c = findCell(currentDoc, loc);
+      if (c && c.needs_review && input.value.trim() === input.dataset.original) saveCell(loc, input.value.trim(), node);
+      input.blur();
+    } else if (e.key === "Escape") { input.value = input.dataset.original; input.blur(); }
   });
   input.addEventListener("change", () => {
     const value = input.value.trim();
     const c = findCell(currentDoc, loc);
     if (!c) return;
-    if (value === "" && c.needs_review) return;                 // empty box on a flagged cell: use "It's empty" to confirm
-    if (value === (c.value ?? "")) return;
+    if (c.needs_review ? value === input.dataset.original : value === (c.value ?? "")) return;   // nothing typed
     saveCell(loc, value, node);
   });
   paintCell(node, loc, cell);
@@ -353,7 +349,7 @@ function paintStatus(doc) {
     text = t("Finished, but no table could be read from this file. See the message below the picture.");
   } else if (doc.status === "done") {
     text = doc.cells_to_check
-      ? tn(doc.cells_to_check, "Finished. {n} cell to check — highlighted in yellow. Type the correct value, or use Claude's suggestion.", "Finished. {n} cells to check — highlighted in yellow. Type the correct value, or use Claude's suggestion.")
+      ? tn(doc.cells_to_check, "Finished. {n} cell to check — the yellow box shows what Claude saw. Press Enter in it to accept it, or type the correct value.", "Finished. {n} cells to check — the yellow boxes show what Claude saw. Press Enter in a box to accept it, or type the correct value.")
       : t("Finished. Nothing was marked as unsure, but have a look before you rely on it.");
   } else if (doc.error && doc.error.code === "CANCELLED") {
     text = t("Cancelled after {a} of {b} pages. Nothing more will be read unless you press Continue.", { a: doc.pages_done, b: doc.pages_total ?? "?" });

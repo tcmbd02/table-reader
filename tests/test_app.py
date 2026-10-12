@@ -346,13 +346,20 @@ def test_add_employees_from_files_of_a_company(tmp_path):
         for j in c.get("/api/jobs").json():
             c.put(f"/api/jobs/{j['id']}/company", json={"company": "MAJU JAYA" if j["name"].startswith("MAJU") else "OTHER CO"})
         view = c.post("/api/payroll/2026-09/auto", json={"company": "MAJU JAYA"}).json()
-        assert view["auto"] == {"added": 1, "skipped": [], "unnamed": []}
+        assert view["auto"] == {"added": 1, "skipped": [], "unnamed": [], "from_million": 0, "new_numbers": 1}
         emp = view["plan"]["employees"][0]
-        assert emp["name"] == "ALI" and len(emp["jobs"]) == 2 and emp["emp_no"] == ""
+        assert emp["name"] == "ALI" and len(emp["jobs"]) == 2
+        # a worker with no Employee No. anywhere gets a new one: the company's first 7 letters and the next number
+        assert emp["emp_no"] == emp["emp_no_new"] == "MAJUJAY001"
+        oct_view = c.post("/api/payroll/2026-10/auto", json={"company": ""}).json()
+        october = {e["name"]: e for e in oct_view["plan"]["employees"]}
+        assert {n: e["emp_no"] for n, e in october.items()} == {"ALI": "MAJUJAY001", "ZUL": "OTHERCO001"}
+        assert "emp_no_new" not in october["ALI"] and october["ZUL"]["emp_no_new"] == "OTHERCO001"   # ALI's is remembered
         emp["emp_no"] = "MJ(1)"
-        c.put("/api/payroll/2026-09", json=view["plan"])                  # typed once ...
-        oct_view = c.post("/api/payroll/2026-10/auto", json={"company": "MAJU JAYA"}).json()
-        assert oct_view["plan"]["employees"][0]["emp_no"] == "MJ(1)"       # ... filled in next month
+        saved = c.put("/api/payroll/2026-09", json=view["plan"]).json()    # the user types the real one ...
+        assert "emp_no_new" not in saved["plan"]["employees"][0]
+        nov_view = c.post("/api/payroll/2026-11/auto", json={"company": "MAJU JAYA"}).json()
+        assert nov_view["plan"]["employees"][0]["emp_no"] == "MJ(1)"       # ... and that is filled in next month
         assert c.post("/api/payroll/2026-09/auto", json={"company": 5}).status_code == 400
 
 
@@ -401,6 +408,28 @@ def test_two_cards_of_one_worker_become_one_employee_when_the_month_is_opened(tm
         assert added["no_month"] == [{"name": "MAJU JAYA ZUL.png",
                                       "why": "no month was found in the file name or on the card"}]
         assert view["results"][0]["values"]["days_worked"]["value"] == 1
+
+
+def test_a_new_worker_named_on_the_card_gets_millions_employee_no_and_the_mark_goes_when_it_is_changed(tmp_path):
+    from tests.helpers import million_listing
+
+    def named_card(image):
+        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"), header=[("Name", good("Ali bin Abu"))])
+
+    store = Jobs(tmp_path / "jobs", reader=named_card)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        listing = million_listing([("MJ(1)", "ALI BIN ABU"), ("MJ(2)", "SITI")])
+        c.post("/api/million/employees", files={"file": ("rptempepmlist.xls", listing, "application/vnd.ms-excel")})
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR} (1).png")
+        store.wait_idle()
+        view = c.get(f"/api/payroll/{YEAR}-09").json()
+        assert view["added_by_themselves"]["from_million"] == 1
+        worker = view["plan"]["employees"][0]
+        assert (worker["name"], worker["emp_no"], worker["emp_no_million"]) == ("Ali bin Abu", "MJ(1)", "MJ(1)")
+        assert c.get(f"/api/payroll/{YEAR}-09").json()["plan"]["employees"][0]["emp_no_million"] == "MJ(1)"   # saved
+        worker["emp_no"] = "MJ(2)"                                          # the user types another number
+        saved = c.put(f"/api/payroll/{YEAR}-09", json=view["plan"]).json()
+        assert "emp_no_million" not in saved["plan"]["employees"][0]
 
 
 def test_a_later_card_joins_its_worker_and_a_removed_card_is_not_added_again(tmp_path):

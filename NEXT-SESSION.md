@@ -5,7 +5,7 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 **To continue, paste this into the new session:**
 
-> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 16), then let's continue.
+> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 17), then let's continue.
 
 ---
 
@@ -46,6 +46,11 @@ workers are not in that month's payroll, so there was nothing to update. Details
   committed and pushed on `pdf-text` (0045a5d), app rebuilt 2026-10-12.
   Next, waiting for the user's go-ahead: update the PR #2 description, update the `download` branch zip, Phase C
   (Claude names unknown columns, text only; the calculation stays in code). Details: PROGRESS.md 16, 16b.
+- **Session 17 (2026-10-12):** a new worker's Employee No. is filled in from Million's list when the name read on the
+  card is one employee's whole name there (marked on the page); otherwise a worker of a company gets a new number,
+  company's first 7 letters + 3 digits (MAJUJAY001), to be created in Million before the import. Open: does Million
+  accept 10 characters? Not committed, app not rebuilt; the `download` branch
+  update and the PR #2 description are prepared but not published. Details: PROGRESS.md 17.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -151,7 +156,8 @@ Open data points:
 - Clock reports: daily figures are **decimal hours** (proved: sums match the printed totals; h.mm never did). On report
   days the normal-hours OT rule and rest/holiday day counts are **not** applied (no double pay). Flat OT and
   allowance columns are left to the user (reported).
-- Employee No. is **never** taken from the clock system's Emp Code; typed once by the user, then remembered.
+- Employee No. is **never** taken from the clock system's Emp Code. Typed by the user, or (session 17, user's
+  decision) taken from Million's list on a whole-name match, or made new from the company's name; then remembered.
 - Same worker = same printed Emp Code → else same printed name → else same file name without
   company/month/year/copy numbers; a card with nothing printed joins the one worker whose other card has its file name.
 - The Payroll results window copies Million Payroll's Edit Payroll screen: its labels stay English in both languages.
