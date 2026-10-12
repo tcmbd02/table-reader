@@ -274,8 +274,13 @@ function paintCell(node, loc, cell) {
   if (cell.needs_review) {
     tools.append(el("span", { class: "reason", text: tm(cell.unclear_reason) || t("Please check this cell.") }));
     if (cell.raw_text) {
-      tools.append(el("span", { class: "seen", text: t("Claude saw: {x}", { x: cell.raw_text }) }),
-        el("button", { type: "button", text: t("Use this"), onclick: () => saveCell(loc, cell.raw_text.trim(), node) }));
+      tools.append(el("span", { class: "seen", text: t("Claude saw: {x}", { x: cell.raw_text }) }));
+      // A "?" before or after the marks ("18:50?") is Claude's doubt, not part of the value: the button keeps the value
+      // without it and names it, so the user sees exactly what is saved. A "?" inside ("1?:50") stays.
+      const seen = cell.raw_text.trim();
+      const use = seen.replace(/^\?+|\?+$/g, "").trim();
+      if (use) tools.append(el("button", { type: "button", text: use === seen ? t("Use this") : t("Use “{x}”", { x: use }),
+        onclick: () => saveCell(loc, use, node) }));
     }
     tools.append(el("button", { type: "button", text: t("It's empty"), onclick: () => saveCell(loc, "", node) }));
   } else if (cell.edited) {

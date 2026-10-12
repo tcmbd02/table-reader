@@ -1,5 +1,14 @@
 # Progress log
 
+## Session 16 - 2026-10-12 - Sessions 12b-15b committed; "Use this" drops a leading / trailing "?"
+- Sessions 12b-15b committed and pushed on `pdf-text` (7bc162e, second commit of PR #2; description updated).
+- The user's request: cells like "Claude saw: 18:50?" are usually right; stop the yellow, or drop the "?" on "Use this".
+  **Kept yellow** (never-guess rule: a "?" is a character Claude could not read, `ocr.normalize_cell`). Changed: when
+  the "?" is only at the start or end, the button saves the value without it and names it (`Use "18:50"`), so a
+  reading like "18:5?" shows `Use "18:5"` and the missing digit is visible. A "?" inside ("1?:50") stays; "??" alone
+  gets no Use button. Malay entry added; guide text updated. Checked in the browser on an invented card (throwaway data
+  folder via `TABLE_READER_HOME`). 369 tests pass (front-end only, no new test: there is no JS test runner).
+
 ## Session 15b - 2026-10-09 - Process Pay on the three test employees (user's OK): what Million really calculates
 Process Pay run on 100, 101, 102 in the October test month (~17:28), payslips read on screen (View Payslip).
 Inputs for all three: Working Days 25, Public Holiday 1, overtime 2 / 10 / 4 / 1 hours (1.0 / 1.5 / 2.0 / 3.0),

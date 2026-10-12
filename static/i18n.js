@@ -167,6 +167,7 @@ const MS = {
   "Please check this cell.": "Sila semak sel ini.",
   "Claude saw: {x}": "Claude nampak: {x}",
   "Use this": "Guna ini",
+  "Use “{x}”": "Guna “{x}”",
   "It's empty": "Ia kosong",
   "Undo my change": "Buat asal perubahan saya",
   "Page {a} of {b}": "Halaman {a} daripada {b}",
