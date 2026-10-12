@@ -5,7 +5,7 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 **To continue, paste this into the new session:**
 
-> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 12), then let's continue.
+> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 15b), then let's continue.
 
 ---
 
@@ -32,6 +32,14 @@ workers are not in that month's payroll, so there was nothing to update. Details
 - **Session 12:** section "4. Daily-rated pay" (basic pay = daily rate x Days Worked; OT/PH/rest-day money waits
   for HR's rules), the Inbox folder (files read by themselves) and the Tables folder (every table as CSV). Same
   branch, **not committed**. Details: PROGRESS.md session 12.
+- **Sessions 12b-14:** Basic Rate with Monthly / Daily in Results; Million's functions surveyed; pay basis and rate
+  read from Million's Payroll Information report; pay preview with Million's overtime formulas. Committed on
+  `pdf-text` on 2026-10-12 (second commit of PR #2).
+- **Sessions 15-15b (experiments in Million, October test month, employees 100-102):** Process Pay run once. Million
+  works out Days Worked itself (Working Days - PH); daily overtime uses basic pay / days worked, not the rate (preview
+  840.00 vs Million 874.92 with a PH in the month; Monthly matches). **Open with HR:** should Working Days sent to
+  Million include the public holiday? Second test round not finished (102's PH to 0, Process Pay again). Details:
+  PROGRESS.md sessions 15 and 15b.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -55,7 +63,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | **Million import file (.xls)** for the office | **Done (session 7).** Button "Download Million file (.xls)"; the office checker says READY on invented figures. Real September file not made yet (needs Employee Nos.). |
 | Browser check | Never clicked through by Claude (Chrome extension was not connected). All checks were tests + API + real-data scripts. |
 
-Tests: **365 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 9. Session 9 is committed and pushed (02ebcfc); **session 9b is not committed.**
+Tests: **369 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 9. Sessions up to 15b are committed on `pdf-text` (PR #2, base `main`, not merged).
 
 ## 2. Git / GitHub
 

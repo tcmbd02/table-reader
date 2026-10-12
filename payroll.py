@@ -54,6 +54,7 @@ from typing import Callable
 from ocr import OcrError
 
 DAY_TYPES = ("work", "rest", "holiday")
+PAY_BASES = ("monthly", "daily")
 
 # key, column heading in the payroll file (the names on the Edit Payroll screen), unit shown in the page
 FIELDS = [
@@ -399,21 +400,22 @@ def auto_employees(plan: dict, candidates: list[dict], directory: dict,
         plan["employees"].append({"id": new_id(), "emp_no": known.get("emp_no", ""), "name": known.get("name") or g["name"],
                                   "jobs": g["refs"], "hours_column": None, "overrides": {}, "entries": {},
                                   "zakat": 0.0, "levy": 0.0, "message": "", "worker_key": key,
-                                  "company": g["company"] or "", "daily_rate": float(known.get("daily_rate") or 0.0)})
+                                  "company": g["company"] or "", "pay_basis": known.get("pay_basis") or "monthly",
+                                  "basic_rate": float(known.get("basic_rate") or 0.0)})
         added += 1
     return added, skipped, unnamed
 
 
 def remember_employees(plan: dict, directory: dict) -> bool:
-    """Keep each employee's Employee No., name and daily rate for next month (by worker_key). Returns True if anything
-    changed."""
+    """Keep each employee's Employee No., name, pay basis and basic rate for next month (by worker_key). Returns True
+    if anything changed."""
     changed = False
     for e in plan["employees"]:
         key = e.get("worker_key")
         if key and e["emp_no"]:
             entry = {"emp_no": e["emp_no"], "name": e["name"]}
-            if e.get("daily_rate"):
-                entry["daily_rate"] = e["daily_rate"]
+            if e.get("basic_rate"):
+                entry.update(pay_basis=e.get("pay_basis") or "monthly", basic_rate=e["basic_rate"])
             if directory.get(key) != entry:
                 directory[key] = entry
                 changed = True
@@ -485,13 +487,16 @@ def validate_plan(plan, known_jobs: set[str]) -> dict:
         key = e.get("worker_key")
         if key is not None and (not isinstance(key, str) or len(key) > 300):
             raise bad
+        basis = e.get("pay_basis") or "monthly"                     # how the Basic Rate is meant: per month or per day
+        if basis not in PAY_BASES:
+            raise bad
         company = e.get("company") or ""
         if not isinstance(company, str) or len(company) > 80:
             raise bad
         employees.append({"id": e["id"], "emp_no": emp_no.strip(), "name": name.strip(), "jobs": list(jobs),
                           "hours_column": column or None, "overrides": overrides, "entries": entries,
                           "zakat": _figure(e.get("zakat", 0)), "levy": _figure(e.get("levy", 0)), "message": message,
-                          "daily_rate": _figure(e.get("daily_rate") or 0),
+                          "pay_basis": basis, "basic_rate": _figure(e.get("basic_rate") or 0),
                           "company": " ".join(company.split()), **({"worker_key": key} if key else {})})
     return {"month": month, "normal_hours": float(hours), "break_hours": float(break_hours), "day_types": dict(types),
             "lists": lists, "employees": employees}
@@ -784,7 +789,7 @@ def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: di
 
 
 # --------------------------------------------------------------------------------------------------- calculation
-def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict) -> dict:
+def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict, million: dict | None = None) -> dict:
     """The month-end figures for one employee, the per-day working, and everything that needs the user's attention."""
     n_days = days_in(plan["month"])
     _, month_number = parse_month(plan["month"])
@@ -855,13 +860,56 @@ def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict) ->
     for key in FIELD_KEYS:
         edited = key in employee.get("overrides", {})
         final[key] = {"value": employee["overrides"][key] if edited else values[key], "computed": values[key], "edited": edited}
-    # Daily-rated employees: basic pay = the daily rate typed by the user x Days Worked. Nothing else is turned into
-    # money here (overtime, public holidays and rest days are paid by rules that differ per company).
-    rate = float(employee.get("daily_rate") or 0.0)
+    basis, rate, source = pay_terms(employee, million)
+    known = {k: million[k] for k in ("pay_basis", "basic_rate", "branch") if million and million.get(k)} or None
     return {"id": employee["id"], "emp_no": employee.get("emp_no", ""), "name": employee.get("name", ""), "values": final,
             "entries": employee.get("entries") or {}, "zakat": employee.get("zakat", 0.0), "levy": employee.get("levy", 0.0),
             "message": employee.get("message", ""), "days": rows, "issues": issues, "complete": complete,
-            "daily_rate": rate, "daily_basic_pay": round(rate * final["days_worked"]["value"], 2) if rate else None}
+            "pay_basis": basis, "basic_rate": rate, "rate_source": source, "million": known,
+            "pay": pay_preview(basis, rate, {k: v["value"] for k, v in final.items()}, employee.get("entries") or {})}
+
+
+# Million Payroll's own overtime tables ("Overtime Table for Monthly Pay" / "for Daily Pay"), as set up in Million:
+# what one hour or one day of each overtime line is worth, from the Basic Rate. A month has 26 work days of 8 hours
+# there (its Work Table). If the office changes those tables in Million, these must follow.
+MONTH_DAYS, DAY_HOURS = 26, 8
+OT_LINES = [("ot_1", "Overtime 1.0", "hour", 1.0), ("ot_1_5", "Overtime 1.5", "hour", 1.5), ("ot_2", "Overtime 2.0", "hour", 2.0),
+            ("ot_3", "Overtime 3.0", "hour", 3.0), ("ot_rest_day", "Rest Day", "day", 2.0), ("ot_holiday", "Holiday Day", "day", 3.0)]
+
+
+def pay_terms(employee: dict, million: dict | None) -> tuple[str, float, str | None]:
+    """(pay basis, Basic Rate, where they come from). What the user typed for the employee counts; while no rate is
+    typed, the Pay Basis and Basic Rate of the employee in Million's imported list are used ("million")."""
+    rate = float(employee.get("basic_rate") or 0.0)
+    if rate:
+        return employee.get("pay_basis") or "monthly", rate, "typed"
+    if million and million.get("basic_rate") and million.get("pay_basis") in PAY_BASES:
+        return million["pay_basis"], float(million["basic_rate"]), "million"
+    return employee.get("pay_basis") or "monthly", 0.0, None
+
+
+def pay_preview(basis: str, rate: float, values: dict, entries: dict) -> dict | None:
+    """What Million Payroll should pay before EPF, SOCSO and tax, worked out the way Million's own tables do it; None
+    while there is no Basic Rate.
+    Basic pay: Daily = rate x Days Worked; Monthly = the rate (absence, lateness and unpaid leave are not taken off).
+    Overtime: per hour, a day's pay / 8 x 1, 1.5, 2 or 3; per Rest Day worked, a day's pay x 2; per Holiday Day worked,
+    a day's pay x 3. A day's pay = the daily rate, or the monthly rate / 26.
+    Allowances and deductions are the amounts typed in their tables."""
+    if not rate:
+        return None
+    day = rate if basis == "daily" else rate / MONTH_DAYS
+    basic = round(rate * values["days_worked"], 2) if basis == "daily" else round(rate, 2)
+    lines = []
+    for key, label, unit, times in OT_LINES:
+        if values.get(key):
+            each = (day / DAY_HOURS if unit == "hour" else day) * times
+            lines.append({"key": key, "label": label, "unit": unit, "quantity": values[key], "each": round(each, 4),
+                          "amount": round(each * values[key], 2)})
+    overtime = round(sum(line["amount"] for line in lines), 2)
+    allowances = round(sum((entries.get("allowance") or {}).values()), 2)
+    deductions = round(sum((entries.get("deduction") or {}).values()), 2)
+    return {"basic": basic, "lines": lines, "overtime": overtime, "allowances": allowances, "deductions": deductions,
+            "total": round(basic + overtime + allowances - deductions, 2)}
 
 
 DAILY_COUNTS = [("days_worked", "Days Worked"), ("working_days", "Working Days"), ("public_holiday", "Public Holiday not worked (days)"),
@@ -870,24 +918,30 @@ DAILY_COUNTS = [("days_worked", "Days Worked"), ("working_days", "Working Days")
                 ("ot_3", "Overtime 3.0 (hours)")]
 
 
-def build_daily_csv(results: list[dict], companies: list[str]) -> str:
-    """The daily-pay table: one row per employee with the counts from the time cards, the daily rate typed by the user
-    and Basic pay = daily rate x Days Worked (empty while no rate is typed). ``companies`` in the order of ``results``.
-    UTF-8 text (the caller adds the BOM)."""
+def build_basic_pay_csv(results: list[dict], companies: list[str]) -> str:
+    """The pay table: one row per employee with the pay basis and Basic Rate in force (typed, or from Million), the
+    counts from the time cards, and the pay preview (basic pay, each overtime line, allowances, deductions, total;
+    empty while there is no rate). ``companies`` in the order of ``results``. UTF-8 text (the caller adds the BOM)."""
     out = io.StringIO(newline="")
     writer = csv.writer(out, lineterminator="\r\n")
-    writer.writerow(["Company", "Employee No.", "Name", "Daily rate (RM)", "Days Worked", "Basic pay (RM) = rate x Days Worked"]
+    writer.writerow(["Company", "Employee No.", "Name", "Pay basis", "Basic Rate (RM)", "Rate from", "Days Worked", "Basic pay (RM)"]
+                    + [f"{label} pay (RM)" for _, label, _, _ in OT_LINES]
+                    + ["Overtime pay (RM)", "Allowances (RM)", "Deductions (RM)", "Estimated pay before EPF, SOCSO and tax (RM)"]
                     + [label for key, label in DAILY_COUNTS if key != "days_worked"] + ["Notes"])
     total = 0.0
     for r, company in zip(results, companies):
-        pay = r.get("daily_basic_pay")
-        total += pay or 0.0
+        pay = r.get("pay")
+        total += pay["total"] if pay else 0.0
+        by_key = {line["key"]: line["amount"] for line in pay["lines"]} if pay else {}
         writer.writerow([_csv_safe(company), _csv_safe(r["emp_no"]), _csv_safe(r["name"]),
-                         _number(r["daily_rate"]) if r.get("daily_rate") else "", _number(r["values"]["days_worked"]["value"]),
-                         _number(pay) if pay is not None else ""]
+                         r["pay_basis"].capitalize() if pay else "", _number(r["basic_rate"]) if pay else "",
+                         {"typed": "Table Reader", "million": "Million"}.get(r.get("rate_source"), ""),
+                         _number(r["values"]["days_worked"]["value"]), _number(pay["basic"]) if pay else ""]
+                        + [(_number(by_key.get(key, 0.0)) if pay else "") for key, _, _, _ in OT_LINES]
+                        + [(_number(pay[k]) if pay else "") for k in ("overtime", "allowances", "deductions", "total")]
                         + [_number(r["values"][key]["value"]) for key, _ in DAILY_COUNTS if key != "days_worked"]
                         + [_csv_safe("; ".join(_notes(r)))])
-    writer.writerow(["", "", "Total", "", "", _number(total)])
+    writer.writerow(["", "", "Total"] + [""] * (8 + len(OT_LINES)) + [_number(total)])
     return out.getvalue()
 
 
@@ -905,7 +959,10 @@ def _ranges(days: list[int]) -> str:
     return ", ".join(out)
 
 
-def compute_all(plan: dict, load_pages: Callable[[str], tuple[str, list[dict]]]) -> list[dict]:
+def compute_all(plan: dict, load_pages: Callable[[str], tuple[str, list[dict]]],
+                million: dict[str, dict] | None = None) -> list[dict]:
+    """``million``: the employees of Million's imported list by Employee No. in lower case (their Pay Basis and Basic
+    Rate are used while none is typed)."""
     results = []
     for e in plan["employees"]:
         docs, lost = [], []
@@ -914,7 +971,7 @@ def compute_all(plan: dict, load_pages: Callable[[str], tuple[str, list[dict]]])
                 docs.append(load_pages(job_id))
             except OcrError as exc:
                 lost.append({"kind": "missing", "text": exc.message, "job": job_id})
-        result = calculate(plan, docs, e)
+        result = calculate(plan, docs, e, (million or {}).get(e["emp_no"].strip().casefold()))
         if lost:
             result["issues"] = lost + result["issues"]
             result["complete"] = False
@@ -1094,13 +1151,15 @@ def load_million_employees(path: Path | None = None) -> set[str] | None:
 MILLION_LIST_FILE = "million-employees.json"
 _TOTAL_EMPLOYEES = re.compile(r"total employees?\s*:\s*(\d+)", re.IGNORECASE)
 _CODE_HEADS = ("emp no.", "emp no", "employee no.", "employee no")
+_MILLION_EXTRA = {"branch": "branch", "pay basis": "pay_basis", "basic rate": "basic_rate"}
 
 
 def parse_million_employees(data: bytes) -> list[dict]:
     """Million Payroll's own employee list -> [{"emp_no", "name"}]. The file is Million's "Employment Listing" saved as
     Excel (Employee > Print > Employment Listing > Print > Excel > File): a printed-report layout with the heading row
-    ("Emp no." … "Name" …) repeated on every page and "Total Employees : n" at the end. Only the Employee No. and the
-    name are taken. Refused (OcrError) when it is not that report, or when the number of employees read differs from
+    ("Emp no." … "Name" …) repeated on every page and "Total Employees : n" at the end. The Employee No. and the name
+    are taken, and from the "Payroll Information" report also "branch", "pay_basis" ("monthly", "daily"…) and
+    "basic_rate" where they are filled in. Refused (OcrError) when it is not that report, or when the number of employees read differs from
     the report's own total: a list with someone missing would raise false alarms."""
     import xlrd
 
@@ -1117,7 +1176,7 @@ def parse_million_employees(data: bytes) -> list[dict]:
             value = int(value)                                       # an Employee No. such as 100 kept as a number
         return " ".join(str(value).split())
 
-    found, total, code_col, name_col, others = {}, None, None, None, []
+    found, total, code_col, name_col, others, extra = {}, None, None, None, [], {}
     for sheet in sheets:
         for r in range(sheet.nrows):
             row = [text(c) for c in sheet.row(r)]
@@ -1130,17 +1189,28 @@ def parse_million_employees(data: bytes) -> list[dict]:
                 code_col = next(i for i, k in enumerate(keys) if k in _CODE_HEADS)
                 name_col = keys.index("name")                        # the heading row (again on every page)
                 others = [i for i, k in enumerate(keys) if k and i != code_col]
+                extra = {field: keys.index(head) for head, field in _MILLION_EXTRA.items() if head in keys}
             elif code_col is not None and code_col < len(row) and row[code_col] \
                     and any(i < len(row) and row[i] for i in others):
                 # an employee's row has something under another heading too (name, gender, basic rate…); the report
                 # title, the company name and the total line can sit in the Employee No. column, alone
-                found.setdefault(row[code_col], row[name_col] if name_col < len(row) else "")
+                if row[code_col] not in found:
+                    person = {"emp_no": row[code_col], "name": row[name_col] if name_col < len(row) else ""}
+                    for field, i in extra.items():
+                        value = row[i] if i < len(row) else ""
+                        if field == "basic_rate":
+                            number = _number_or_none(value.replace(",", ""))
+                            if number is not None:
+                                person[field] = number
+                        elif value:
+                            person[field] = value.casefold() if field == "pay_basis" else value
+                    found[row[code_col]] = person
     if code_col is None or not found:
         raise bad
     if total is not None and total != len(found):
         raise OcrError("MILLION_LIST", f"The employee list says Total Employees : {total}, but {len(found)} could be "
                        "read. Nothing was imported. Make the file again in Million Payroll and import it again.")
-    return [{"emp_no": code, "name": name} for code, name in found.items()]
+    return list(found.values())
 
 
 def _same_person(a: str, b: str) -> bool:
@@ -1381,7 +1451,8 @@ class PayrollStore:
             e.setdefault("zakat", 0.0)
             e.setdefault("levy", 0.0)
             e.setdefault("message", "")
-            e.setdefault("daily_rate", 0.0)
+            e.setdefault("pay_basis", "monthly")
+            e.setdefault("basic_rate", 0.0)
         return plan
 
     def _latest_lists(self, month: str) -> dict | None:

@@ -1,5 +1,150 @@
 # Progress log
 
+## Session 15b - 2026-10-09 - Process Pay on the three test employees (user's OK): what Million really calculates
+Process Pay run on 100, 101, 102 in the October test month (~17:28), payslips read on screen (View Payslip).
+Inputs for all three: Working Days 25, Public Holiday 1, overtime 2 / 10 / 4 / 1 hours (1.0 / 1.5 / 2.0 / 3.0),
+Rest Day 2, Holiday Day 1.
+
+| | 100: Daily 80, daily OT table | 101: Monthly 2080, monthly OT table | 102: Daily 80, MONTHLY OT table (the mistake) |
+|---|---|---|---|
+| Days Worked typed | 25 | 23 | 25 |
+| Days Worked after processing | **24** | **24** | **24** |
+| Basic Pay | 2,000.00 | 2,050.00 (2080 - 20 lateness - 10 no-pay hour) | 2,000.00 |
+| OT rate per hour (1.0 / 1.5 / 2.0 / 3.0) | 10.42 / 15.62 / 20.83 / 31.25 | 10.00 / 15.00 / 20.00 / 30.00 | 0.40 / 0.60 / 0.80 / 1.20 |
+| Rest Day / Holiday Day per day | 166.66 / 249.99 | 160.00 / 240.00 | 6.41 / 9.62 |
+| Overtime total | 874.92 | 840.00 | **33.64** |
+| Allowance | 50.00 (fixed Transport from the employee file) | 0 | 0 |
+| Gross = Net | 2,924.92 | 2,890.00 | 2,033.64 |
+
+- **Million works out Days Worked itself when pay is processed**: all three became 24 = Working Days 25 - Public
+  Holiday 1, whatever was typed (25, 23, 25). So the Days Worked figure in the import file did not decide the pay in
+  this test. Absence has to reach Million another way (the Absence / Non-Pay Leave lines, No Pay Hour) - not yet
+  confirmed by a processed example.
+- **Daily basic pay was 25 x 80** with Working Days 25, PH 1 (so the public holiday was paid, or Working Days is what
+  is paid). **Open, important:** Table Reader sends Working Days WITHOUT the public holiday (25 work days + PH 1). If
+  Million's Working Days is meant to include it (its own default is 26 a month), a Daily worker who worked all 25 days
+  is paid 25 days instead of 26. To be settled with HR / the office before any real daily-rated payroll.
+- **Daily overtime is not rate / 8 when the month has a public holiday**: the day's pay Million used was 83.33
+  (= 2,000 / 24, basic pay / days worked), giving 10.42 an hour. Table Reader's pay preview uses 80 -> 840.00, Million
+  874.92. Monthly matches the preview exactly (840.00). The preview is NOT changed yet (one sample).
+- **Monthly: lateness and no-pay hours are taken off** at rate / 26 / 8 per hour (2 h + 1 h = 30.00).
+- **The wrong overtime table costs the worker almost all overtime** (33.64 instead of 874.92): Million divided the
+  day's pay by 26 and by 8 again. Nothing warns about it.
+- **A fixed allowance in the employee file is paid** (Transport 50.00 on the payslip).
+- EPF employee 0.0 %, employer 4.0 % on these test employees (the calculation text says so; their records have no
+  I/C, age or nationality - not looked into).
+- **A processed row can be reopened**: Edit on the row opens Edit Payroll with Save (the month still has unprocessed
+  rows and no later month - September, fully processed with October after it, has no Edit). The payslip's own Edit
+  lets EPF / SOCSO / EIS / PCB and the overtime lines be overridden by hand.
+- **View Calculation** after processing is the EPF / SOCSO / PCB working (text, "Send to File"), not the pay inputs.
+- **Second round started, not finished:** Absence 2 days was typed and saved for 100 and 101 (rows reopened after
+  processing, NOT processed again); 102 was to get Public Holiday 0. Stopped because the user was working in the
+  browser and the screen kept switching. An Edit Payroll window may still be open in Million (Close it).
+  To finish: set 102's Public Holiday to 0, tick the three, Process Pay again, read the payslips.
+
+## Session 15 - 2026-10-09 - Experiments inside Million (values entered in the October test month)
+The user asked to try Million's functions with real entries. Backups first: previous one kept as
+`mycompany_2026-10-09_1228_before-experiments.bak`, then a new Backup Database (~17:14). Only the October test payroll
+and the test employees 100, 101, 102 were touched. **Process Pay was NOT run** (the app's safety check refused it; the
+user decides). Nothing was deleted.
+- **What was changed in Million (still there):**
+  - Employee 100: Pay Basis Daily (was already), Pay Period Monthly (was Fortnightly), Basic Rate 80, Overtimes Table
+    "for Daily Pay" (was "for Monthly Pay"), fixed Transport Allowance 50 in the employee file.
+  - Employee 101: Basic Rate 2080 (Monthly). Employee 102: Pay Basis Daily, Basic Rate 80, Overtimes Table left on
+    "for Monthly Pay" on purpose (to show what that mistake does once pay is processed).
+  - October rows of 100 / 101 / 102: Quick Update "Update Basic Rate from Employee file"; overtime 2 / 10 / 4 / 1
+    hours at 1.0 / 1.5 / 2.0 / 3.0, Rest Day 2, Holiday Day 1; for 101 also Days Worked 23 (of 25), Lateness 2,
+    No Pay Hour 1. Status of the three rows: Saved. They were left ticked for Process Pay when the window closed.
+- **Found out:**
+  - **Changing Pay Basis does not change the Overtimes Table.** Both must be set by hand (employee 100 was Daily with
+    the monthly table; Million gave no warning).
+  - **A month's row keeps the Basic Rate and pay basis it was created with.** After the employee file changed, the
+    October row still said 0.00 Monthly. Quick Update > General Update > "Update Basic Rate from Employee file" (for
+    an employee range) brought it to 80.00 Daily. The row's Basic Rate box can also be typed over for one month.
+  - **A fixed allowance typed in the employee file** (Allowance & Deduction tab, Rate) showed in the October row's
+    Allowance & Deduction tab (seen after the Quick Update; not checked which of the two brought it there). The import
+    file writes 0 into every allowance column, so **an import after that would set it back to 0** (earlier finding:
+    mapped columns are overwritten) - not re-tested today.
+  - Row status goes New -> Saved when the row is saved by hand (an import leaves it New) -> Processed.
+  - **View Payslip** (Alt+V) shows every input of an employee on one screen, but all amounts are 0 until Process Pay.
+    **View Calculation** is empty before processing and has a "Send to File" button (a possible source for an
+    automatic check after processing - not seen with content yet).
+  - Pay Basis choices: Monthly, Daily, Hourly. Pay Period: Monthly, Fortnightly. A Daily employee has optional
+    "1st Half Rate / 2nd Half Rate" boxes.
+  - **APS Generator** makes the bank and statutory files (Payroll, Bonus & Commission, EPF, SOCSO, EIS, PCB, ASN,
+    Tabung Haji, Zakat) per bank and payroll; nothing was generated.
+  - Typing by remote control: a grid cell needs two separate clicks before it takes keys; a key sent right after a
+    click is lost; Tab order runs through the top boxes then into the Leave grid; **Escape closes the window**.
+- **Still unknown (needs Process Pay):** whether Million's pay for a Daily employee equals rate x Days Worked plus
+  the overtime table lines (the pay preview's formulas); what Public Holiday not worked pays a Daily employee; how
+  Days Worked below Working Days, Lateness and No Pay Hour reduce a Monthly employee's pay; what the monthly overtime
+  table does to a Daily employee; what View Calculation > Send to File contains.
+- **Not tried:** creating a new month (does everyone get added?), Holiday > Generate, the import onto a fixed allowance.
+
+## Session 14 - 2026-10-09 - Pay basis and rate from Million's report; pay preview with Million's formulas
+369 tests pass; Malay checks pass. **Package rebuilt and restarted. Not committed (branch `pdf-text`, on top of PR #2).**
+- **Million's "Payroll Information" report now also gives Branch, Pay Basis and Basic Rate**
+  (`parse_million_employees`; stored in `payroll\million-employees.json` on this PC - so salaries are now kept there,
+  the user agreed by asking for this). The Employment Listing report gives the Basic Rate only.
+- **Pay terms in force** (`payroll.pay_terms`): what is typed for the employee counts; while no rate is typed, Million's
+  Pay Basis and Basic Rate for that Employee No. are used (`rate_source` "typed" / "million" / none). Results show
+  "From Million: ...", or a warning when what is typed differs from Million. A Pay Basis other than Monthly / Daily
+  (e.g. Hourly) gives no preview. Branch is read and kept but not used for the company yet.
+- **Pay preview** (`payroll.pay_preview`, `OT_LINES`, 26 days x 8 hours as in Million's Work Table / overtime tables on
+  this PC): basic pay (Daily: rate x Days Worked; Monthly: the rate), each overtime line (hour = a day's pay / 8 x 1,
+  1.5, 2, 3; Rest Day worked = a day's pay x 2; Holiday Day worked = x 3), allowances and deductions as typed, and
+  "Estimated pay before EPF, SOCSO and tax". Not taken off: absence, lateness, unpaid leave. No EPF / SOCSO / tax.
+  Shown under the Basic Rate box in Results and in section "4. Pay preview"; CSV `Basic pay <month>.csv` has every line.
+- **Caution:** Table Reader's own labels for the last two lines say "1 Time - Work on Rest Day" and "2 Times - Work on
+  Holiday" (copied from the Edit Payroll screen), while this PC's Million tables pay x 2 and x 3. The preview follows
+  the tables. If the office Million's tables differ, `OT_LINES` must follow them.
+- **Real data:** the report on disk (15 employees) says Monthly for all, one with a rate; that employee has no number
+  in Table Reader's plan, so no preview comes from Million yet. Checked in the browser with a typed test rate (Daily,
+  then Monthly), then put back. Million itself was not asked to process a pay to compare the preview against.
+
+## Session 13 - 2026-10-09 - Survey of Million Payroll's functions (read-only, nothing built)
+Looked at through desktop control; nothing saved. Opened: every top menu and the Employee submenus, Payroll list
+(Add, Organize, Quick Update), Work Table, Overtime tables, Holiday, General Setup. NOT opened: Leave, Loan, Piecework,
+Salary Increment, Historical Data, B/F Payroll, Payment Advice, APS Generator, Bank, Statutory Setting, the government
+and 12-month / year-to-date reports, Reminder Reports, HR Letters.
+- **Menus.** Employee: Maintenance, Allowance, Deduction, Overtime, Leave (Leave, Leave Table, B/F, Leave Update,
+  records), Salary Increment, Loan, Piecework Pay, Historical Data, Miscellaneous (Nationality, Race, Relationship,
+  Religion, Branch, Department, Category, Holiday). Transaction: Payroll, B/F Payroll, Print Pay Slip, Print Payment
+  Advice, APS Generator. Reports: EPF, SOCSO, Income Tax, HRDF, Other Government, Personnel, Management, 12 Months,
+  Year-To-Date (+ Statistic), Allowance, Deduction, Account Department, Reminder, Human Resource Letters. Setting: Work
+  Table, Payment Table, Bank, APS Format Setting, Statutory Setting. System: General Setup, Upgrade / Backup / Restore
+  Database, Change Password, Administrative Tools.
+- **Add New Payroll:** types 1st Half, 2nd Half, Month End Pay, Bonus, Commission; From/To Date; a Public Holiday
+  count; tick box "I will add the employee to the payroll later" (unticked = every employee is put in the new month).
+- **Organize** only re-orders payroll sequences. **Quick Update** (General / Allowance / Deduction): sets Working Days,
+  Public Holiday, Days Worked, a leave, allowances or deductions for many employees at once, filtered by employee
+  range, Branch, Department, Category; also "Update Basic Rate from Employee file".
+- **Work Table #1:** 26 work days per month, 8 daily work hours (why a new payroll row starts at 26 / 26).
+- **Overtime tables** (Round Method + Smallest Unit per table; each line has EPF/SOCSO/Taxable/HRDF ticks):
+  Monthly pay: hour = ((BASIC_RATE/26)/8) x 1, 1.5, 2, 3; Rest Day = (BASIC_RATE/26) x 2 per day; Holiday Day =
+  (BASIC_RATE/26) x 3 per day. Daily pay: hour = (BASIC_RATE_MY/8) x 1, 1.5, 2, 3; Rest Day = BASIC_RATE_MY x 2;
+  Holiday Day = BASIC_RATE_MY x 3. There is also a table for Hourly pay.
+- **An employee's record chooses its tables** (Accounts & Setting: Work Table, Leave Table, Overtimes Table) and its
+  Pay Basis / Pay Period (Employment tab). Seen: one test employee with Pay Basis Daily while its Overtimes Table was
+  still "for Monthly Pay" (looked at earlier today; may have been changed since).
+- **Holiday** list is empty, with a Generate button. **General Setup > Transaction:** lateness and no-pay-hour deduction
+  ratios (1.00), rounding of basic and net pay, a few tick boxes. **Other:** payslip e-mail subject / content.
+- Million's "Payroll Information" report (already imported for the employee list) also carries Branch, Pay Basis and
+  Basic Rate per employee.
+
+## Session 12b - 2026-10-09 - Basic Rate with Monthly / Daily in the Results window
+366 tests pass. **Package rebuilt and restarted. Not committed (branch `pdf-text`, after PR #2's first commit).**
+- The user's correction: "daily rate" meant that the **Results window lets you choose Monthly or Daily** beside the
+  Basic Rate, as in Million's employee file. Session 12's separate "daily rate" field is replaced by two fields per
+  employee: `pay_basis` ("monthly" default / "daily") and `basic_rate`.
+- Results window: the Basic Rate box can be typed in, with a Monthly / Daily list beside it; a line under it shows the
+  basic pay (Daily: rate x Days Worked; Monthly: the rate itself, absence and unpaid leave not taken off).
+- Section 4 is now "Basic pay (monthly or daily rate)": the same two fields per employee, counts, basic pay, total.
+  CSV: `GET /api/payroll/{month}/basic-pay` -> `Basic pay <month> [company].csv` (`payroll.build_basic_pay_csv`).
+- Neither field goes into the Million file (it has no column for them); Million keeps its own Pay Basis and rate.
+- Checked in the browser on the real plan: typed a test rate as Daily, then Monthly, both lines right, then put the
+  employee back to Monthly with no rate.
+
 ## Session 12 — 2026-10-09 — Daily-rated pay table; Inbox folder (no clicks) and Tables folder
 365 tests pass; Malay checks pass (125 server messages). **Package rebuilt and restarted. Not committed (branch
 `pdf-text`, with sessions 10 and 11).**

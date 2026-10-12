@@ -490,11 +490,25 @@ function renderResults() {
     el("div", { class: "pw-month", text: `Month End Pay - ${MONTH_NAMES[m - 1]}, ${y}` }),
     el("span", { class: r.complete ? "pill good" : "pill check", text: r.complete ? t("Complete") : t("Needs checking") }));
 
+  // Basic Rate and Monthly / Daily: what is typed here counts; while no rate is typed, Million's own (from its
+  // imported employee list) are shown and used.
+  const fromMillion = r.rate_source === "million";
+  const rateBox = el("input", { type: "number", id: "pw-rate", min: "0", step: "0.01", value: e.basic_rate ? String(e.basic_rate) : "",
+    placeholder: fromMillion ? fmt(r.basic_rate) : "0.00", "aria-label": "Basic Rate" });
+  rateBox.addEventListener("change", () => {
+    const v = rateBox.value === "" ? 0 : Number(rateBox.value);
+    if (v >= 0 && v <= 100000) { e.basic_rate = v; schedulePayrollSave(); } else rateBox.value = e.basic_rate ? String(e.basic_rate) : "";
+  });
+  const shownBasis = fromMillion ? r.pay_basis : (e.pay_basis || "monthly");
+  const basisSel = el("select", { id: "pw-basis", class: "unit b", "aria-label": "Pay Basis", disabled: fromMillion },
+    ...PAY_BASES.map(([value, label]) => el("option", { value, text: label, selected: shownBasis === value })));
+  basisSel.addEventListener("change", () => { e.pay_basis = basisSel.value; schedulePayrollSave(); });
   const basic = el("div", { class: "pw-panel" },
-    el("div", { class: "pf" }, el("label", { class: "b", text: "Basic Rate" }), el("input", { disabled: true, placeholder: "—", "aria-label": "Basic Rate (kept in Million Payroll)" }), el("span", { class: "unit b", text: "Monthly" })),
+    el("div", { class: "pf" }, el("label", { class: "b", for: "pw-rate", text: "Basic Rate" }), rateBox, basisSel),
+    el("div", { id: "pw-basic-pay" }),
     el("div", { class: "pf" }, el("label", { text: "Director Fee" }), el("input", { disabled: true, placeholder: "—", "aria-label": "Director Fee (kept in Million Payroll)" })),
     el("div", { class: "pf" }, el("label", { text: "Back Pay" }), el("input", { disabled: true, placeholder: "—", "aria-label": "Back Pay (kept in Million Payroll)" })),
-    el("p", { class: "legend", text: t("Not on a time card: keep these in Million Payroll.") }));
+    el("p", { class: "legend", text: t("Basic Rate is for the pay preview; it is not sent to Million Payroll. Director Fee and Back Pay: keep them in Million Payroll.") }));
   const days = el("div", { class: "pw-panel" },
     labelledRow(i, r, "working_days", "Working Days", "", true), labelledRow(i, r, "public_holiday", "Public Holiday", ""),
     labelledRow(i, r, "days_worked", "Days Worked", "", true), labelledRow(i, r, "hours_worked", "Hours of Worked", ""));
@@ -551,6 +565,7 @@ function renderResults() {
     el("div", { class: "pw-tabs", role: "tablist" }, tab("basic", "Basic Pay & Overtime"), tab("allow", "Allowance & Deduction")),
     el("div", { class: "pw-body" }, body),
     foot));
+  renderBasicPayLine(i);
 }
 
 function renderPayroll() {
@@ -566,7 +581,7 @@ $("pr-add").addEventListener("click", () => {
   const id = newEmployeeId();
   if (prev && prCompany[prev.id]) prCompany[id] = prCompany[prev.id];   // usually the next worker of the same company
   pr.plan.employees.push({ id, emp_no: "", name: "", jobs: [], hours_column: null, overrides: {},
-    entries: {}, zakat: 0, levy: 0, message: "", daily_rate: 0, company: chosenCompany() });   // stays under the company chosen above
+    entries: {}, zakat: 0, levy: 0, message: "", pay_basis: "monthly", basic_rate: 0, company: chosenCompany() });   // stays under the company chosen above
   prIndex = pr.plan.employees.length - 1;                      // show the new employee in the results window
   schedulePayrollSave(); renderEmployees(); renderResults();
 });
@@ -648,58 +663,92 @@ function runReason(text) {
   return viaLine !== line ? viaLine.replace(/^- \u0001: /, "") : tm(text);
 }
 
-// ---------------------------------------------------------------------------------------------- daily-rated pay
-// One row per employee: the counts from the time cards, the daily rate (typed here) and basic pay = rate x Days Worked.
-const DAILY_COUNTS = [["days_worked", "Days Worked"], ["public_holiday", "Public holiday not worked"], ["ot_rest_day", "Rest day worked (days)"],
-  ["ot_holiday", "Public holiday worked (days)"], ["ot_1_5", "Overtime 1.5 (hours)"], ["ot_2", "Overtime 2.0 (hours)"]];
-function dailyPay(i) {
-  const e = pr.plan.employees[i], r = pr.results[i];
-  return e && r && e.daily_rate ? Math.round(e.daily_rate * r.values.days_worked.value * 100) / 100 : null;
+// ------------------------------------------------------------------------------------ basic pay (monthly or daily)
+// Each employee's Basic Rate is meant per month or per day (chosen by the user, as in Million's employee file).
+// Daily: basic pay = rate x Days Worked. Monthly: the rate is the month's basic pay. Nothing else is turned into money.
+const PAY_BASES = [["monthly", "Monthly"], ["daily", "Daily"]];
+// Under the Basic Rate box of the Results window: where the rate comes from, and the pay preview worked out the way
+// Million's own overtime tables do it (the server does the sums: payroll.pay_preview).
+function payBasisWord(basis) { return t(basis === "daily" ? "Daily" : "Monthly"); }
+function renderBasicPayLine(i) {
+  const host = $("pw-basic-pay");
+  if (!host) return;
+  const e = pr.plan.employees[i], r = pr.results[i], pay = r.pay, m = r.million;
+  const parts = [];
+  if (r.rate_source === "million") {
+    parts.push(el("p", { class: "legend", text: t("From Million: {basis}, Basic Rate {rate}. Type a rate here to use another.", { basis: payBasisWord(r.pay_basis), rate: fmt(r.basic_rate) }) }));
+  } else if (r.rate_source === "typed" && m && m.basic_rate && (m.basic_rate !== r.basic_rate || m.pay_basis !== r.pay_basis)) {
+    parts.push(el("p", { class: "legend warn", text: t("Million has {basis}, Basic Rate {rate} for this employee: not what is typed here.", { basis: payBasisWord(m.pay_basis), rate: fmt(m.basic_rate) }) }));
+  }
+  if (!pay) {
+    parts.push(el("p", { class: "legend", text: m && m.pay_basis && !["monthly", "daily"].includes(m.pay_basis)
+      ? t("In Million this employee is paid {basis}: Table Reader works out Monthly and Daily pay only.", { basis: m.pay_basis })
+      : t("Type the Basic Rate and choose Monthly or Daily to see the pay.") }));
+  } else {
+    const row = (label, how, amount, cls) => el("tr", { class: cls || "" }, el("td", { text: label }), el("td", { class: "muted", text: how }), el("td", { class: "n", text: fmt(amount) }));
+    const rows = [row(t("Basic pay"), r.pay_basis === "daily" ? `${fmt(r.basic_rate)} × ${fmt(r.values.days_worked.value)} ${t("days")}` : t("the monthly rate"), pay.basic)];
+    for (const line of pay.lines) rows.push(row(line.label, `${fmt(line.quantity)} ${t(line.unit === "hour" ? "hours" : "days")} × ${fmt(line.each)}`, line.amount));
+    if (pay.allowances) rows.push(row(t("Allowances"), "", pay.allowances));
+    if (pay.deductions) rows.push(row(t("Deductions"), "", -pay.deductions));
+    rows.push(row(t("Estimated pay before EPF, SOCSO and tax"), "", pay.total, "total"));
+    parts.push(el("table", { class: "daytable pay-preview" }, el("tbody", {}, ...rows)),
+      el("p", { class: "legend", text: t("Overtime as in Million's overtime tables: an hour = a day's pay ÷ 8, × 1, 1.5, 2 or 3; a Rest Day worked = a day's pay × 2; a Holiday Day worked = × 3. A day's pay = the daily rate, or the monthly rate ÷ 26. Absence, lateness and unpaid leave are not taken off.") }));
+  }
+  host.replaceChildren(...parts);
 }
 function renderDaily() {
   const host = $("pr-daily");
   const vis = visibleIndexes().filter((k) => k < pr.results.length);
   $("pr-daily-download").disabled = vis.length === 0;
-  const key = vis.map((i) => pr.plan.employees[i].id).join("|");
-  if (host.dataset.rows !== key || !host.firstChild) {            // other employees than before: draw the table again
-    host.dataset.rows = key;
-    if (!vis.length) { host.replaceChildren(el("p", { class: "muted", text: t("Results appear here once you add an employee.") })); return; }
-    const rows = vis.map((i) => {
-      const e = pr.plan.employees[i];
-      const rate = el("input", { type: "number", min: "0", step: "0.01", value: e.daily_rate ? String(e.daily_rate) : "", placeholder: "0.00",
-        style: "width:100px", "aria-label": t("Daily rate (RM)") });
-      rate.addEventListener("change", () => {
-        const v = rate.value === "" ? 0 : Number(rate.value);
-        if (v >= 0 && v <= 100000) { e.daily_rate = v; schedulePayrollSave(); renderDaily(); } else rate.value = e.daily_rate ? String(e.daily_rate) : "";
-      });
-      return el("tr", { "data-i": String(i) }, el("td", { class: "d-who" }), el("td", {}, rate), ...DAILY_COUNTS.map(() => el("td", { class: "n d-count" })),
-        el("td", { class: "n d-pay" }), el("td", { class: "d-state" }));
+  if (host.contains(document.activeElement) && host.querySelectorAll("tbody tr").length === vis.length) return fillDaily(host);
+  if (!vis.length) { host.replaceChildren(el("p", { class: "muted", text: t("Results appear here once you add an employee.") })); return; }
+  const rows = vis.map((i) => {
+    const e = pr.plan.employees[i], r = pr.results[i], fromMillion = r.rate_source === "million";
+    const shown = fromMillion ? r.pay_basis : (e.pay_basis || "monthly");
+    const basis = el("select", { "aria-label": t("Pay basis"), disabled: fromMillion },
+      ...PAY_BASES.map(([value, label]) => el("option", { value, text: t(label), selected: shown === value })));
+    basis.addEventListener("change", () => { e.pay_basis = basis.value; schedulePayrollSave(); });
+    const rate = el("input", { type: "number", min: "0", step: "0.01", value: e.basic_rate ? String(e.basic_rate) : "",
+      placeholder: fromMillion ? fmt(r.basic_rate) : "0.00", style: "width:100px", "aria-label": t("Basic rate (RM)") });
+    rate.addEventListener("change", () => {
+      const v = rate.value === "" ? 0 : Number(rate.value);
+      if (v >= 0 && v <= 100000) { e.basic_rate = v; schedulePayrollSave(); } else rate.value = e.basic_rate ? String(e.basic_rate) : "";
     });
-    host.replaceChildren(el("table", { class: "daytable daily" },
-      el("thead", {}, el("tr", {}, ...[t("Employee"), t("Daily rate (RM)"), ...DAILY_COUNTS.map(([, label]) => t(label)), t("Basic pay (RM)"), ""].map((h) => el("th", { text: h })))),
-      el("tbody", {}, ...rows),
-      el("tfoot", {}, el("tr", {}, el("td", { text: t("Total") }), el("td"), ...DAILY_COUNTS.map(() => el("td")), el("td", { class: "n d-total" }), el("td")))));
-  }
-  let total = 0;
-  for (const tr of host.querySelectorAll("tbody tr")) {           // the figures only: a rate box being typed in is left alone
+    return el("tr", { "data-i": String(i) }, el("td", { class: "d-who" }), el("td", {}, basis), el("td", {}, rate), el("td", { class: "d-from" }),
+      ...DAILY_COLUMNS.map(() => el("td", { class: "n d-fig" })), el("td", { class: "d-state" }));
+  });
+  host.replaceChildren(el("table", { class: "daytable daily" },
+    el("thead", {}, el("tr", {}, ...[t("Employee"), t("Pay basis"), t("Basic rate (RM)"), t("Rate from"), ...DAILY_COLUMNS.map(([label]) => t(label)), ""].map((h) => el("th", { text: h })))),
+    el("tbody", {}, ...rows),
+    el("tfoot", {}, el("tr", {}, el("td", { text: t("Total") }), el("td"), el("td"), el("td"), ...DAILY_COLUMNS.map(() => el("td", { class: "n d-sum" })), el("td")))));
+  fillDaily(host);
+}
+// The figures of the pay table (the boxes are left alone, so one being typed in keeps its place)
+const DAILY_COLUMNS = [["Days Worked", (r) => r.values.days_worked.value, false], ["Basic pay (RM)", (r) => r.pay && r.pay.basic, true],
+  ["Overtime pay (RM)", (r) => r.pay && r.pay.overtime, true], ["Allowances", (r) => r.pay && r.pay.allowances, true],
+  ["Deductions", (r) => r.pay && r.pay.deductions, true], ["Estimated pay (RM)", (r) => r.pay && r.pay.total, true]];
+function fillDaily(host) {
+  const sums = DAILY_COLUMNS.map(() => 0);
+  for (const tr of host.querySelectorAll("tbody tr")) {
     const i = Number(tr.dataset.i), e = pr.plan.employees[i], r = pr.results[i];
     if (!e || !r) continue;
     tr.querySelector(".d-who").textContent = [e.emp_no, e.name].filter(Boolean).join(" ") || "—";
-    tr.querySelectorAll(".d-count").forEach((td, k) => { td.textContent = fmt(r.values[DAILY_COUNTS[k][0]].value); });
-    const pay = dailyPay(i);
-    total += pay || 0;
-    tr.querySelector(".d-pay").textContent = pay === null ? "" : fmt(pay);
+    tr.querySelector(".d-from").textContent = r.rate_source === "million" ? "Million" : r.rate_source === "typed" ? "Table Reader" : "";
+    tr.querySelectorAll(".d-fig").forEach((td, k) => {
+      const v = DAILY_COLUMNS[k][1](r);
+      td.textContent = v === null || v === undefined ? "" : fmt(v);
+      if (DAILY_COLUMNS[k][2]) sums[k] += v || 0;
+    });
     tr.querySelector(".d-state").textContent = r.complete ? "" : t("Needs checking");
     tr.className = r.complete ? "" : "bad";
   }
-  const cell = host.querySelector(".d-total");
-  if (cell) cell.textContent = fmt(total);
+  host.querySelectorAll(".d-sum").forEach((td, k) => { td.textContent = DAILY_COLUMNS[k][2] ? fmt(sums[k]) : ""; });
 }
 
 $("pr-daily-download").addEventListener("click", async () => {
   if (!(await savePayroll())) return;
   const c = chosenCompany();
-  location.href = payrollUrl("/daily") + (c ? `?company=${encodeURIComponent(c)}` : "");
+  location.href = payrollUrl("/basic-pay") + (c ? `?company=${encodeURIComponent(c)}` : "");
 });
 
 // One Million file for the whole month: everyone who can go in, and for the others the reason, company by company.

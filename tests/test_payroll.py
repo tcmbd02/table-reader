@@ -786,8 +786,14 @@ def test_no_employee_list_means_no_check(tmp_path, monkeypatch):
 def test_millions_employee_list_is_read_from_its_printed_report_layout():
     people = [("MJ(1)", "ALI BIN ABU"), ("MJ(2)", "AMINAH"), (100, "ZUL"), ("B01", "")]
     assert payroll.parse_million_employees(million_listing(people)) == [
-        {"emp_no": "MJ(1)", "name": "ALI BIN ABU"}, {"emp_no": "MJ(2)", "name": "AMINAH"},
-        {"emp_no": "100", "name": "ZUL"}, {"emp_no": "B01", "name": ""}]      # three pages, headings not taken as people
+        {"emp_no": "MJ(1)", "name": "ALI BIN ABU", "basic_rate": 0.0}, {"emp_no": "MJ(2)", "name": "AMINAH", "basic_rate": 0.0},
+        {"emp_no": "100", "name": "ZUL", "basic_rate": 0.0}, {"emp_no": "B01", "name": "", "basic_rate": 0.0}]   # headings are not people
+    # the Payroll Information report also says how each employee is paid
+    paid = [("MJ(1)", "ALI", "ACME", "Daily", 65.5), ("MJ(2)", "SITI", "", "Monthly", 1700), ("MJ(3)", "ZUL", "", "", 0)]
+    assert payroll.parse_million_employees(million_listing(paid, title_col=1)) == [
+        {"emp_no": "MJ(1)", "name": "ALI", "branch": "ACME", "pay_basis": "daily", "basic_rate": 65.5},
+        {"emp_no": "MJ(2)", "name": "SITI", "pay_basis": "monthly", "basic_rate": 1700.0},
+        {"emp_no": "MJ(3)", "name": "ZUL", "basic_rate": 0.0}]
     # Million's "Payroll Information" report: its title, company name and total line sit in the Emp no. column
     assert [e["emp_no"] for e in payroll.parse_million_employees(million_listing(people, title_col=1))] == [
         "MJ(1)", "MJ(2)", "100", "B01"]
@@ -873,44 +879,97 @@ def test_an_employee_no_is_suggested_only_when_one_name_in_million_fits():
     assert payroll.suggest_employee_nos(plan_with(("", "SITI"), ("", "SITI AMINAH")), listed) == {}
 
 
-def test_daily_rated_basic_pay_is_the_rate_times_days_worked_and_nothing_else():
+def test_basic_pay_is_rate_times_days_worked_for_daily_and_the_rate_itself_for_monthly():
     p = holiday_16()
     docs = [("card 1", card(1, 15, not_worked={6, 13})), ("card 2", card(16, 30, not_worked={20, 27}))]
-    r = payroll.calculate(p, docs, employee(daily_rate=65.5))
-    assert values(r)["days_worked"] == 25 and r["daily_rate"] == 65.5 and r["daily_basic_pay"] == 1637.5
-    assert payroll.calculate(p, docs, employee())["daily_basic_pay"] is None                    # no rate typed: no pay shown
-    typed = payroll.calculate(p, docs, employee(daily_rate=65.5, overrides={"days_worked": 20.0}))
-    assert typed["daily_basic_pay"] == 1310.0                         # a Days Worked figure typed over is the one used
+    daily = payroll.calculate(p, docs, employee(pay_basis="daily", basic_rate=65.5))
+    assert values(daily)["days_worked"] == 25 and (daily["pay_basis"], daily["basic_rate"], daily["rate_source"]) == ("daily", 65.5, "typed")
+    assert daily["pay"]["basic"] == 1637.5
+    monthly = payroll.calculate(p, docs, employee(pay_basis="monthly", basic_rate=1700))
+    assert (monthly["pay_basis"], monthly["pay"]["basic"]) == ("monthly", 1700.0)
+    none = payroll.calculate(p, docs, employee())
+    assert (none["pay_basis"], none["rate_source"], none["pay"]) == ("monthly", None, None)       # no rate: no pay shown
+    typed = payroll.calculate(p, docs, employee(pay_basis="daily", basic_rate=65.5, overrides={"days_worked": 20.0}))
+    assert typed["pay"]["basic"] == 1310.0                            # a Days Worked figure typed over is the one used
+
+
+def test_overtime_pay_follows_millions_own_overtime_tables():
+    counts = {"days_worked": 25, "ot_1": 2, "ot_1_5": 10, "ot_2": 4, "ot_3": 1, "ot_rest_day": 2, "ot_holiday": 1}
+    daily = payroll.pay_preview("daily", 80.0, counts, {})            # an hour = 80 / 8 = 10; a day = 80
+    assert {line["key"]: (line["each"], line["amount"]) for line in daily["lines"]} == {
+        "ot_1": (10.0, 20.0), "ot_1_5": (15.0, 150.0), "ot_2": (20.0, 80.0), "ot_3": (30.0, 30.0),
+        "ot_rest_day": (160.0, 320.0), "ot_holiday": (240.0, 240.0)}
+    assert (daily["basic"], daily["overtime"], daily["total"]) == (2000.0, 840.0, 2840.0)
+    monthly = payroll.pay_preview("monthly", 2080.0, counts, {})      # a day = 2080 / 26 = 80: the same overtime
+    assert (monthly["basic"], monthly["overtime"], monthly["total"]) == (2080.0, 840.0, 2920.0)
+    extras = {"allowance": {"Food Allowance": 100.0, "Transport Allowance": 50.0}, "deduction": {"ADVANCE SALARY": 200.0}}
+    with_extras = payroll.pay_preview("daily", 80.0, {"days_worked": 10}, extras)
+    assert with_extras == {"basic": 800.0, "lines": [], "overtime": 0.0, "allowances": 150.0, "deductions": 200.0, "total": 750.0}
+    assert payroll.pay_preview("daily", 0.0, counts, {}) is None
+
+
+def test_millions_pay_basis_and_rate_are_used_until_a_rate_is_typed():
+    p = holiday_16()
+    docs = [("card 1", card(1, 15, not_worked={6, 13})), ("card 2", card(16, 30, not_worked={20, 27}))]
+    in_million = {"emp_no": "MJ(1)", "name": "ALI", "pay_basis": "daily", "basic_rate": 60.0, "branch": "ACME"}
+    r = payroll.calculate(p, docs, employee(), in_million)
+    assert (r["pay_basis"], r["basic_rate"], r["rate_source"]) == ("daily", 60.0, "million") and r["pay"]["basic"] == 1500.0
+    assert r["million"] == {"pay_basis": "daily", "basic_rate": 60.0, "branch": "ACME"}
+    typed = payroll.calculate(p, docs, employee(pay_basis="monthly", basic_rate=1800), in_million)
+    assert (typed["pay_basis"], typed["basic_rate"], typed["rate_source"]) == ("monthly", 1800.0, "typed")
+    assert typed["million"]["basic_rate"] == 60.0                      # still shown, so a difference can be seen
+    for not_usable in ({"emp_no": "MJ(1)", "pay_basis": "hourly", "basic_rate": 9.0}, {"emp_no": "MJ(1)", "pay_basis": "daily"},
+                       {"emp_no": "MJ(1)", "basic_rate": 60.0}, None):
+        r = payroll.calculate(p, docs, employee(), not_usable)
+        assert (r["rate_source"], r["pay"]) == (None, None)
+    by_no = {"mj(1)": in_million}
     plan = plan_for()
-    plan["employees"] = [employee(daily_rate=65.5)]
-    assert payroll.validate_plan(plan, set())["employees"][0]["daily_rate"] == 65.5
-    del plan["employees"][0]["daily_rate"]                            # a plan saved before daily rates
-    assert payroll.validate_plan(plan, set())["employees"][0]["daily_rate"] == 0.0
-    plan["employees"][0]["daily_rate"] = -1
-    with pytest.raises(ocr.OcrError):
-        payroll.validate_plan(plan, set())
+    plan["employees"] = [employee(emp_no="MJ(1)"), employee(id="e2", emp_no="MJ(2)")]
+    both = payroll.compute_all(plan, lambda ref: ("x", []), by_no)
+    assert [x["rate_source"] for x in both] == ["million", None]
 
 
-def test_the_daily_pay_table_lists_counts_rate_and_basic_pay():
+def test_pay_basis_and_basic_rate_are_checked_and_start_as_monthly_with_no_rate():
+    plan = plan_for()
+    plan["employees"] = [employee(pay_basis="daily", basic_rate=65.5)]
+    saved = payroll.validate_plan(plan, set())["employees"][0]
+    assert (saved["pay_basis"], saved["basic_rate"]) == ("daily", 65.5)
+    plan["employees"] = [employee()]                                  # a plan saved before the Basic Rate could be typed
+    saved = payroll.validate_plan(plan, set())["employees"][0]
+    assert (saved["pay_basis"], saved["basic_rate"]) == ("monthly", 0.0)
+    for bad in ({"pay_basis": "weekly"}, {"basic_rate": -1}, {"basic_rate": "70"}):
+        plan["employees"] = [employee(**bad)]
+        with pytest.raises(ocr.OcrError):
+            payroll.validate_plan(plan, set())
+
+
+def test_the_pay_table_lists_basis_rate_counts_and_pay():
     p = holiday_16()
     docs = [("card 1", card(1, 15, not_worked={6, 13})), ("card 2", card(16, 30, not_worked={20, 27}))]
-    results = [payroll.calculate(p, docs, employee(id="a", emp_no="MJ(1)", name="ALI", daily_rate=60.0)),
-               payroll.calculate(p, [], employee(id="b", emp_no="MJ(2)", name="SITI"))]
-    rows = list(csv.reader(io.StringIO(payroll.build_daily_csv(results, ["MAJU JAYA", ""]))))
-    assert rows[0][:6] == ["Company", "Employee No.", "Name", "Daily rate (RM)", "Days Worked", "Basic pay (RM) = rate x Days Worked"]
-    assert rows[1][:6] == ["MAJU JAYA", "MJ(1)", "ALI", "60.00", "25.00", "1500.00"]
-    by_head = dict(zip(rows[0], rows[1]))
-    assert by_head["Public holiday worked (days)"] == "1.00" and by_head["Overtime 1.5 (hours)"] == "25.00"
-    assert rows[2][3] == "" and rows[2][5] == "" and rows[2][-1].startswith("INCOMPLETE")       # no rate: no pay
-    assert rows[3][2] == "Total" and rows[3][5] == "1500.00"
+    results = [payroll.calculate(p, docs, employee(id="a", emp_no="MJ(1)", name="ALI", pay_basis="daily", basic_rate=80.0)),
+               payroll.calculate(p, docs, employee(id="b", emp_no="MJ(2)", name="ZUL"), {"pay_basis": "monthly", "basic_rate": 2080.0}),
+               payroll.calculate(p, [], employee(id="c", emp_no="MJ(3)", name="SITI"))]
+    rows = list(csv.reader(io.StringIO(payroll.build_basic_pay_csv(results, ["MAJU JAYA", "MAJU JAYA", ""]))))
+    ali, zul, siti, total = (dict(zip(rows[0], row)) for row in rows[1:5])
+    assert rows[0][:8] == ["Company", "Employee No.", "Name", "Pay basis", "Basic Rate (RM)", "Rate from", "Days Worked", "Basic pay (RM)"]
+    assert (ali["Pay basis"], ali["Basic Rate (RM)"], ali["Rate from"], ali["Days Worked"], ali["Basic pay (RM)"]) == (
+        "Daily", "80.00", "Table Reader", "25.00", "2000.00")
+    # 25 hours at 1.5 (80 / 8 x 1.5 = 15) and the public holiday worked (80 x 3)
+    assert (ali["Overtime 1.5 pay (RM)"], ali["Holiday Day pay (RM)"], ali["Overtime pay (RM)"]) == ("375.00", "240.00", "615.00")
+    assert ali["Estimated pay before EPF, SOCSO and tax (RM)"] == "2615.00" and ali["Overtime 1.5 (hours)"] == "25.00"
+    assert (zul["Pay basis"], zul["Rate from"], zul["Basic pay (RM)"], zul["Overtime pay (RM)"]) == ("Monthly", "Million", "2080.00", "615.00")
+    assert siti["Pay basis"] == siti["Basic pay (RM)"] == siti["Estimated pay before EPF, SOCSO and tax (RM)"] == ""
+    assert siti["Notes"].startswith("INCOMPLETE")                    # no rate: no pay
+    assert rows[4][2] == "Total" and total["Estimated pay before EPF, SOCSO and tax (RM)"] == "5310.00"
 
 
-def test_a_daily_rate_is_remembered_for_next_month():
+def test_pay_basis_and_basic_rate_are_remembered_for_next_month():
     p = plan_for()
-    p["employees"] = [employee(worker_key="maju|name:ali", daily_rate=60.0), employee(id="e2", worker_key="maju|name:siti")]
+    p["employees"] = [employee(worker_key="maju|name:ali", pay_basis="daily", basic_rate=60.0),
+                      employee(id="e2", worker_key="maju|name:siti")]
     directory = {}
     assert payroll.remember_employees(p, directory)
-    assert directory == {"maju|name:ali": {"emp_no": "MJ(1)", "name": "Test", "daily_rate": 60.0},
+    assert directory == {"maju|name:ali": {"emp_no": "MJ(1)", "name": "Test", "pay_basis": "daily", "basic_rate": 60.0},
                          "maju|name:siti": {"emp_no": "MJ(1)", "name": "Test"}}
 
 

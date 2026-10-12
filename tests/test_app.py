@@ -435,11 +435,11 @@ def test_millions_employee_list_is_imported_offered_and_checked_before_download(
         assert r.status_code == 400 and r.json()["code"] == "MILLION_LIST"
         listing = million_listing([("MJ(1)", "SITI"), ("MJ(2)", "ALI")])
         r = c.post("/api/million/employees", files={"file": ("rptempepmlist.xls", listing, "application/vnd.ms-excel")})
-        assert r.status_code == 200 and r.json()["employees"] == [{"emp_no": "MJ(1)", "name": "SITI"},
-                                                                  {"emp_no": "MJ(2)", "name": "ALI"}]
+        assert r.status_code == 200 and [(e["emp_no"], e["name"]) for e in r.json()["employees"]] == [("MJ(1)", "SITI"),
+                                                                                                      ("MJ(2)", "ALI")]
         assert c.get("/api/payroll/2026-09").json()["million"]["source"] == "rptempepmlist.xls"
         saved = json.loads((tmp_path / "payroll" / "million-employees.json").read_text(encoding="utf-8"))
-        assert set(saved) == {"imported", "source", "employees"} and set(saved["employees"][0]) == {"emp_no", "name"}
+        assert set(saved) == {"imported", "source", "employees"} and set(saved["employees"][0]) == {"emp_no", "name", "basic_rate"}
 
         upload(c, tmp_path, name="MAJU JAYA ALI SEPT 26.png")
         store.wait_idle()
@@ -488,7 +488,7 @@ def test_the_month_run_makes_one_file_and_lists_who_is_held_back(tmp_path):
         assert [sheet.cell_value(r, 0) for r in range(1, sheet.nrows)] == ["MJ(1)", "MJ(2)"]
 
 
-def test_daily_pay_table_download(tmp_path):
+def test_basic_pay_table_download(tmp_path):
     def card(image):
         return record([{"Date": good(str(d)), "Total": good("9")} for d in range(1, 31)], labels=("Date", "Total"))
 
@@ -497,15 +497,38 @@ def test_daily_pay_table_download(tmp_path):
         upload(c, tmp_path, name="MAJU JAYA ALI SEPT 26.png")
         store.wait_idle()
         view = c.post("/api/payroll/2026-09/auto", json={"company": ""}).json()
-        view["plan"]["employees"][0].update(emp_no="MJ(1)", daily_rate=70)
+        view["plan"]["employees"][0].update(emp_no="MJ(1)", pay_basis="daily", basic_rate=70)
         saved = c.put("/api/payroll/2026-09", json=view["plan"]).json()
         days = saved["results"][0]["values"]["days_worked"]["value"]
-        assert saved["plan"]["employees"][0]["daily_rate"] == 70.0 and saved["results"][0]["daily_basic_pay"] == 70 * days
-        r = c.get("/api/payroll/2026-09/daily")
-        assert r.status_code == 200 and "Daily%20pay%202026-09.csv" in r.headers["content-disposition"]
+        assert saved["plan"]["employees"][0]["basic_rate"] == 70.0 and saved["results"][0]["pay"]["basic"] == 70 * days
+        r = c.get("/api/payroll/2026-09/basic-pay")
+        assert r.status_code == 200 and "Basic%20pay%202026-09.csv" in r.headers["content-disposition"]
         lines = r.content.decode("utf-8-sig").splitlines()
-        assert lines[1].split(",")[1:6] == ["MJ(1)", "MAJU JAYA ALI", "70.00", f"{days:.2f}", f"{70 * days:.2f}"]
-        assert (tmp_path / "payroll" / "Daily pay 2026-09.csv").is_file()
+        assert lines[1].split(",")[1:8] == ["MJ(1)", "MAJU JAYA ALI", "Daily", "70.00", "Table Reader", f"{days:.2f}", f"{70 * days:.2f}"]
+        assert (tmp_path / "payroll" / "Basic pay 2026-09.csv").is_file()
+
+
+def test_pay_basis_and_rate_come_from_millions_report_until_typed(tmp_path):
+    from tests.helpers import million_listing
+
+    def card(image):
+        return record([{"Date": good(str(d)), "Total": good("9")} for d in range(1, 31)], labels=("Date", "Total"))
+
+    store = Jobs(tmp_path / "jobs", reader=card)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        listing = million_listing([("MJ(1)", "ALI", "MAJU JAYA", "Daily", 60.0)], title_col=1)
+        c.post("/api/million/employees", files={"file": ("rptemppsnlist.xls", listing, "application/vnd.ms-excel")})
+        upload(c, tmp_path, name="MAJU JAYA ALI SEPT 26.png")
+        store.wait_idle()
+        view = c.post("/api/payroll/2026-09/auto", json={"company": ""}).json()
+        assert view["results"][0]["rate_source"] is None                 # no Employee No. yet: nobody to look up
+        view["plan"]["employees"][0]["emp_no"] = "mj(1)"
+        r = c.put("/api/payroll/2026-09", json=view["plan"]).json()["results"][0]
+        assert (r["pay_basis"], r["basic_rate"], r["rate_source"]) == ("daily", 60.0, "million")
+        assert r["pay"]["basic"] == 60.0 * r["values"]["days_worked"]["value"] and r["million"]["branch"] == "MAJU JAYA"
+        view["plan"]["employees"][0].update(pay_basis="monthly", basic_rate=1500)
+        r = c.put("/api/payroll/2026-09", json=view["plan"]).json()["results"][0]
+        assert (r["pay_basis"], r["rate_source"], r["pay"]["basic"]) == ("monthly", "typed", 1500.0)
 
 
 def test_payroll_csv_for_one_company(tmp_path):

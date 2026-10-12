@@ -260,7 +260,8 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                     cache[ref] = (part_name(meta["name"], page, row, len(pages)), part_pages(pages, page, row))
             return cache[ref]
 
-        results = payroll.compute_all(plan, load_pages)
+        million = plans.load_million()
+        results = payroll.compute_all(plan, load_pages, {e["emp_no"].casefold(): e for e in million["employees"]} if million else None)
         for r in results:
             n = (gone or {}).get(r["id"])
             if n:
@@ -275,7 +276,6 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                     for page in cache[job_id][1]:
                         labels += [c for c in page["column_labels"] if c not in labels]
             r["columns"] = labels
-        million = plans.load_million()
         suggestions = payroll.suggest_employee_nos(plan, million["employees"]) if million else {}
         for r in results:
             r["suggest"] = suggestions.get(r["id"])                 # Million's Employee No. for this name, to offer
@@ -372,13 +372,13 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                                  text.encode("utf-8-sig"))
         return FileResponse(path, media_type="text/csv; charset=utf-8", filename=path.name)
 
-    @app.get("/api/payroll/{month}/daily")
-    def payroll_daily(month: str, company: str = ""):
-        """The daily-pay table (CSV): each employee's counts, daily rate and basic pay = rate x Days Worked."""
+    @app.get("/api/payroll/{month}/basic-pay")
+    def payroll_basic_pay(month: str, company: str = ""):
+        """The basic-pay table (CSV): each employee's counts, pay basis, Basic Rate and basic pay."""
         plan, results = payroll_of(month, company)
         company_of_doc = {d["id"]: d["company"] for d in finished_documents()}
-        text = payroll.build_daily_csv(results, [payroll.employee_company(e, company_of_doc) for e in plan["employees"]])
-        path = save_payroll_file(f"Daily pay {month} {safe_name(company)}.csv" if company else f"Daily pay {month}.csv",
+        text = payroll.build_basic_pay_csv(results, [payroll.employee_company(e, company_of_doc) for e in plan["employees"]])
+        path = save_payroll_file(f"Basic pay {month} {safe_name(company)}.csv" if company else f"Basic pay {month}.csv",
                                  text.encode("utf-8-sig"))
         return FileResponse(path, media_type="text/csv; charset=utf-8", filename=path.name)
 
