@@ -183,3 +183,9 @@ table.daytable tr.bad td { background: var(--warn-bg); }
 .pw-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; border-top: 1px solid var(--panel-line); background: var(--panel); }
 .pw-nav { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .pw-nav button { padding: 5px 12px; }
+table.companies { width: 100%; }
+table.companies td, table.companies th { padding: 6px 10px; }
+tr.company-row { cursor: pointer; }
+tr.company-row:hover td, tr.company-row:focus td { background: var(--bg); }
+tr.company-row.needs td:last-child { font-weight: 700; }
+tr.company-row.none td { color: var(--muted); }

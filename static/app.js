@@ -383,7 +383,7 @@ function showDoc(doc) {
 let docTimer = null;
 async function openDoc(id) {
   currentId = id; currentDoc = null;
-  $("home").hidden = true; $("payroll").hidden = true; $("doc").hidden = false;
+  hideScreens(); $("doc").hidden = false;
   $("pages").replaceChildren(); $("doc-name").textContent = ""; $("doc-status").textContent = t("Opening…");
   $("doc-error").hidden = true;
   clearTimeout(docTimer);
@@ -406,19 +406,27 @@ async function pollDoc(first) {
   }
 }
 
+// Only one screen shows at a time: the start page, a document, the month overview, a company, or the old payroll page.
+function hideScreens() {
+  for (const id of ["home", "doc", "month", "company", "payroll"]) $(id).hidden = true;
+}
+
 function showHome() {
   currentId = null; currentDoc = null; clearTimeout(docTimer);
-  $("doc").hidden = true; $("payroll").hidden = true; $("home").hidden = false;
+  hideScreens(); $("home").hidden = false;
   loadRecent();
 }
 
+// #/payroll[/2026-09] = the month overview; .../c/<company> = one company; .../old = the old payroll page.
 function route() {
   refreshCompanies();                                          // the Company chooser is on every screen
   const m = location.hash.match(/^#\/doc\/(.+)$/);
-  const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?$/);
+  const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?(?:\/(old)|\/c\/(.*))?$/);
   if (m) openDoc(decodeURIComponent(m[1]));
-  else if (pm && typeof showPayroll === "function") showPayroll(pm[1]);
-  else showHome();
+  else if (pm && pm[2] && typeof showPayroll === "function") showPayroll(pm[1]);
+  else if (pm && pm[3] !== undefined && typeof showCompany === "function") showCompany(pm[1], decodeURIComponent(pm[3]));
+  else if (pm && typeof showMonth === "function") showMonth(pm[1]);
+  else if (!pm) showHome();
 }
 
 function setupQuit() {

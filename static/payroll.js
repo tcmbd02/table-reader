@@ -28,13 +28,19 @@ function prShowError(message) {
 
 async function showPayroll(month) {
   clearTimeout(docTimer); currentId = null; currentDoc = null;
-  $("home").hidden = true; $("doc").hidden = true; $("payroll").hidden = false;
+  hideScreens(); $("payroll").hidden = false;
   prMonth = month || defaultPayrollMonth();
   prShowError("");
   try {
     pr = await api("GET", payrollUrl());
     prDirty = false;
     renderPayroll();
+    // opened from a company screen for one employee: show that employee in the results window
+    if (window.prOpenEmployee) {
+      const at = pr.plan.employees.findIndex((e) => e.id === window.prOpenEmployee);
+      window.prOpenEmployee = null;
+      if (at >= 0) { prIndex = at; renderResults(); }
+    }
     // employees who were still without an Employee No. got a new one when the page was opened
     const numbered = pr.numbered ? newNumbersText(pr.numbered) : "";
     prShowInfo([addedByThemselves(pr.added_by_themselves), numbered].filter(Boolean).join(" "));
@@ -135,7 +141,7 @@ function renderMonth() {
   const yearIn = el("input", { id: "pr-y", type: "number", min: "2000", max: "2100", value: String(y), style: "width:90px" });
   const go = () => {
     const yy = Number(yearIn.value);
-    if (yy >= 2000 && yy <= 2100) location.hash = `#/payroll/${yy}-${String(monthSel.value).padStart(2, "0")}`;
+    if (yy >= 2000 && yy <= 2100) location.hash = `#/payroll/${yy}-${String(monthSel.value).padStart(2, "0")}/old`;
   };
   monthSel.addEventListener("change", async () => { await savePayroll(); go(); });
   yearIn.addEventListener("change", async () => { await savePayroll(); go(); });
@@ -655,7 +661,7 @@ function renderPayroll() {
 }
 
 // ------------------------------------------------------------------------------------------------------------ buttons
-$("pr-back").addEventListener("click", async () => { await savePayroll(); location.hash = ""; });
+$("pr-back").addEventListener("click", async () => { await savePayroll(); location.hash = `#/payroll/${prMonth}`; });
 $("nav-payroll").addEventListener("click", () => { if (location.hash.startsWith("#/payroll")) route(); });
 $("pr-add").addEventListener("click", () => {
   const prev = pr.plan.employees[pr.plan.employees.length - 1];
@@ -833,8 +839,7 @@ $("pr-daily-download").addEventListener("click", async () => {
 });
 
 // One Million file for the whole month: everyone who can go in, and for the others the reason, company by company.
-function showMonthRun(run) {
-  const box = $("pr-run-result");
+function showMonthRun(run, box = $("pr-run-result")) {
   const withFile = run.companies.filter((c) => c.ready).length;
   const head = run.file
     ? tn(run.ready, "Million file made for the whole month: {name}, with {n} employee from {c}.", "Million file made for the whole month: {name}, with {n} employees from {c}.",
@@ -872,5 +877,3 @@ $("pr-download-xls").addEventListener("click", async () => {
   btn.disabled = true;
   try { await downloadMillion(); } finally { btn.disabled = false; }
 });
-
-if (location.hash.startsWith("#/payroll")) route();      // the page was opened on this screen: app.js ran before this file
