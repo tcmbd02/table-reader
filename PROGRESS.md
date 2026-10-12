@@ -42,7 +42,10 @@ branch updated (700dd47: new zip, both Million guides); PR #2 description update
   "unclear" in the payroll - because of the never-guess rule. **Asked the user** whether yellow readings should count
   without being accepted; not changed until they say so. `packaging/guide/guide.html` updated, its PDF not regenerated.
 - Not clicked through in the browser (tests + syntax check only). Guides (EN, BM) say it; the PDF guide does not.
-- **Follow-up, same day (user: "generate the Employee No. if it does not have one"), not committed, app not rebuilt:**
+- **Follow-up, same day (user: "generate the Employee No. if it does not have one"), committed (0d96aa4), app rebuilt;
+  September opened once through the new app: 66 employees numbered, 1 left to the "Use ..." button; payroll files backed
+  up first in `Documents\Table Reader\payroll-backup-2026-10-12 before new numbers`. `download` branch still has the
+  build before this one:**
   the month run listed 67 employees as "Employee No. is empty" because employees already in a payroll only got a
   number through the button. Now everyone without a number gets one when the month's Payroll page is opened (GET,
   under the lock, saved; `view["numbered"]`, message on the page), also an employee with no name (was skipped). Still
