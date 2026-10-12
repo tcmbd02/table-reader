@@ -1058,7 +1058,8 @@ def test_the_month_run_puts_everyone_who_is_ready_into_one_file_and_says_why_for
     names = {"mj(1)": "WORKER 1", "mj(2)": "WORKER 2", "mj(4)": "WORKER 4", "mj(5)": "WORKER 5", "mj(6)": "SITI"}
     companies = ["ACME", "ACME", "ACME", "BINA", "BINA", "BINA"]
     run = payroll.month_run(plan, results, companies, mapping=MAPPING, known=set(names), names=names)
-    assert run["ready"] == [{"emp_no": "MJ(1)", "name": "WORKER 1", "company": "ACME"}]
+    assert run["ready"] == [{"id": results[0]["id"], "emp_no": "MJ(1)", "name": "WORKER 1", "company": "ACME"}]
+    assert [h["id"] for h in run["held"]] == [r["id"] for r in results[1:]]
     sheet = read_xls(run["file"])
     assert sheet.nrows == 2 and sheet.cell_value(1, 0) == "MJ(1)" and sheet.cell_value(1, col("AZ")) == ""
     why = {h["name"]: h["reasons"] for h in run["held"]}

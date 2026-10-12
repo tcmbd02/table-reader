@@ -34,3 +34,92 @@ def issue_items(result: dict, employee: dict) -> list[dict]:
         if issue["text"] not in item["texts"]:
             item["texts"].append(issue["text"])
     return [found[kind] for kind in _ITEM_ORDER if kind in found]
+
+
+def emp_no_items(plan: dict, million: list[dict] | None, offers: dict[str, dict]) -> dict[str, list[dict]]:
+    """What is wrong with each employee's Employee No., as items ({employee id: items}, [] when nothing is):
+    "offer" - none yet and Million's list has exactly one name that fits (``offers``, payroll.suggest_employee_nos);
+    "empno" - empty, shared with another employee, or Million has another name for it;
+    "million_new" - not in Million's imported list (the employee must be created there before the import).
+    Without a list from Million (``million`` None) no number is checked against it."""
+    names = {m["emp_no"].casefold(): m.get("name", "") for m in million} if million else None
+    count: dict[str, int] = {}
+    for e in plan["employees"]:
+        key = e["emp_no"].strip().casefold()
+        if key:
+            count[key] = count.get(key, 0) + 1
+    out: dict[str, list[dict]] = {}
+    for e in plan["employees"]:
+        no = e["emp_no"].strip()
+        key = no.casefold()
+        if not no:
+            offer = offers.get(e["id"])
+            item = {"kind": "offer", "emp_no": offer["emp_no"], "million_name": offer["name"]} if offer \
+                else {"kind": "empno", "why": "empty"}
+        elif count[key] > 1:
+            item = {"kind": "empno", "why": "shared", "emp_no": no, "count": count[key]}
+        elif names is not None and key not in names:
+            item = {"kind": "million_new", "emp_no": no}
+        elif names is not None and not payroll._same_person(e["name"], names[key]):
+            item = {"kind": "empno", "why": "name", "emp_no": no, "million_name": names[key]}
+        else:
+            item = None
+        out[e["id"]] = [{"kind": item["kind"], "employee": e["id"], **{k: v for k, v in item.items() if k != "kind"}}] \
+            if item else []
+    return out
+
+
+def employee_status(items: list[dict]) -> str:
+    """"ready" (nothing left), "million" (only waiting to be created in Million), or "needs" (the user has to act)."""
+    if not items:
+        return "ready"
+    return "million" if all(i["kind"] == "million_new" for i in items) else "needs"
+
+
+def company_view(company: str, plan: dict, results: list[dict], company_of: list[str], million: list[dict] | None,
+                 offers: dict[str, dict], held: dict[str, list[str]], file_items: list[dict]) -> dict:
+    """Everything the company screen shows for ``company`` ("" = employees with no company).
+    ``company_of``: each employee's company, in the plan's order. ``held``: {employee id: reasons} for everyone the
+    month file would hold back (payroll.month_run). An employee held back for a reason that no item names gets a
+    "held" item with those reasons, so the screen never says Ready for someone the file would leave out.
+    ``file_items``: the company's files that need the user ("unplaced", "month"), listed first."""
+    numbers = emp_no_items(plan, million, offers)
+    items, employees, million_new = list(file_items), [], []
+    for e, r, c in zip(plan["employees"], results, company_of):
+        if c != company:
+            continue
+        own = issue_items(r, e) + numbers[e["id"]]
+        if e["id"] in held and not own:
+            own = [{"kind": "held", "employee": e["id"], "texts": list(held[e["id"]])}]
+        items += [i for i in own if i["kind"] != "million_new"]
+        if any(i["kind"] == "million_new" for i in own):
+            million_new.append({"emp_no": e["emp_no"].strip(), "name": e["name"]})
+        employees.append({"id": e["id"], "emp_no": e["emp_no"], "name": e["name"],
+                          "days_worked": r["values"]["days_worked"]["value"], "ot_1_5": r["values"]["ot_1_5"]["value"],
+                          "ot_rest_day": r["values"]["ot_rest_day"]["value"], "status": employee_status(own)})
+    if not employees and not items:
+        status = "none"
+    elif items:
+        status = "needs"
+    else:
+        status = "million" if million_new else "ready"
+    return {"company": company, "status": status, "needs": len(items), "waiting": len(million_new), "items": items,
+            "employees": employees, "million_new": million_new}
+
+
+_STATUS_ORDER = {"needs": 0, "ready": 1, "million": 1, "none": 2}
+
+
+def overview(views: list[dict], known: list[str]) -> dict:
+    """The month overview: one row per company view, plus the companies in ``known`` that have nothing this month
+    ("none"). Companies that need the user come first, then the ready ones, then the empty ones; by name inside each
+    group, with "no company" last in its group."""
+    rows = [{"company": v["company"], "employees": len(v["employees"]), "status": v["status"], "needs": v["needs"],
+             "waiting": v["waiting"]} for v in views]
+    seen = {r["company"].casefold() for r in rows}
+    rows += [{"company": c, "employees": 0, "status": "none", "needs": 0, "waiting": 0}
+             for c in known if c and c.casefold() not in seen]
+    rows.sort(key=lambda r: (_STATUS_ORDER[r["status"]], r["company"] == "", r["company"].casefold()))
+    return {"companies": rows,
+            "ready_companies": sum(1 for r in rows if r["status"] in ("ready", "million")),
+            "ready_employees": sum(1 for v in views for e in v["employees"] if e["status"] == "ready")}

@@ -1538,7 +1538,7 @@ def month_run(plan: dict, results: list[dict], companies: list[str], *, mapping:
             count[code] = count.get(code, 0) + 1
     ready, held, chosen = [], [], []
     for r, company in zip(results, companies):
-        who = {"emp_no": r.get("emp_no") or "", "name": r.get("name") or "", "company": company}
+        who = {"id": r["id"], "emp_no": r.get("emp_no") or "", "name": r.get("name") or "", "company": company}
         reasons = []
         if count.get(who["emp_no"].strip(), 0) > 1:
             reasons.append(f"Employee No. {who['emp_no']} is used for {count[who['emp_no'].strip()]} employees. "
