@@ -350,6 +350,11 @@ const MS = {
   "Employee No. is empty. Type it exactly as in Million Payroll.": "No. Pekerja kosong. Taipkannya sama seperti dalam Million Payroll.",
   "Each line needs a name (up to 80 characters).": "Setiap baris perlu ada nama (sehingga 80 aksara).",
   "One of the chosen documents was not found. It may have been moved or deleted.": "Salah satu dokumen yang dipilih tidak dijumpai. Ia mungkin telah dipindahkan atau dipadam.",
+  "That card was not found. It may have been moved or deleted.": "Kad itu tidak dijumpai. Ia mungkin telah dipindahkan atau dipadam.",
+  "That file was not found. It may have been moved or deleted.": "Fail itu tidak dijumpai. Ia mungkin telah dipindahkan atau dipadam.",
+  "The Employee No. could not be understood. Reload the page and try again.": "No. Pekerja tidak dapat difahami. Muat semula halaman dan cuba lagi.",
+  "That employee is not in this month's payroll any more. Reload the page.": "Pekerja itu tidak lagi ada dalam gaji bulan ini. Muat semula halaman.",
+  "A time card of this employee could not be opened. Read the file again, or take it off this employee.": "Satu kad perakam waktu pekerja ini tidak dapat dibuka. Baca fail itu semula, atau keluarkannya daripada pekerja ini.",
   "A document can belong to one employee only. Untick it from the other employee first.": "Satu dokumen hanya boleh dimiliki oleh seorang pekerja. Nyahtanda dokumen itu daripada pekerja lain dahulu.",
   "The Million file was not made. Fix these first, then download again:": "Fail Million tidak dibuat. Betulkan perkara ini dahulu, kemudian muat turun semula:",
 };

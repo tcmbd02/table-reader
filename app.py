@@ -16,6 +16,7 @@ from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+import companies
 import ocr
 import payroll
 from inbox import Inbox
@@ -252,10 +253,15 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         def load_pages(ref: str) -> tuple[str, list[dict]]:
             if ref not in cache:
                 job_id, page, row = payroll.split_part(ref)
-                meta = store.get_job(job_id)
-                if meta["status"] != "done":
+                try:
+                    meta = store.get_job(job_id)
+                    done = meta["status"] == "done"
+                    pages = merged_pages(store.load_result(job_id), store.load_edits(job_id)) if done else []
+                except (OSError, ValueError) as exc:        # a damaged reading is that employee's problem, not a crash
+                    raise OcrError("JOB_NOT_FOUND", "A time card of this employee could not be opened. Read the file "
+                                                    "again, or take it off this employee.") from exc
+                if not done:
                     raise OcrError("JOB_NOT_FINISHED", f"{meta['name']} has not been read completely yet.")
-                pages = merged_pages(store.load_result(job_id), store.load_edits(job_id))
                 if page is None:
                     cache[ref] = (meta["name"], pages)
                 else:                                           # one worker's page of a report, or row of a grid
@@ -339,10 +345,20 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         except Exception:  # noqa: BLE001 - never stops the app starting; nothing is added until the list exists
             log.exception("The list of files added to a payroll could not be written")
 
+    def month_of(d: dict, pages: list[dict], chosen: dict[str, str]) -> tuple[str | None, str]:
+        """The payroll month of a finished document: the one the user chose for it, else what it prints
+        (payroll.document_month). (None, why) when there is none; "none" chosen = not a time card."""
+        if chosen.get(d["id"]) == "none":
+            return None, "not a time card"
+        if chosen.get(d["id"]):
+            return chosen[d["id"]], ""
+        return payroll.document_month(d["name"], pages, date.fromisoformat(d["created"][:10]))
+
     def add_new_documents(plan: dict, docs: list[dict]) -> dict | None:
         index = read_auto_index()
         if index is None:
             return None
+        chosen = plans.load_file_months()
         taken = {payroll.split_ref(r)[0] for e in plan["employees"] for r in e["jobs"]}
         mine, no_month, marked = [], [], False
         for d in docs:
@@ -354,12 +370,12 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                 continue
             try:
                 pages = merged_pages(store.load_result(d["id"]), store.load_edits(d["id"]))
-                month, why = payroll.document_month(d["name"], pages, date.fromisoformat(d["created"][:10]))
+                month, why = month_of(d, pages, chosen)
             except (OcrError, OSError, ValueError):
                 continue
             if month == plan["month"]:
                 mine.append(d)
-            elif month is None:
+            elif month is None and chosen.get(d["id"]) != "none":
                 no_month.append({"name": d["name"], "why": why})
         info = {"added": [], "joined": [], "skipped": [], "unnamed": [], "no_month": no_month, "from_million": 0,
                 "new_numbers": 0}
@@ -384,8 +400,10 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             _write_json(auto_index_path, index)
         return info if any(info.values()) else None
 
-    @app.get("/api/payroll/{month}")
-    def get_payroll(month: str):
+    def open_month(month: str) -> tuple[dict, list[dict], dict, dict | None, int]:
+        """What opening a month does, once, under the lock: cards that are gone are taken off, newly read files of
+        the month join it, and everyone still without an Employee No. gets a new one. Returns (plan, documents,
+        cards taken off per employee, what joined by itself, how many numbers were made)."""
         with auto_lock:
             plan, docs = plans.load(month), finished_documents()
             gone = drop_gone_documents(plan, known_refs(docs))
@@ -402,10 +420,159 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                     plans.save(payroll.validate_plan(plan, known_refs(docs)))
             except OcrError:
                 pass                                    # a plan that cannot be saved as it is: left alone
+        return plan, docs, gone, added, numbered
+
+    @app.get("/api/payroll/{month}")
+    def get_payroll(month: str):
+        plan, docs, gone, added, numbered = open_month(month)
         view = payroll_view(plan, docs, gone)
         view["added_by_themselves"] = added
         view["numbered"] = numbered
         return view
+
+    # ------------------------------------------------------------------------------------- payroll by company
+    def month_state(month: str) -> dict:
+        """The month opened (open_month) and worked out once, for the overview and the company screen."""
+        plan, docs, gone, added, numbered = open_month(month)
+        results = payroll_view(plan, docs, gone)["results"]
+        company_of_doc = {d["id"]: d["company"] for d in docs}
+        company_of = [payroll.employee_company(e, company_of_doc) for e in plan["employees"]]
+        listed = plans.load_million()
+        names = {e["emp_no"].casefold(): e["name"] for e in listed["employees"]} if listed else None
+        held = {}
+        if plan["employees"]:
+            run = payroll.month_run(plan, results, company_of, names=names,
+                                    known=set(names) if names else payroll.load_million_employees())
+            held = {who["id"]: who["reasons"] for who in run["held"]}
+        million = listed["employees"] if listed else None
+        return {"plan": plan, "docs": docs, "results": results, "company_of": company_of, "million": million,
+                "offers": payroll.suggest_employee_nos(plan, million) if million else {}, "held": held,
+                "added": added, "numbered": numbered, "files": file_items(plan, docs, month)}
+
+    def file_items(plan: dict, docs: list[dict], month: str) -> dict[str, list[dict]]:
+        """{company: items} for the finished files that need the user in ``month``: a card of the month that is on no
+        employee ("unplaced"), and a file with no month that is on no employee in any month ("month")."""
+        chosen, index = plans.load_file_months(), read_auto_index() or {}
+        out: dict[str, list[dict]] = {}
+        for d in docs:
+            if not d["company"]:
+                continue                                            # first it needs a company (asked on its own)
+            try:
+                pages = merged_pages(store.load_result(d["id"]), store.load_edits(d["id"]))
+                found, why = month_of(d, pages, chosen)
+                cards = companies.unplaced(plan, candidates_of(d))
+            except (OcrError, OSError, ValueError):
+                continue                                            # a reading that cannot be loaded is not an item
+            if found is None and index.get(d["id"]) not in (None, "before"):
+                continue                                            # ticked by hand for some month: answered already
+            if found == month:
+                out.setdefault(d["company"], []).extend(
+                    {"kind": "unplaced", "ref": c["ref"], "name": c["name"], "doc": d["id"],
+                     "readable": any(payroll.readable(p) for p in c["pages"] if p["rows"])} for c in cards)
+            elif found is None and chosen.get(d["id"]) != "none" and cards:
+                out.setdefault(d["company"], []).append({"kind": "month", "doc": d["id"], "name": d["name"], "why": why})
+        return out
+
+    def view_of(state: dict, company: str) -> dict:
+        return companies.company_view(company, state["plan"], state["results"], state["company_of"], state["million"],
+                                      state["offers"], state["held"], state["files"].get(company, []))
+
+    @app.get("/api/payroll/{month}/companies")
+    def payroll_companies(month: str):
+        """The month overview: one row per company with what still needs the user."""
+        state = month_state(month)
+        loose = [d for d in state["docs"] if not d["company"]]
+        names = set(state["company_of"]) | set(state["files"]) | ({""} if loose else set())
+        views = [view_of(state, c) for c in names]
+        for v in views:
+            if v["company"] == "" and loose:
+                v["status"], v["needs"] = "needs", v["needs"] + len(loose)      # files waiting for a company
+        known = sorted({j["company"] for j in store.list_jobs() if j.get("company")})
+        return {"month": month, **companies.overview(views, known), "checked_with_million": state["million"] is not None,
+                "added_by_themselves": state["added"], "numbered": state["numbered"]}
+
+    @app.get("/api/payroll/{month}/company")
+    def payroll_company(month: str, name: str = ""):
+        """One company's screen: its "Needs you" items, its employees with their main figures. ``name`` "" = the
+        employees and finished files that have no company yet."""
+        state = month_state(month)
+        view = view_of(state, name)
+        doc_names = {d["id"]: d["name"] for d in state["docs"]}
+        for item in view["items"]:
+            if "cards" in item:
+                item["cards"] = [{"id": c, "name": doc_names.get(c, "")} for c in item["cards"]]
+        view["month"] = month
+        if name == "":
+            view["files"] = [{"id": d["id"], "name": d["name"]} for d in state["docs"] if not d["company"]]
+        return view
+
+    @app.post("/api/payroll/{month}/place")
+    async def place_card(month: str, request: Request):
+        """Put a card on an employee of the month, or on a new employee ("employee": null)."""
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        if not isinstance(body, dict) or not isinstance(body.get("ref"), str) or "employee" not in body \
+                or not (body["employee"] is None or isinstance(body["employee"], str)):
+            raise OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+        with auto_lock:
+            plan, docs = plans.load(month), finished_documents()
+            drop_gone_documents(plan, known_refs(docs))
+            candidate = next((c for d in docs for c in candidates_of(d) if c["ref"] == body["ref"]), None)
+            if candidate is None:
+                raise OcrError("JOB_NOT_FOUND", "That card was not found. It may have been moved or deleted.")
+            before = {e["id"] for e in plan["employees"]}
+            employee = payroll.place_card(plan, candidate, body["employee"], lambda: "e" + uuid.uuid4().hex[:12],
+                                          plans.load_directory())
+            checked = payroll.validate_plan(plan, known_refs(docs))      # refuses a card that is on someone else
+            if body["employee"] is None:
+                number_new_employees(plan, docs, before)
+                checked = payroll.validate_plan(plan, known_refs(docs))
+            plans.save(checked)
+        return {"ok": True, "employee": employee["id"]}
+
+    @app.post("/api/payroll/file-month")
+    async def set_file_month(request: Request):
+        """The month a file is for, chosen by the user because the file prints none; "none" = not a time card."""
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        if not isinstance(body, dict) or not isinstance(body.get("id"), str) or not isinstance(body.get("month"), str):
+            raise OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+        if body["month"] != "none":
+            payroll.days_in(body["month"])                               # OcrError when it is not a month
+        if body["id"] not in {d["id"] for d in finished_documents()}:
+            raise OcrError("JOB_NOT_FOUND", "That file was not found. It may have been moved or deleted.")
+        with auto_lock:
+            months = plans.load_file_months()
+            months[body["id"]] = body["month"]
+            plans.save_file_months(months)
+        return {"ok": True}
+
+    @app.put("/api/payroll/{month}/employees/{employee_id}")
+    async def set_employee_no(month: str, employee_id: str, request: Request):
+        """Set one employee's Employee No. (the number Million's list offers, accepted with one click)."""
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        if not isinstance(body, dict) or not isinstance(body.get("emp_no"), str) or len(body["emp_no"]) > 100:
+            raise OcrError("BAD_PAYROLL", "The Employee No. could not be understood. Reload the page and try again.")
+        with auto_lock:
+            plan, docs = plans.load(month), finished_documents()
+            drop_gone_documents(plan, known_refs(docs))
+            employee = next((e for e in plan["employees"] if e["id"] == employee_id), None)
+            if employee is None:
+                raise OcrError("BAD_PAYROLL", "That employee is not in this month's payroll any more. Reload the page.")
+            employee["emp_no"] = body["emp_no"].strip()
+            plan = payroll.validate_plan(plan, known_refs(docs))
+            plans.save(plan)
+            directory = plans.load_directory()
+            if payroll.remember_employees(plan, directory):
+                plans.save_directory(directory)
+        return {"ok": True}
 
     @app.put("/api/payroll/{month}")
     async def save_payroll(month: str, request: Request):
