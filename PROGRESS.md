@@ -1,5 +1,38 @@
 # Progress log
 
+## Session 20 - 2026-10-12 - Company-first payroll, stage 3: month and company settings
+Branch `company-settings` (from `pdf-text`). **Local commits only: not merged, not pushed, app not rebuilt.** 463 tests
+pass; Malay checks pass. Plan: `docs/superpowers/plans/2026-10-12-company-first-payroll-stage-3.md`.
+- **What the user sees:** **Month settings** on the month overview: the month's default (normal hours, break,
+  calendar: click a day for working -> rest -> public holiday), saved with Save. **Company settings** on a company
+  screen: "Same as the month's default" or "This company is different:" with its own hours, break and calendar (it
+  starts as a copy of the default) and "Use the same settings for this company next month". The overview marks such a
+  company "own settings". Its employees' figures (OT, rest days, Working Days, so also the Million file) follow its
+  own settings; everyone else follows the default.
+- **Next month:** a company with "next month" ticked starts the next month with the same hours and break, and a
+  calendar where a weekday is a rest day if all its days were rest days this month (public holidays left out of that
+  count, ruling); public holidays come from the new month's default only, never carried.
+- **Decided while planning:** when the month's default is changed after a company got its own settings, that company
+  gets a "Needs you" item ("the month's default changed after this company got its own settings") with **Open
+  settings** and **It is right** (saves its settings again); nothing is copied by itself. Settings are saved with a
+  Save button. The old page's "1. Month and days" still edits the default.
+- **Storage:** the month file gains `companies` (only companies with their own set, with `keep` and `based_on` = the
+  default when last saved). Old month files open unchanged.
+- **Real September data (read-only, counts only):** all 84 employees identical before and after (no company has its
+  own settings yet).
+- **Checked in headless Edge on a made-up card:** 19/19 scripted clicks (own settings change the figures, overview
+  mark, a public holiday in the default gives the item, It is right clears it, back to the default, bad hours refused);
+  screenshots of the overview and the settings panel look right.
+- **Whole-branch review (fresh reviewer): "with fixes", 0 critical, 1 important, 7 minor.** Fixed: an old payroll page
+  open in another tab (Open employee opens one) wiped a company's own settings when it saved; the old page now never
+  saves over them. Left for later (minor): a settings panel opened before the default changed elsewhere can clear the
+  item on Save; a company with no files yet this month is not marked "own settings"; own settings under an old company
+  name after a rename are not pointed out; "keep" sent as a non-true/false value by a hand-made request counts as
+  true; the old page's "1. Month and days" does not say a company has its own settings; the item says "check its
+  calendar" also when only hours or break changed; a stale old-page tab can still undo a Month settings change (goes
+  away with the old page in stage 4).
+- Next: stage 4 ("New in Million" list, the summary before the month file, removing the old page).
+
 ## Session 19 - 2026-10-12 - Company-first payroll, stage 2: the one-look panel
 Built on branch `look-panel` (from `pdf-text`, which already held stage 1), then **merged into `pdf-text`
 (fast-forward, local, not pushed) and the app rebuilt** on the user's OK; the rebuilt app serves the panel. 447 tests pass; Malay checks pass. Plan:
