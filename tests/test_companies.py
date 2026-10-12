@@ -127,7 +127,8 @@ def test_the_overview_puts_companies_that_need_the_user_first_and_keeps_the_ones
                               view("BINA", "needs", needs=2, employees=3)], ["SURIA", "MAJU JAYA"])
     assert [(c["company"], c["status"]) for c in out["companies"]] == [
         ("acme", "needs"), ("BINA", "needs"), ("", "needs"), ("MAJU JAYA", "ready"), ("TEGUH", "million"), ("SURIA", "none")]
-    assert out["companies"][0] == {"company": "acme", "employees": 9, "status": "needs", "needs": 5, "waiting": 0}
+    assert out["companies"][0] == {"company": "acme", "employees": 9, "status": "needs", "needs": 5, "waiting": 0,
+                                   "own": False}
     # every employee in these made-up views is "ready" (an employee can be ready in a company that still needs the user)
     assert out["ready_companies"] == 2 and out["ready_employees"] == 6 + 9 + 0 + 4 + 3
 
@@ -236,3 +237,22 @@ def test_a_look_item_counts_places_and_keeps_only_unplaced_texts():
     assert (days["places"], days["texts"]) == (1, ["No entry for day 4."])
     only = companies.issue_items({"id": "e1", "issues": r["issues"][:1]}, worker())
     assert [(i["kind"], i["places"], i["texts"]) for i in only] == [("look", 1, [])]
+
+
+# ------------------------------------------------------------------------------------------- company settings
+def test_a_changed_default_is_an_item_of_a_company_with_own_settings():
+    p = plan_of(worker("e1", name="ALI"))
+    settings = {"own": True, "default_changed": True}
+    view = companies.company_view("MAJU JAYA", p, [calc("e1")], ["MAJU JAYA"], LISTED, {}, {}, [], settings)
+    assert view["items"] == [{"kind": "settings", "company": "MAJU JAYA"}] and view["status"] == "needs"
+    assert view["settings"] is settings
+    calm = companies.company_view("MAJU JAYA", p, [calc("e1")], ["MAJU JAYA"], LISTED, {}, {}, [],
+                                  {"own": True, "default_changed": False})
+    assert calm["items"] == [] and calm["status"] == "ready"
+
+
+def test_the_overview_marks_own_settings():
+    views = [{"company": "BINA", "status": "ready", "needs": 0, "waiting": 0, "employees": [], "settings": {"own": True}},
+             {"company": "ACME", "status": "ready", "needs": 0, "waiting": 0, "employees": []}]
+    rows = {r["company"]: r["own"] for r in companies.overview(views, [])["companies"]}
+    assert rows == {"BINA": True, "ACME": False}

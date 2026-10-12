@@ -132,14 +132,19 @@ _NOT_IN_MILLION = "is not in the Million employee list"       # payroll.month_ru
 
 
 def company_view(company: str, plan: dict, results: list[dict], company_of: list[str], million: list[dict] | None,
-                 offers: dict[str, dict], held: dict[str, list[str]], file_items: list[dict]) -> dict:
+                 offers: dict[str, dict], held: dict[str, list[str]], file_items: list[dict],
+                 settings: dict | None = None) -> dict:
     """Everything the company screen shows for ``company`` ("" = employees with no company).
     ``company_of``: each employee's company, in the plan's order. ``held``: {employee id: reasons} for everyone the
     month file would hold back (payroll.month_run). An employee held back for a reason that no item names gets a
     "held" item with those reasons, so the screen never says Ready for someone the file would leave out.
-    ``file_items``: the company's files that need the user ("unplaced", "month"), listed first."""
+    ``file_items``: the company's files that need the user ("unplaced", "month"), listed first. ``settings``: the
+    company's settings as the screen shows them ({own, default_changed, ...}); own settings made before the month's
+    default was changed are an item ("settings"), first of all, until the user has looked at them."""
     numbers = emp_no_items(plan, million, offers)
     items, employees, million_new = list(file_items), [], []
+    if settings and settings.get("default_changed"):
+        items.insert(0, {"kind": "settings", "company": company})
     for e, r, c in zip(plan["employees"], results, company_of):
         if c != company:
             continue
@@ -162,7 +167,7 @@ def company_view(company: str, plan: dict, results: list[dict], company_of: list
     else:
         status = "million" if million_new else "ready"
     return {"company": company, "status": status, "needs": len(items), "waiting": len(million_new), "items": items,
-            "employees": employees, "million_new": million_new}
+            "employees": employees, "million_new": million_new, **({"settings": settings} if settings else {})}
 
 
 _STATUS_ORDER = {"needs": 0, "ready": 1, "million": 1, "none": 2}
@@ -173,9 +178,9 @@ def overview(views: list[dict], known: list[str]) -> dict:
     ("none"). Companies that need the user come first, then the ready ones, then the empty ones; by name inside each
     group, with "no company" last in its group."""
     rows = [{"company": v["company"], "employees": len(v["employees"]), "status": v["status"], "needs": v["needs"],
-             "waiting": v["waiting"]} for v in views]
+             "waiting": v["waiting"], "own": bool((v.get("settings") or {}).get("own"))} for v in views]
     seen = {r["company"].casefold() for r in rows}
-    rows += [{"company": c, "employees": 0, "status": "none", "needs": 0, "waiting": 0}
+    rows += [{"company": c, "employees": 0, "status": "none", "needs": 0, "waiting": 0, "own": False}
              for c in known if c and c.casefold() not in seen]
     rows.sort(key=lambda r: (_STATUS_ORDER[r["status"]], r["company"] == "", r["company"].casefold()))
     return {"companies": rows,
