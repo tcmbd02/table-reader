@@ -722,6 +722,14 @@ def default_changed(plan: dict, company: str) -> bool:
     return bool(own) and own.get("based_on") != _default_of(plan)
 
 
+def settings_view(plan: dict, company: str) -> dict:
+    """What the company's settings screen shows: whether it has its own set, the settings in use, "keep", whether the
+    month's default was changed after its own set was saved, and the default itself."""
+    own = (plan.get("companies") or {}).get(company) if company else None
+    return {"own": bool(own), **settings_for(plan, company), "keep": bool(own and own.get("keep")),
+            "default_changed": default_changed(plan, company), "default": _default_of(plan)}
+
+
 def carry_companies(previous: dict, plan: dict) -> dict:
     """The own settings of ``previous``'s companies marked "keep", to start ``plan`` (the next month) with: the same
     normal hours and break, and the new month's default calendar where a weekday is a rest day if every one of its

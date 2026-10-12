@@ -281,7 +281,9 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
     def payroll_view(plan: dict, docs: list[dict], gone: dict[str, int] | None = None) -> dict:
         load_pages, cache = page_loader()
         million = plans.load_million()
-        results = payroll.compute_all(plan, load_pages, million_by_no(million))
+        company_of_doc = {d["id"]: d["company"] for d in docs}
+        results = payroll.compute_all(plan, load_pages, million_by_no(million),       # each with its company's settings
+                                      [payroll.employee_company(e, company_of_doc) for e in plan["employees"]])
         for r in results:
             n = (gone or {}).get(r["id"])
             if n:
@@ -488,7 +490,8 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
 
     def view_of(state: dict, company: str) -> dict:
         return companies.company_view(company, state["plan"], state["results"], state["company_of"], state["million"],
-                                      state["offers"], state["held"], state["files"].get(company, []))
+                                      state["offers"], state["held"], state["files"].get(company, []),
+                                      payroll.settings_view(state["plan"], company) if company else None)
 
     @app.get("/api/payroll/{month}/companies")
     def payroll_companies(month: str):
@@ -502,6 +505,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                 v["status"], v["needs"] = "needs", v["needs"] + len(loose)      # files waiting for a company
         known = sorted({j["company"] for j in store.list_jobs() if j.get("company")})
         return {"month": month, **companies.overview(views, known), "checked_with_million": state["million"] is not None,
+                "settings": payroll.settings_view(state["plan"], "")["default"],
                 "added_by_themselves": state["added"], "numbered": state["numbered"]}
 
     @app.get("/api/payroll/{month}/company")
@@ -579,17 +583,60 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             raise OcrError("EMPLOYEE_NOT_FOUND", "This employee is no longer in the payroll of this month. Go back to "
                                                  "the company and open it again.")
         files = {j["id"]: j for j in store.list_jobs()}
+        company = payroll.employee_company(person, {i: j["company"] for i, j in files.items()})
         load_pages, _ = page_loader()
-        [result] = payroll.compute_all({**plan, "employees": [person]}, load_pages, million_by_no(plans.load_million()))
+        [result] = payroll.compute_all({**plan, "employees": [person]}, load_pages, million_by_no(plans.load_million()),
+                                       [company])
         pages = {}
         for doc in {i["at"]["doc"] for i in result["issues"] if "at" in i}:
             try:
                 pages[doc] = merged_pages(store.load_result(doc), store.load_edits(doc))
             except (OcrError, OSError, ValueError):
                 continue                                # changed or damaged since: that card is left out
-        return {"month": month, "employee": person["id"], "name": person["name"],
-                "company": payroll.employee_company(person, {i: j["company"] for i, j in files.items()}),
+        return {"month": month, "employee": person["id"], "name": person["name"], "company": company,
                 "cards": companies.look_cards(result, person, pages, {i: j["name"] for i, j in files.items()})}
+
+    async def settings_body(request: Request) -> dict:
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        if not isinstance(body, dict):
+            raise OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+        return body
+
+    def change_plan(month: str, change: Callable[[dict], None]) -> dict:
+        """Change the month's plan under the lock and save it, checked as every plan is (validate_plan)."""
+        with auto_lock:
+            plan, docs = plans.load(month), finished_documents()
+            drop_gone_documents(plan, known_refs(docs))
+            change(plan)
+            plans.save(payroll.validate_plan(plan, known_refs(docs)))
+        return {"ok": True}
+
+    @app.put("/api/payroll/{month}/settings")
+    async def save_month_settings(month: str, request: Request):
+        """The month's default: normal hours, break and calendar (companies with their own settings keep theirs)."""
+        body = await settings_body(request)
+        return change_plan(month, lambda plan: plan.update({k: body.get(k) for k in payroll.SETTING_KEYS}))
+
+    @app.put("/api/payroll/{month}/company-settings")
+    async def save_company_settings(month: str, request: Request):
+        """A company follows the month's default ("own": false), or has its own complete set ("own": true; values
+        not given are copied from the default, "keep" = start next month with it)."""
+        body = await settings_body(request)
+        company = " ".join(body["company"].split()) if isinstance(body.get("company"), str) else ""
+        if not company:
+            raise OcrError("BAD_PAYROLL", "Choose the company first.")
+
+        def change(plan: dict) -> None:
+            own = dict(plan.get("companies") or {})
+            own.pop(company, None)
+            if body.get("own") is True:
+                own[company] = payroll.own_settings(plan, {k: body[k] for k in (*payroll.SETTING_KEYS, "keep") if k in body})
+            plan["companies"] = own
+
+        return change_plan(month, change)
 
     @app.put("/api/payroll/{month}/employees/{employee_id}")
     async def set_employee_no(month: str, employee_id: str, request: Request):

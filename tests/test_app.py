@@ -986,3 +986,94 @@ def test_the_look_panel_leaves_out_a_card_that_cannot_be_opened(tmp_path):
         r = c.get(f"/api/payroll/{month}/look", params={"employee": siti["id"]})
         assert r.status_code == 200
         assert [card["doc"] for card in r.json()["cards"]] == [siti["jobs"][1]]
+
+
+# ------------------------------------------------------------------------------------- month and company settings
+def ali_of_a_and_b(tmp_path):
+    """A & B (M) with one worker, ALI, whose card has 9 hours on every day of September."""
+    store, client = company_client(tmp_path, month_card)
+    return store, client, f"{YEAR}-09"
+
+
+def company_figures(c, month, company):
+    view = c.get(f"/api/payroll/{month}/company", params={"name": company}).json()
+    return view, {e["name"]: (e["ot_1_5"], e["days_worked"]) for e in view["employees"]}
+
+
+def test_company_settings_change_its_employees_figures_and_back(tmp_path):
+    store, client, month = ali_of_a_and_b(tmp_path)
+    with client as c:
+        upload(c, tmp_path, name=f"A & B (M) ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "A & B", "A & B (M)")
+        view, before = company_figures(c, month, "A & B (M)")
+        assert before == {"ALI": (26.0, 26.0)} and view["settings"]["own"] is False
+        r = c.put(f"/api/payroll/{month}/company-settings", json={"company": "A & B (M)", "own": True, "normal_hours": 9,
+                                                                  "keep": True})
+        assert r.json() == {"ok": True}
+        view, own = company_figures(c, month, "A & B (M)")
+        assert own == {"ALI": (0.0, 26.0)}
+        assert view["settings"]["own"] is True and view["settings"]["keep"] is True and view["settings"]["normal_hours"] == 9
+        rows = {r["company"]: r for r in c.get(f"/api/payroll/{month}/companies").json()["companies"]}
+        assert rows["A & B (M)"]["own"] is True
+        c.put(f"/api/payroll/{month}/company-settings", json={"company": "A & B (M)", "own": False})
+        assert company_figures(c, month, "A & B (M)")[1] == before
+
+
+def test_month_settings_apply_to_companies_that_follow_them(tmp_path):
+    store, client, month = ali_of_a_and_b(tmp_path)
+    with client as c:
+        upload(c, tmp_path, name=f"A & B (M) ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "A & B", "A & B (M)")
+        default = c.get(f"/api/payroll/{month}/companies").json()["settings"]
+        assert default["normal_hours"] == 8 and default["day_types"]["6"] == "rest"
+        r = c.put(f"/api/payroll/{month}/settings", json={**default, "normal_hours": 9})
+        assert r.json() == {"ok": True}
+        assert company_figures(c, month, "A & B (M)")[1] == {"ALI": (0.0, 26.0)}
+
+
+def test_a_month_default_changed_after_own_settings_gives_an_item_until_saved_again(tmp_path):
+    store, client, month = ali_of_a_and_b(tmp_path)
+    with client as c:
+        upload(c, tmp_path, name=f"A & B (M) ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "A & B", "A & B (M)")
+        c.put(f"/api/payroll/{month}/company-settings", json={"company": "A & B (M)", "own": True})   # a copy
+        default = c.get(f"/api/payroll/{month}/companies").json()["settings"]
+        default["day_types"]["16"] = "holiday"
+        c.put(f"/api/payroll/{month}/settings", json=default)
+        view = c.get(f"/api/payroll/{month}/company", params={"name": "A & B (M)"}).json()
+        assert view["items"][0] == {"kind": "settings", "company": "A & B (M)"}
+        assert view["settings"]["default_changed"] is True and view["settings"]["day_types"]["16"] == "work"
+        assert view["settings"]["default"]["day_types"]["16"] == "holiday"
+        own = view["settings"]
+        c.put(f"/api/payroll/{month}/company-settings", json={"company": "A & B (M)", "own": True, "keep": own["keep"],
+              **{k: own[k] for k in ("normal_hours", "break_hours", "day_types")}})                  # "It is right"
+        view = c.get(f"/api/payroll/{month}/company", params={"name": "A & B (M)"}).json()
+        assert [i["kind"] for i in view["items"]] == [] and view["settings"]["default_changed"] is False
+
+
+def test_the_old_page_keeps_company_settings_when_it_saves(tmp_path):
+    store, client, month = ali_of_a_and_b(tmp_path)
+    with client as c:
+        upload(c, tmp_path, name=f"A & B (M) ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "A & B", "A & B (M)")
+        c.put(f"/api/payroll/{month}/company-settings", json={"company": "A & B (M)", "own": True, "normal_hours": 9})
+        plan = c.get(f"/api/payroll/{month}").json()["plan"]
+        assert c.put(f"/api/payroll/{month}", json=plan).status_code == 200
+        assert c.get(f"/api/payroll/{month}").json()["plan"]["companies"]["A & B (M)"]["normal_hours"] == 9
+
+
+def test_bad_settings_are_refused(tmp_path):
+    store, client, month = ali_of_a_and_b(tmp_path)
+    with client as c:
+        r = c.put(f"/api/payroll/{month}/company-settings", json={"company": "", "own": True})
+        assert r.status_code == 400 and r.json()["message"] == "Choose the company first."
+        r = c.put(f"/api/payroll/{month}/company-settings", json={"company": "BINA", "own": True, "normal_hours": 25})
+        assert r.json()["message"] == "Normal hours per day must be a number from 1 to 24."
+        r = c.put(f"/api/payroll/{month}/settings", json={"normal_hours": 8, "break_hours": 1, "day_types": {"1": "work"}})
+        assert r.json()["code"] == "BAD_PAYROLL"
+        r = c.put(f"/api/payroll/{month}/settings", json=["not", "settings"])
+        assert r.json()["code"] == "BAD_PAYROLL"
