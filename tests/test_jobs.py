@@ -145,6 +145,26 @@ def test_result_json_is_never_changed_by_corrections(tmp_path):
     assert s.load_result(meta["id"])["pages"][0]["rows"][0]["cells"]["In"]["value"] is None
 
 
+def test_a_correction_from_the_panel_is_marked(tmp_path):
+    s = jobs.Jobs(tmp_path / "jobs", reader=FakeReader(default=lambda n: record(
+        [{"Date": good("1"), "In": cell(None, "7:?0", 40, "faded")}])))
+    meta = make(s, pages_=1, tmp_path=tmp_path)
+    assert s.wait_idle()
+    s.save_edits(meta["id"], [{"page": 1, "row": 0, "column": "In", "value": "7:30", "via": "look"}])
+    assert s.load_edits(meta["id"])["edits"] == [{"page": 1, "row": 0, "column": "In", "value": "7:30", "via": "look"}]
+    s.save_edits(meta["id"], [{"page": 1, "row": 0, "column": "In", "value": "7:40"}])      # Enter on the document page
+    assert s.load_edits(meta["id"])["edits"] == [{"page": 1, "row": 0, "column": "In", "value": "7:40"}]
+
+
+def test_an_unknown_via_is_refused(tmp_path):
+    s = jobs.Jobs(tmp_path / "jobs", reader=FakeReader())
+    meta = make(s, pages_=1, tmp_path=tmp_path)
+    assert s.wait_idle()
+    with pytest.raises(ocr.OcrError) as err:
+        s.save_edits(meta["id"], [{"page": 1, "row": 0, "column": "In", "value": "7:30", "via": "x"}])
+    assert err.value.code == "BAD_EDIT"
+
+
 def test_sideways_page_image_is_stored_upright(tmp_path):
     s = jobs.Jobs(tmp_path / "jobs", reader=FakeReader(default=lambda n: record(
         [{"Date": good("1"), "In": good("7")}], turn=90)))

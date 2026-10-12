@@ -471,17 +471,21 @@ def _validate_edit(change: dict, by_page: dict[int, dict]) -> dict:
         value = value.strip()
         if len(value) > MAX_EDIT_LENGTH:
             raise OcrError("EDIT_TOO_LONG", f"That entry is too long (over {MAX_EDIT_LENGTH} characters).")
+    # "via": "look" = accepted through the payroll's one-look panel, so it can be told apart from a typed correction
+    if change.get("via", "look") != "look":
+        raise bad
+    via = {"via": "look"} if "via" in change else {}
     record = by_page[page]
     if "header" in change:
         idx = change["header"]
         if isinstance(idx, bool) or not isinstance(idx, int) or not 0 <= idx < len(record["header_fields"]):
             raise bad
-        return {"page": page, "header": idx, "value": value}
+        return {"page": page, "header": idx, "value": value, **via}
     row, column = change.get("row"), change.get("column")
     if isinstance(row, bool) or not isinstance(row, int) or not 0 <= row < len(record["rows"]) \
             or column not in record["column_labels"]:
         raise bad
-    return {"page": page, "row": row, "column": column, "value": value}
+    return {"page": page, "row": row, "column": column, "value": value, **via}
 
 
 def merged_pages(result: dict, edits: dict) -> list[dict]:
