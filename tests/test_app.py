@@ -3,11 +3,15 @@ import json
 import xlrd
 from fastapi.testclient import TestClient
 from PIL import Image
+from datetime import date
 
 import app as app_module
 import ocr
 from jobs import Jobs
 from tests.helpers import cell, good, make_pdf, record
+
+
+YEAR = date.today().year                 # file names carry this year's month (a month is only taken near today)
 
 
 def png_bytes(tmp_path):
@@ -362,16 +366,69 @@ def test_a_month_grid_with_several_workers_gives_one_employee_per_row(tmp_path):
 
     store = Jobs(tmp_path / "jobs", reader=sheet)
     with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
-        upload(c, tmp_path, name="MAJU JAYA SEPT 26.png")
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR}.png")
         store.wait_idle()
-        doc = c.get("/api/payroll/2026-09").json()["documents"][0]
+        view = c.get(f"/api/payroll/{YEAR}-09").json()           # read after the app started: added by itself
+        doc = view["documents"][0]
         assert [(p["row"], p["label"]) for p in doc["parts"]] == [(1, "ALI"), (2, "AMIN"), (3, "ZUL")]
         assert doc["parts"][1]["ref"] == doc["id"] + "#p1r2"
-        view = c.post("/api/payroll/2026-09/auto", json={"company": ""}).json()
-        assert view["auto"]["added"] == 3
+        assert view["added_by_themselves"]["added"] == [{"name": n, "cards": 1} for n in ("ALI", "AMIN", "ZUL")]
+        assert c.post(f"/api/payroll/{YEAR}-09/auto", json={"company": ""}).json()["auto"]["added"] == 0
+        view = c.get(f"/api/payroll/{YEAR}-09").json()
+        assert view["added_by_themselves"] is None                 # once only
         assert [e["name"] for e in view["plan"]["employees"]] == ["ALI", "AMIN", "ZUL"]
         assert [r["values"]["days_worked"]["value"] for r in view["results"]] == [26, 26, 26]
         assert all(r["complete"] or {i["kind"] for i in r["issues"]} == {"empno"} for r in view["results"])
+
+
+# ------------------------------------------------------------------------- files added to their month by themselves
+def nine_hour_card(image):
+    return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
+
+
+def test_two_cards_of_one_worker_become_one_employee_when_the_month_is_opened(tmp_path):
+    store = Jobs(tmp_path / "jobs", reader=nine_hour_card)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR} (ALI) (1).png")
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR} (ALI) (2).png")
+        upload(c, tmp_path, name="MAJU JAYA ZUL.png")                      # no month anywhere
+        store.wait_idle()
+        assert c.get(f"/api/payroll/{YEAR}-10").json()["plan"]["employees"] == []      # another month: nothing
+        view = c.get(f"/api/payroll/{YEAR}-09").json()
+        assert [(e["name"], len(e["jobs"])) for e in view["plan"]["employees"]] == [("MAJU JAYA ALI", 2)]
+        added = view["added_by_themselves"]
+        assert added["added"] == [{"name": "MAJU JAYA ALI", "cards": 2}] and added["joined"] == []
+        assert added["no_month"] == [{"name": "MAJU JAYA ZUL.png",
+                                      "why": "no month was found in the file name or on the card"}]
+        assert view["results"][0]["values"]["days_worked"]["value"] == 1
+
+
+def test_a_later_card_joins_its_worker_and_a_removed_card_is_not_added_again(tmp_path):
+    store = Jobs(tmp_path / "jobs", reader=nine_hour_card)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR} (ALI) (1).png")
+        store.wait_idle()
+        plan = c.get(f"/api/payroll/{YEAR}-09").json()["plan"]
+        assert [(e["name"], len(e["jobs"])) for e in plan["employees"]] == [("MAJU JAYA ALI", 1)]
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR} (ALI) (2).png")
+        store.wait_idle()
+        view = c.get(f"/api/payroll/{YEAR}-09").json()
+        assert view["added_by_themselves"]["joined"] == [{"name": "MAJU JAYA ALI", "cards": 1}]
+        assert [(e["name"], len(e["jobs"])) for e in view["plan"]["employees"]] == [("MAJU JAYA ALI", 2)]
+        plan = view["plan"]
+        plan["employees"][0]["jobs"] = plan["employees"][0]["jobs"][:1]   # the user takes a card off
+        assert c.put(f"/api/payroll/{YEAR}-09", json=plan).status_code == 200
+        view = c.get(f"/api/payroll/{YEAR}-09").json()
+        assert view["added_by_themselves"] is None and len(view["plan"]["employees"][0]["jobs"]) == 1
+
+
+def test_files_already_there_when_the_app_starts_are_left_as_they_are(tmp_path):
+    store = Jobs(tmp_path / "jobs", reader=nine_hour_card)
+    store.create_job(f"MAJU JAYA SEPT {YEAR} (ALI).png", png_bytes(tmp_path))
+    store.wait_idle()
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        view = c.get(f"/api/payroll/{YEAR}-09").json()
+        assert view["plan"]["employees"] == [] and view["added_by_themselves"] is None
 
 
 def test_million_xls_download_refuses_then_allows_incomplete(tmp_path):

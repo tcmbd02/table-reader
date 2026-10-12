@@ -1,5 +1,6 @@
 """Tests for payroll.py: the calculation from confirmed cells, the issues it must raise, and the payroll file."""
 import csv
+from datetime import date
 import io
 from pathlib import Path
 
@@ -380,6 +381,56 @@ def test_a_card_with_an_unclear_printed_name_joins_its_pair_by_file_name():
     added, _, _ = payroll.auto_employees(p, cands, {}, lambda: "a")
     assert added == 1 and sorted(p["employees"][0]["jobs"]) == ["j1", "j2"]
     assert p["employees"][0]["name"] == "ALI BIN ABU"
+
+
+def test_a_card_added_later_joins_its_pair_and_only_addable_cards_are_added():
+    p = plan_for()
+    first = candidate("j1", "MAJU JAYA ALI SEPT 26.jpeg", header=[("Name", good("ALI BIN ABU"))])
+    payroll.auto_employees(p, [first], {}, lambda: "a")
+    later = candidate("j2", "MAJU JAYA ALI SEPT 26 2.jpeg")                          # nothing printed on it
+    other = candidate("j3", "MAJU JAYA ZUL SEPT 26.jpeg")
+    added, _, _ = payroll.auto_employees(p, [first, later, other], {}, lambda: "b", addable={"j2"})
+    assert added == 0 and [e["jobs"] for e in p["employees"]] == [["j1", "j2"]]
+
+
+TODAY = date(2026, 10, 12)
+
+
+def header_page(*fields, cells=None):
+    rec = record([], header=[(k, (cells or {}).get(k) or good(v)) for k, v in fields])
+    rec["page"] = 1
+    return jobs.merged_pages({"pages": [rec]}, {"edits": []})
+
+
+@pytest.mark.parametrize("file_name,fields,month", [
+    ("DB X SEPT 2026 (ALI) (2).jpeg", (), "2026-09"),
+    ("ACME KLC 1 SEPT26.png", (), "2026-09"),
+    ("ACME ALI SEP 26.jpeg", (), "2026-09"),     
+    ("MARKET SEPT 2026.jpeg", (), "2026-09"),                                # "MARKET" is not March
+    ("card.jpeg", (("MONTH", "SEP"), ("YEAR", "2026")), "2026-09"),
+    ("card.jpeg", (("Bagi Bulan / For the month of", "SEPT"), ("Year", "26")), "2026-09"),
+    ("card.jpeg", (("Month", "Sep-26"),), "2026-09"),
+    ("card.jpeg", (("Month/Year (handwritten)", "Sept. 2026"),), "2026-09"),
+    ("card.jpeg", (("Period From", "01/09/2026 To 30/09/2026"),), "2026-09"),
+    ("card.jpeg", (("For the Month of", "September"),), "2026-09"),           # no year: the latest September
+    ("card.jpeg", (("For the Month of", "December"),), "2025-12"),            # ... up to next month
+    ("card.jpeg", (("For the Month of", "November"),), "2026-11"),
+    ("ACME SEPT 2026.jpeg", (("Month", "SEPTEMBER 2026"), ("Total working days in a month", "22")), "2026-09"),
+    ("MEI LING.jpeg", (), None),                                               # a name, not May: no year beside it
+    ("ACME SEPT 15.jpeg", (), None),                                           # the 15th, not 2015
+    ("ACME ALI.jpeg", (), None),
+    ("ACME AUG 2026.jpeg", (("Month", "September"),), None),                   # two months: not chosen
+])
+def test_the_month_of_a_document_comes_from_its_file_name_or_card(file_name, fields, month):
+    found, why = payroll.document_month(file_name, header_page(*fields), TODAY)
+    assert found == month and bool(why) == (month is None)
+    if file_name == "ACME AUG 2026.jpeg":
+        assert why == "the file name and the card give different months (2026-08, 2026-09)"
+
+
+def test_an_unclear_month_on_the_card_is_not_used():
+    pages = header_page(("Month", ""), cells={"Month": cell(None, raw="SE?T", reason="faded")})
+    assert payroll.document_month("card.jpeg", pages, TODAY)[0] is None
 
 
 # ------------------------------------------------------------------- month grids: one row per worker, a column per day

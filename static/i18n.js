@@ -114,6 +114,19 @@ const MS = {
   "One employee is added for each worker in the files, with their time cards ticked. Employee No. is filled in from earlier months; type it once for new workers.":
     "Seorang pekerja ditambah bagi setiap pekerja dalam fail, dengan kad perakam waktu mereka ditandakan. No. Pekerja diisi daripada bulan sebelumnya; taipkannya sekali untuk pekerja baharu.",
   "Added {n} employee.": "{n} pekerja ditambah.", "Added {n} employees.": "{n} pekerja ditambah.",
+  "{n} file": "{n} fail", "{n} files": "{n} fail",
+  "Added by themselves from newly read files of this month: {list}.":
+    "Ditambah dengan sendirinya daripada fail bulan ini yang baru dibaca: {list}.",
+  "Newly read files added to: {list}.": "Fail yang baru dibaca ditambah kepada: {list}.",
+  "{n} newly read file was not added because Table Reader cannot work out the days from it yet:":
+    "{n} fail yang baru dibaca tidak ditambah kerana Table Reader belum dapat mengira hari daripadanya:",
+  "{n} newly read files were not added because Table Reader cannot work out the days from them yet:":
+    "{n} fail yang baru dibaca tidak ditambah kerana Table Reader belum dapat mengira hari daripadanya:",
+  "{n} newly read file was not put in a payroll month, so tick it for an employee yourself:":
+    "{n} fail yang baru dibaca tidak dimasukkan ke dalam mana-mana bulan gaji, jadi tandakannya untuk seorang pekerja sendiri:",
+  "{n} newly read files were not put in a payroll month, so tick them for an employee yourself:":
+    "{n} fail yang baru dibaca tidak dimasukkan ke dalam mana-mana bulan gaji, jadi tandakannya untuk seorang pekerja sendiri:",
+  "no month was found in the file name or on the card": "tiada bulan dijumpai pada nama fail atau pada kad",
   "No new workers found: every readable file is already chosen for an employee.": "Tiada pekerja baharu dijumpai: setiap fail yang boleh dibaca sudah dipilih untuk seorang pekerja.",
   "{n} file was left out because Table Reader cannot work out the days from it yet (for example IN/OUT cards):":
     "{n} fail tidak dimasukkan kerana Table Reader belum boleh mengira hari daripadanya (contohnya kad IN/OUT):",
@@ -233,7 +246,7 @@ const MS = {
   "e.g. MJ(1)": "cth. MJ(1)",
   "Name as in Million Payroll": "Nama seperti dalam Million Payroll",
   "Column with the daily hours": "Lajur dengan jam harian",
-  "Automatic (the Total column)": "Automatik (lajur Total)",
+  "Automatic (the Total column; the IN/OUT times on days it is empty)": "Automatik (lajur Total; masa IN/OUT pada hari ia kosong)",
   "Remove employee": "Buang pekerja",
   "Remove this employee from the payroll? Their documents are not deleted.": "Buang pekerja ini daripada senarai gaji? Dokumen mereka tidak dipadam.",
   "Employee No.": "No. Pekerja",
@@ -269,8 +282,8 @@ const MS = {
   "Day by day (how the figures were worked out)": "Hari demi hari (cara angka dikira)",
   "From the report: {x}": "Daripada laporan: {x}",
   "Break taken off IN/OUT time cards (hours)": "Rehat yang ditolak daripada kad masa IN/OUT (jam)",
-  "Time cards with IN and OUT times: the hours of a day are OUT minus IN, less the break. A day with more than one IN/OUT pair (morning and afternoon) is added up and no break is taken off.":
-    "Kad masa dengan masa IN dan OUT: jam sehari ialah OUT tolak IN, tolak rehat. Hari yang ada lebih daripada satu pasangan IN/OUT (pagi dan petang) dijumlahkan dan rehat tidak ditolak.",
+  "Time cards with IN and OUT times: the hours of a day are OUT minus IN, less the break. A day with more than one IN/OUT pair (morning and afternoon) is added up and no break is taken off. Only one IN and one OUT in different columns (morning IN, overtime OUT) count as one, less the break. A Total written on the card counts instead of the times.":
+    "Kad masa dengan masa IN dan OUT: jam sehari ialah OUT tolak IN, tolak rehat. Hari yang ada lebih daripada satu pasangan IN/OUT (pagi dan petang) dijumlahkan dan rehat tidak ditolak. Hanya satu IN dan satu OUT dalam lajur berlainan (IN pagi, OUT lebih masa) dikira sebagai satu, tolak rehat. Jumlah yang ditulis pada kad dikira menggantikan masa.",
   "{h} hours: the IN/OUT pairs added up, no break taken off": "{h} jam: pasangan IN/OUT dijumlahkan, rehat tidak ditolak",
   "{h} hours: OUT minus IN, less {b} for the break": "{h} jam: OUT tolak IN, tolak {b} untuk rehat",
   "{h} hours: OUT minus IN, no break taken off": "{h} jam: OUT tolak IN, rehat tidak ditolak",
@@ -346,6 +359,7 @@ const msWho = (w) => (w === "An employee" ? "Seorang pekerja" : w);
 const MS_PATTERNS = [
   [/^Page (\d+) of (\d+): ([\s\S]*)$/, (m) => `Halaman ${m[1]} daripada ${m[2]}: ${tm(m[3])}`],
   [/^Claude was not sure \((\d+)% confident\)$/, "Claude tidak pasti (yakin $1%)"],
+  [/^the file name and the card give different months \(([\d\-, ]+)\)$/, "nama fail dan kad memberi bulan yang berlainan ($1)"],
   [/^Claude reported a doubt it could not place \(([\s\S]*)\)\. Check the page\.$/, "Claude melaporkan keraguan yang tidak dapat diletakkan pada sel ($1). Semak halaman ini."],
   [/^Claude reported a problem: ([\s\S]*)\. Try this file again\.$/, "Claude melaporkan masalah: $1. Cuba fail ini sekali lagi."],
   [/^Claude's answer did not match the expected form \(([\s\S]*)\), so nothing was read\. Try this file again\.$/, "Jawapan Claude tidak sepadan dengan bentuk yang dijangka ($1), jadi tiada apa-apa yang dibaca. Cuba fail ini sekali lagi."],

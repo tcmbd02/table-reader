@@ -339,6 +339,64 @@ def name_from_file(filename: str, company: str) -> str:
     return " ".join(w for w in words if w and not w.isdigit() and not _MONTH_TOKEN.match(w))
 
 
+_MONTH_OF = {w: n for n, words in enumerate((
+    "jan january januari", "feb february februari", "mar mac march", "apr april", "may mei", "jun june",
+    "jul july julai", "aug august ogos", "sep sept september", "oct okt october oktober", "nov november",
+    "dec dis december disember"), start=1) for w in words.split()}
+# a month word, whole ("MARKET" is not March), with the year that may follow it: "SEPT 2026", "SEPT26", "Sep-26", "Sept. 2026"
+_MONTH_YEAR = re.compile(r"(?<![a-z])(" + "|".join(sorted(_MONTH_OF, key=len, reverse=True)) + r")\.?"
+                         r"(?:\s*[-/']?\s*(\d{4}|\d{2})(?!\d))?(?![a-z])", re.IGNORECASE)
+_FULL_DATE = re.compile(r"(?<!\d)(\d{1,2})\s*[/.\-]\s*(\d{1,2})\s*[/.\-]\s*(\d{4})(?!\d)")
+_MONTH_FIELD = re.compile(r"month|bulan|period|tempoh", re.IGNORECASE)
+_YEAR_FIELD = re.compile(r"^(?:.*\b)?(?:year|tahun)\b", re.IGNORECASE)
+
+
+def _year(text: str | None, today: date) -> int | None:
+    """A year as written next to a month: 2026, or 26 for 2026. Only within a year of today (so "SEPT 15", the 15th,
+    is not taken for 2015)."""
+    if not text:
+        return None
+    year = int(text) + (2000 if len(text) == 2 else 0)
+    return year if abs(year - today.year) <= 1 else None
+
+
+def document_month(file_name: str, pages: list[dict], today: date) -> tuple[str | None, str]:
+    """The payroll month a document is for ("2026-09"), from what is printed: the card's Month / Bulan / Period field
+    (with its Year / Tahun field) and the file name ("... SEPT 2026 (ALI).jpeg"). A file name counts only with a year
+    next to the month, so a worker called Mei or Jun is not a month. A month with no year anywhere is the latest such
+    month up to next month. Returns (month, "") or (None, why not): no month found, or two different months."""
+    found: set[tuple[int | None, int]] = set()
+    year_field = None
+    for p in pages:
+        for f in p["header_fields"]:
+            label, cell = " ".join(f["label"].split()), f["cell"]
+            value = "" if cell["needs_review"] else (cell["value"] or "").strip()
+            if not value:
+                continue
+            if _MONTH_FIELD.search(label):
+                dates = {(int(y), int(m)) for _, m, y in _FULL_DATE.findall(value) if 1 <= int(m) <= 12}
+                found |= dates
+                if not dates:
+                    found |= {(_year(y, today), _MONTH_OF[w.lower()]) for w, y in _MONTH_YEAR.findall(value)}
+            elif _YEAR_FIELD.match(label) and re.fullmatch(r"\d{2}|\d{4}", value):
+                year_field = _year(value, today) or year_field
+    stem = Path(file_name).stem.replace("_", " ")
+    found |= {(_year(y, today), _MONTH_OF[w.lower()]) for w, y in _MONTH_YEAR.findall(stem) if _year(y, today)}
+    next_month = (today.year + today.month // 12, today.month % 12 + 1)
+    resolved = set()
+    for y, m in found:
+        if y is None:
+            same = {yy for yy, mm in found if yy and mm == m}
+            y = next(iter(same)) if len(same) == 1 else year_field or \
+                max(yy for yy in (today.year + 1, today.year, today.year - 1) if (yy, m) <= next_month)
+        resolved.add(f"{y}-{m:02d}")
+    if len(resolved) == 1:
+        return resolved.pop(), ""
+    if not resolved:
+        return None, "no month was found in the file name or on the card"
+    return None, "the file name and the card give different months (" + ", ".join(sorted(resolved)) + ")"
+
+
 def worker_key(company: str, code: str, name: str, file_name: str) -> str:
     """Who a document belongs to, within a company: the printed code, else the printed name, else the file name."""
     who = f"code:{_key(code)}" if code else f"name:{_key(name)}" if name else f"file:{_key(file_name)}"
@@ -352,22 +410,31 @@ def readable(page: dict) -> bool:
     return bool(grid_columns(labels) or pick_columns(labels, None)[1] or clock_pairs(labels))
 
 
-def auto_employees(plan: dict, candidates: list[dict], directory: dict,
-                   new_id: Callable[[], str]) -> tuple[int, list[str], list[str]]:
+def auto_employees(plan: dict, candidates: list[dict], directory: dict, new_id: Callable[[], str],
+                   addable: set[str] | None = None) -> tuple[int, list[str], list[str]]:
     """Add an employee for every worker found in ``candidates`` ([{ref, name, company, pages}]: documents, one page of
     a multi-worker report, or one worker's row of a month grid) that no employee has yet, with their cards ticked.
     Employee No. and name come from ``directory`` (what the user typed in earlier months) when known; the Employee No.
-    is never made up. Changes ``plan`` in place. Returns (employees added, names of documents left out because no days
-    can be read from them, names of grid rows left out because the name in the row is unclear or empty)."""
-    taken, whole, in_parts = set(), set(), set()
+    is never made up. ``addable``: only these refs may be added (the others only show, by their file names, whose
+    cards are already chosen, so a card with no name printed joins its pair). Changes ``plan`` in place. Returns
+    (employees added, names of documents left out because no days can be read from them, names of grid rows left out
+    because the name in the row is unclear or empty)."""
+    taken, whole, in_parts, owner = set(), set(), set(), {}
     for e in plan["employees"]:
         for ref in e["jobs"]:
             base, page = split_ref(ref)
             taken.add(ref)
             (whole if page is None else in_parts).add(base)
+            if e.get("worker_key"):
+                owner[ref] = e["worker_key"]
     by_key = {e.get("worker_key"): e for e in plan["employees"] if e.get("worker_key")}
     groups: dict[str, dict] = {}
     by_file: dict[str, set[str]] = {}       # company + name left in the file name -> the groups such files went to
+    for c in candidates:                    # cards already chosen for an employee made from the files
+        if c["ref"] in owner:
+            name = name_from_file(c["name"], c["company"])
+            if name:
+                by_file.setdefault(f"{_key(c['company'])}|{_key(name)}", set()).add(owner[c["ref"]])
     skipped, unnamed = [], []
     # cards with the worker printed on them first, so a card whose printed name is unclear can join its pair below
     order = sorted(range(len(candidates)), key=lambda i: not any(printed_worker(candidates[i]["pages"])))
@@ -376,6 +443,8 @@ def auto_employees(plan: dict, candidates: list[dict], directory: dict,
         base, page, row = split_part(c["ref"])
         if c["ref"] in taken or base in whole or (page is None and base in in_parts):
             continue                                              # already chosen for someone (whole or in part)
+        if addable is not None and c["ref"] not in addable:
+            continue
         if not any(readable(p) for p in c["pages"] if p["rows"]):
             skipped.append(c["name"])
             continue

@@ -1,5 +1,30 @@
 # Progress log
 
+## Session 16b - 2026-10-12 - Phase B: newly read files go into their month's payroll by themselves
+397 tests pass; Malay checks pass (130 messages). **Not committed, app not rebuilt** (worktree branch
+`claude/use-this-question-mark`, on top of 8e1fec5).
+- **The month of a file** (`payroll.document_month`): the card's Month / Bulan / Period field (+ its Year / Tahun field,
+  or a full date "01/09/2026") and the file name. A file name counts only with a year beside the month ("SEPT 2026",
+  "SEPT26", "Sep-26"), so a worker named Mei / Jun is not a month; a 2-digit year is taken only within a year of today
+  ("SEPT 15" is the 15th). Month words are whole words (MARKET is not March), English and Malay. No year anywhere: the latest
+  such month up to next month. Two different months: none (reported). Real data (62 files): 60 September, 1 August
+  (the cleaners' AUGUST file), 1 no month, none wrong.
+- **When:** files are added when that month's Payroll page is opened (GET `/api/payroll/{month}`), never during a save
+  or a download: the page keeps its own copy of the plan and would save over employees added behind it. Index
+  `payroll\added-by-themselves.json` ({document id: month, or "before"}): written at app start with every document
+  already there ("before": existing payrolls are not touched), then each file once; a file taken off an employee is
+  not added again; a file ticked by hand is marked done. A lock covers the add and the PUT save.
+- **How:** `auto_employees` (same grouping as "Add employees from files") with `addable` = the new files only; cards
+  already chosen take part by file name, so a later card with no name printed joins its worker (`joined`). The page
+  shows what was added / joined / left out (no days readable, unclear row names, no month found) once.
+- Hours column option now says "Automatic (the Total column; the IN/OUT times on days it is empty)"; the IN/OUT legend
+  explains the clocked-twice rule and that a written Total counts.
+- Checked in the browser on invented cards (made-up worker, laid out like the user's two cards: bilingual labels, empty Total, morning IN +
+  overtime OUT, OFF, PH, one smudged time): one employee with both cards, 24 days worked and 41 h OT (checked by hand),
+  the smudged day and the PH on a working day reported; message shown once.
+- Not built: Phase C (Claude names columns Table Reader does not know). A file still being read when the page is opened
+  is added on a later visit.
+
 ## Session 16 - 2026-10-12 - Sessions 12b-15b committed; "Use this" drops a leading / trailing "?"
 - Sessions 12b-15b committed and pushed on `pdf-text` (7bc162e, second commit of PR #2; description updated).
 - The user's request: cells like "Claude saw: 18:50?" are usually right; stop the yellow, or drop the "?" on "Use this".

@@ -3,6 +3,7 @@
 Run from the project folder:  .venv\\Scripts\\python tools\\check_patterns.py   (needs esprima, see check_i18n.py)
 """
 import re
+from datetime import date
 import sys
 from pathlib import Path
 
@@ -58,6 +59,9 @@ msgs += [
     "card.jpg could not be saved. Check that the computer has free disk space, then add it again.",
     "card.jpg has not been read completely yet.",
     "'Food Allowance' is in the Allowance list twice. Use another name.",
+    payroll.document_month("card.jpg", [], date(2026, 10, 12))[1],
+    payroll.document_month("AUG 2026.jpg", [{"page": 1, "column_labels": [], "rows": [], "header_fields": [
+        {"label": "Month", "cell": {"value": "September", "needs_review": False}}]}], date(2026, 10, 12))[1],
 ]
 # payroll issues from the real calculation
 p = payroll.default_plan("2026-09")

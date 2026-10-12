@@ -42,8 +42,8 @@ workers are not in that month's payroll, so there was nothing to update. Details
   PROGRESS.md sessions 15 and 15b.
 - **Session 16 (2026-10-12):** IN/OUT cards with an empty Total column were counted as "not worked" (fixed);
   one IN + one later OUT = one span minus the break; OFF / PH / CUTI / MC on cards = day marks; "Use this" drops a
-  leading / trailing "?". Next, waiting for the user's go-ahead: Phase B (finished files join the month's payroll
-  by themselves) and Phase C (Claude names columns Table Reader does not know). Details: PROGRESS.md session 16.
+  leading / trailing "?". Session 16b: Phase B built (newly read files join their month's payroll when it is opened).
+  Next, waiting for the user's go-ahead: Phase C (Claude names unknown columns). Details: PROGRESS.md 16, 16b.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists

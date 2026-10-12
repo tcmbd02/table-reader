@@ -6,7 +6,9 @@ import hashlib
 import logging
 import re
 import sys
+import threading
 import uuid
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -17,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 import ocr
 import payroll
 from inbox import Inbox
-from jobs import Jobs, count_to_check, merged_pages, safe_name
+from jobs import Jobs, _read_json, _write_json, count_to_check, merged_pages, safe_name
 from ocr import OcrError
 
 MAX_UPLOAD_BYTES = 150 * 1024 * 1024
@@ -283,13 +285,87 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                 "fields": [{"key": k, "label": label, "unit": unit} for k, label, unit in payroll.FIELDS],
                 "list_heads": {kind: {"title": title, "type": type_head} for kind, (title, type_head, _) in payroll.LISTS.items()}}
 
+    def candidates_of(d: dict) -> list[dict]:
+        """What "Add employees from files" chooses from in one finished document: the document, or its parts."""
+        pages = merged_pages(store.load_result(d["id"]), store.load_edits(d["id"]))
+        if d["parts"]:
+            return [{"ref": p["ref"], "name": part_name(d["name"], p["page"], p["row"], len(pages)),
+                     "company": d["company"], "pages": part_pages(pages, p["page"], p["row"])} for p in d["parts"]]
+        return [{"ref": d["id"], "name": d["name"], "company": d["company"], "pages": pages}]
+
+    # Files read from now on go into their month's payroll by themselves, once each, when that month's Payroll page is
+    # opened (never while the page is open: it keeps its own copy of the plan and would save over a change made here).
+    # The month is what the file name or the card prints (payroll.document_month). Files read before this existed are
+    # left as they are. A file taken off an employee is not added again.
+    auto_index_path = plans.root / "added-by-themselves.json"
+    auto_lock = threading.Lock()
+
+    def read_auto_index() -> dict | None:
+        try:
+            index = _read_json(auto_index_path) if auto_index_path.exists() else None
+        except (OSError, ValueError):
+            index = None
+        return index if isinstance(index, dict) else None
+
+    if read_auto_index() is None:                       # first start with this: the files already here stay as they are
+        try:
+            plans.root.mkdir(parents=True, exist_ok=True)
+            _write_json(auto_index_path, {j["id"]: "before" for j in store.list_jobs()})
+        except Exception:  # noqa: BLE001 - never stops the app starting; nothing is added until the list exists
+            log.exception("The list of files added to a payroll could not be written")
+
+    def add_new_documents(plan: dict, docs: list[dict]) -> dict | None:
+        index = read_auto_index()
+        if index is None:
+            return None
+        taken = {payroll.split_ref(r)[0] for e in plan["employees"] for r in e["jobs"]}
+        mine, no_month, marked = [], [], False
+        for d in docs:
+            if d["id"] in index:
+                continue
+            if d["id"] in taken:                                    # ticked by hand for this month: done
+                index[d["id"]] = plan["month"]
+                marked = True
+                continue
+            try:
+                pages = merged_pages(store.load_result(d["id"]), store.load_edits(d["id"]))
+                month, why = payroll.document_month(d["name"], pages, date.fromisoformat(d["created"][:10]))
+            except (OcrError, OSError, ValueError):
+                continue
+            if month == plan["month"]:
+                mine.append(d)
+            elif month is None:
+                no_month.append({"name": d["name"], "why": why})
+        info = {"added": [], "joined": [], "skipped": [], "unnamed": [], "no_month": no_month}
+        if mine:
+            before = {e["id"]: len(e["jobs"]) for e in plan["employees"]}
+            linked = [{"ref": r, "name": d["name"], "company": d["company"], "pages": []}
+                      for d in docs if d["id"] in taken for r in [d["id"]] + [p["ref"] for p in d["parts"]]]
+            new = [c for d in mine for c in candidates_of(d)]
+            _, info["skipped"], info["unnamed"] = payroll.auto_employees(
+                plan, linked + new, plans.load_directory(), lambda: "e" + uuid.uuid4().hex[:12], {c["ref"] for c in new})
+            for e in plan["employees"]:
+                grown = len(e["jobs"]) - before.get(e["id"], 0)
+                if grown > 0:
+                    info["added" if e["id"] not in before else "joined"].append({"name": e["name"], "cards": grown})
+            plans.save(payroll.validate_plan(plan, known_refs(docs)))
+            for d in mine:
+                index[d["id"]] = plan["month"]
+        if mine or marked:
+            _write_json(auto_index_path, index)
+        return info if any(info.values()) else None
+
     @app.get("/api/payroll/{month}")
     def get_payroll(month: str):
-        plan, docs = plans.load(month), finished_documents()
-        gone = drop_gone_documents(plan, known_refs(docs))
-        if gone:
-            plans.save(payroll.validate_plan(plan, known_refs(docs)))
-        return payroll_view(plan, docs, gone)
+        with auto_lock:
+            plan, docs = plans.load(month), finished_documents()
+            gone = drop_gone_documents(plan, known_refs(docs))
+            if gone:
+                plans.save(payroll.validate_plan(plan, known_refs(docs)))
+            added = add_new_documents(plan, docs)
+        view = payroll_view(plan, docs, gone)
+        view["added_by_themselves"] = added
+        return view
 
     @app.put("/api/payroll/{month}")
     async def save_payroll(month: str, request: Request):
@@ -302,7 +378,8 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             body["month"] = month
             gone = drop_gone_documents(body, known_refs(docs))
         plan = payroll.validate_plan(body, known_refs(docs))
-        plans.save(plan)
+        with auto_lock:
+            plans.save(plan)
         directory = plans.load_directory()
         if payroll.remember_employees(plan, directory):              # Employee No. typed: kept for next month
             plans.save_directory(directory)
@@ -320,17 +397,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             raise OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
         plan, docs = plans.load(month), finished_documents()
         drop_gone_documents(plan, known_refs(docs))
-        candidates = []
-        for d in docs:
-            if company and d["company"] != company:
-                continue
-            pages = merged_pages(store.load_result(d["id"]), store.load_edits(d["id"]))
-            if d["parts"]:
-                candidates += [{"ref": p["ref"], "name": part_name(d["name"], p["page"], p["row"], len(pages)),
-                                "company": d["company"], "pages": part_pages(pages, p["page"], p["row"])}
-                               for p in d["parts"]]
-            else:
-                candidates.append({"ref": d["id"], "name": d["name"], "company": d["company"], "pages": pages})
+        candidates = [c for d in docs if not company or d["company"] == company for c in candidates_of(d)]
         added, skipped, unnamed = payroll.auto_employees(plan, candidates, plans.load_directory(),
                                                          lambda: "e" + uuid.uuid4().hex[:12])
         plan = payroll.validate_plan(plan, known_refs(docs))

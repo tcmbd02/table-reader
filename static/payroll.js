@@ -35,7 +35,35 @@ async function showPayroll(month) {
     pr = await api("GET", payrollUrl());
     prDirty = false;
     renderPayroll();
+    prShowInfo(addedByThemselves(pr.added_by_themselves));
   } catch (e) { prShowError(e.message); }
+}
+
+// Files read since the last visit that went into this month's payroll by themselves (the month is printed in the
+// file name or on the card), and the ones that could not be put in a month.
+function addedByThemselves(info) {
+  if (!info) return "";
+  const cards = (list) => list.map((a) => `${a.name} (${tn(a.cards, "{n} file", "{n} files")})`).join("; ");
+  const parts = [];
+  if (info.added.length) parts.push(t("Added by themselves from newly read files of this month: {list}.", { list: cards(info.added) }));
+  if (info.joined.length) parts.push(t("Newly read files added to: {list}.", { list: cards(info.joined) }));
+  if (info.skipped.length) {
+    parts.push(tn(info.skipped.length, "{n} newly read file was not added because Table Reader cannot work out the days from it yet:",
+      "{n} newly read files were not added because Table Reader cannot work out the days from them yet:"), info.skipped.join("; "));
+  }
+  if (info.unnamed.length) {
+    parts.push(tn(info.unnamed.length,
+      "{n} worker row was left out because the name in it is unclear (fix the name in the document, or tick the row for the right employee yourself):",
+      "{n} worker rows were left out because the names in them are unclear (fix the names in the document, or tick the rows for the right employees yourself):"),
+    info.unnamed.join("; "));
+  }
+  if (info.no_month.length) {
+    parts.push(tn(info.no_month.length, "{n} newly read file was not put in a payroll month, so tick it for an employee yourself:",
+      "{n} newly read files were not put in a payroll month, so tick them for an employee yourself:"),
+    info.no_month.map((f) => `${f.name} (${tm(f.why)})`).join("; "));
+  }
+  if (info.added.length) parts.push(t("Type the Employee No. where it is empty; it is remembered for next month."));
+  return parts.join(" ");
 }
 
 function setSaveState(text) { $("pr-save").textContent = text; }
@@ -115,7 +143,7 @@ function renderMonth() {
     el("div", { class: "row" }, el("label", {}, t("Month"), monthSel), el("label", {}, t("Year"), yearIn),
       el("label", {}, t("Normal hours in a working day (overtime starts after this)"), hours),
       el("label", {}, t("Break taken off IN/OUT time cards (hours)"), rest)),
-    el("p", { class: "legend", text: t("Time cards with IN and OUT times: the hours of a day are OUT minus IN, less the break. A day with more than one IN/OUT pair (morning and afternoon) is added up and no break is taken off.") }),
+    el("p", { class: "legend", text: t("Time cards with IN and OUT times: the hours of a day are OUT minus IN, less the break. A day with more than one IN/OUT pair (morning and afternoon) is added up and no break is taken off. Only one IN and one OUT in different columns (morning IN, overtime OUT) count as one, less the break. A Total written on the card counts instead of the times.") }),
     el("p", { class: "legend", text: t("Click a day to change it: working day → rest day → public holiday. Sundays start as rest days. Mark every public holiday of the month.") }),
     el("p", { class: "legend day-key" }, t("Colours:"),
       ...DAY_ORDER.map((k) => el("span", {}, el("span", { class: `swatch day ${k}`, "aria-hidden": "true" }),
@@ -275,7 +303,7 @@ function renderEmployees() {
     name.addEventListener("input", () => { e.name = name.value; schedulePayrollSave(); });
     const columns = (pr.results[i] && pr.results[i].columns) || [];
     const colSel = el("select", { "aria-label": t("Column with the daily hours") },
-      el("option", { value: "", text: t("Automatic (the Total column)") }),
+      el("option", { value: "", text: t("Automatic (the Total column; the IN/OUT times on days it is empty)") }),
       ...columns.map((c) => el("option", { value: c, text: c, selected: e.hours_column === c })));
     colSel.addEventListener("change", () => { e.hours_column = colSel.value || null; schedulePayrollSave(); });
     const remove = el("button", { type: "button", text: t("Remove employee") });
