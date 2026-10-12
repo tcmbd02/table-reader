@@ -469,6 +469,37 @@ def test_a_card_added_later_joins_its_pair_and_only_addable_cards_are_added():
     assert added == 0 and [e["jobs"] for e in p["employees"]] == [["j1", "j2"]]
 
 
+def test_a_card_is_placed_on_an_employee_or_on_a_new_one():
+    p = plan_for()
+    payroll.auto_employees(p, [candidate("j1", "MAJU JAYA ALI SEPT 26.jpeg")], {}, lambda: "a")
+    other = candidate("j2", "MAJU JAYA SEPT 26 (9).jpeg")
+    assert payroll.place_card(p, other, "a", lambda: "b", {})["jobs"] == ["j1", "j2"]
+    assert payroll.place_card(p, other, "a", lambda: "b", {})["jobs"] == ["j1", "j2"]          # not twice
+    named = candidate("j3", "MAJU JAYA SEPT 26 (7).jpeg", header=[("Name", good("ZUL BIN OMAR"))])
+    directory = {"maju jaya|name:zul bin omar": {"emp_no": "MJ(7)", "name": "ZUL BIN OMAR"}}
+    new = payroll.place_card(p, named, None, lambda: "b", directory)
+    assert (new["id"], new["name"], new["emp_no"], new["jobs"], new["company"]) == ("b", "ZUL BIN OMAR", "MJ(7)", ["j3"], "MAJU JAYA")
+    assert new["worker_key"] == "maju jaya|name:zul bin omar"
+    # a second new employee for a worker who already is one: made, but not under the same remembered worker
+    twin = payroll.place_card(p, candidate("j4", "MAJU JAYA SEPT 26 (8).jpeg", header=[("Name", good("ZUL BIN OMAR"))]),
+                              None, lambda: "c", directory)
+    assert twin["id"] == "c" and "worker_key" not in twin and twin["emp_no"] == ""
+    assert len(payroll.validate_plan(p, {"j1", "j2", "j3", "j4"})["employees"]) == 3
+    with pytest.raises(ocr.OcrError) as exc:
+        payroll.place_card(p, other, "gone", lambda: "d", {})
+    assert exc.value.code == "BAD_PAYROLL"
+
+
+def test_the_month_chosen_for_a_file_is_kept(tmp_path):
+    store = payroll.PayrollStore(tmp_path)
+    assert store.load_file_months() == {}
+    store.save_file_months({"d1": "2026-09", "d2": "none"})
+    assert store.load_file_months() == {"d1": "2026-09", "d2": "none"}
+    (tmp_path / "file-months.json").write_text("not json", encoding="utf-8")
+    assert store.load_file_months() == {}                       # a damaged file is no answer, never a crash
+    assert store.used_employee_nos() == set()                   # and it is not taken for a month's payroll
+
+
 TODAY = date(2026, 10, 12)
 
 

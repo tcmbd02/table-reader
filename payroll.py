@@ -410,6 +410,15 @@ def readable(page: dict) -> bool:
     return bool(grid_columns(labels) or pick_columns(labels, None)[1] or clock_pairs(labels))
 
 
+def new_employee(new_id: str, name: str, refs: list[str], company: str, key: str | None, known: dict) -> dict:
+    """An employee made from files: ``known`` is what the user typed for this worker in an earlier month
+    (Employee No., name, pay basis, rate), {} for a worker seen for the first time."""
+    return {"id": new_id, "emp_no": known.get("emp_no", ""), "name": known.get("name") or name, "jobs": refs,
+            "hours_column": None, "overrides": {}, "entries": {}, "zakat": 0.0, "levy": 0.0, "message": "",
+            **({"worker_key": key} if key else {}), "company": company or "",
+            "pay_basis": known.get("pay_basis") or "monthly", "basic_rate": float(known.get("basic_rate") or 0.0)}
+
+
 def auto_employees(plan: dict, candidates: list[dict], directory: dict, new_id: Callable[[], str],
                    addable: set[str] | None = None, million: list[dict] | None = None) -> tuple[int, list[str], list[str]]:
     """Add an employee for every worker found in ``candidates`` ([{ref, name, company, pages}]: documents, one page of
@@ -471,11 +480,7 @@ def auto_employees(plan: dict, candidates: list[dict], directory: dict, new_id: 
             by_key[key]["jobs"] += [r for r in g["refs"] if r not in by_key[key]["jobs"]]
             continue
         known = directory.get(key) or {}
-        plan["employees"].append({"id": new_id(), "emp_no": known.get("emp_no", ""), "name": known.get("name") or g["name"],
-                                  "jobs": g["refs"], "hours_column": None, "overrides": {}, "entries": {},
-                                  "zakat": 0.0, "levy": 0.0, "message": "", "worker_key": key,
-                                  "company": g["company"] or "", "pay_basis": known.get("pay_basis") or "monthly",
-                                  "basic_rate": float(known.get("basic_rate") or 0.0)})
+        plan["employees"].append(new_employee(new_id(), g["name"], g["refs"], g["company"], key, known))
         if g["on_card"] and not known.get("name"):
             named_on_card.add(plan["employees"][-1]["id"])
         added += 1
@@ -506,6 +511,31 @@ def fill_employee_nos(plan: dict, million: list[dict], ids: set[str]) -> int:
             e["emp_no"] = e["emp_no_million"] = fits[0]
             filled += 1
     return filled
+
+
+def place_card(plan: dict, candidate: dict, employee_id: str | None, new_id: Callable[[], str], directory: dict) -> dict:
+    """Put one card (``candidate``: {ref, name, company, pages}) on the employee ``employee_id``, or on a new
+    employee when it is None: named as printed on the card, else from the file name, with the Employee No. typed in
+    an earlier month when the worker is known (``directory``). A new employee for a worker who already is one in this
+    plan is made without the worker's key, so the two are not remembered as one. Changes ``plan`` in place and
+    returns the employee."""
+    if employee_id is not None:
+        employee = next((e for e in plan["employees"] if e["id"] == employee_id), None)
+        if employee is None:
+            raise OcrError("BAD_PAYROLL", "That employee is not in this month's payroll any more. Reload the page.")
+        if candidate["ref"] not in employee["jobs"]:
+            employee["jobs"].append(candidate["ref"])
+        return employee
+    _, _, row = split_part(candidate["ref"])
+    code, name = printed_worker(candidate["pages"], row_only=row is not None)
+    file_name = name_from_file(candidate["name"], candidate["company"])
+    key = worker_key(candidate["company"], code, name, file_name)
+    if any(e.get("worker_key") == key for e in plan["employees"]):
+        key = None
+    employee = new_employee(new_id(), name or file_name, [candidate["ref"]], candidate["company"], key,
+                            (directory.get(key) or {}) if key else {})
+    plan["employees"].append(employee)
+    return employee
 
 
 NEW_NO_LETTERS = 7      # how much of the company name starts an Employee No. made by Table Reader
@@ -1667,6 +1697,17 @@ class PayrollStore:
 
     def save_directory(self, directory: dict) -> None:
         self._write(self.root / "employees.json", directory)
+
+    # the month the user chose for a file that prints none ("none" = not a time card), by document id
+    def load_file_months(self) -> dict[str, str]:
+        try:
+            data = json.loads((self.root / "file-months.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return {k: v for k, v in data.items() if isinstance(v, str)} if isinstance(data, dict) else {}
+
+    def save_file_months(self, months: dict[str, str]) -> None:
+        self._write(self.root / "file-months.json", months)
 
     def used_employee_nos(self) -> set[str]:
         """Every Employee No. in any saved month and in the remembered workers (so a new one is never one of these)."""

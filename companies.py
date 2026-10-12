@@ -123,3 +123,26 @@ def overview(views: list[dict], known: list[str]) -> dict:
     return {"companies": rows,
             "ready_companies": sum(1 for r in rows if r["status"] in ("ready", "million")),
             "ready_employees": sum(1 for v in views for e in v["employees"] if e["status"] == "ready")}
+
+
+def unplaced(plan: dict, candidates: list[dict]) -> list[dict]:
+    """The candidates ([{ref, name, company, pages}]: documents, pages or grid rows) that are on no employee.
+    A whole document counts as placed when any of its parts is chosen, and a part when its document or its page is."""
+    taken, whole, in_parts, pages, row_pages = set(), set(), set(), set(), set()
+    for e in plan["employees"]:
+        for ref in e["jobs"]:
+            base, page, row = payroll.split_part(ref)
+            taken.add(ref)
+            if page is None:
+                whole.add(base)
+            else:
+                in_parts.add(base)
+                (pages if row is None else row_pages).add((base, page))
+    out = []
+    for c in candidates:
+        base, page, row = payroll.split_part(c["ref"])
+        placed = c["ref"] in taken or base in whole or (page is None and base in in_parts) \
+            or (row is not None and (base, page) in pages) or (page is not None and row is None and (base, page) in row_pages)
+        if not placed:
+            out.append(c)
+    return out

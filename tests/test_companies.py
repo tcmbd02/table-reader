@@ -130,3 +130,17 @@ def test_the_overview_puts_companies_that_need_the_user_first_and_keeps_the_ones
     assert out["companies"][0] == {"company": "acme", "employees": 9, "status": "needs", "needs": 5, "waiting": 0}
     # every employee in these made-up views is "ready" (an employee can be ready in a company that still needs the user)
     assert out["ready_companies"] == 2 and out["ready_employees"] == 6 + 9 + 0 + 4 + 3
+
+
+def card(ref, name="MAJU JAYA SEPT 26.jpeg"):
+    return {"ref": ref, "name": name, "company": "MAJU JAYA", "pages": []}
+
+
+def test_cards_on_no_employee():
+    p = plan_of(worker("e1", jobs=("d1", "d2#p1", "d3#p1r2")))
+    cands = [card("d1"), card("d2#p1"), card("d2#p2"), card("d2"), card("d3#p1r1"), card("d3#p1r2"), card("d3#p1"),
+             card("d4"), card("d5#p1")]
+    # d2 as a whole and d3's page 1 as a whole are covered by the parts already chosen
+    assert [c["ref"] for c in companies.unplaced(p, cands)] == ["d2#p2", "d3#p1r1", "d4", "d5#p1"]
+    p = plan_of(worker("e1", jobs=("d5",)), worker("e2", jobs=("d3#p1",)))
+    assert [c["ref"] for c in companies.unplaced(p, cands)] == ["d1", "d2#p1", "d2#p2", "d2", "d4"]
