@@ -5,7 +5,7 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 **To continue, paste this into the new session:**
 
-> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 17), then let's continue.
+> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 18), then let's continue.
 
 ---
 
@@ -53,6 +53,10 @@ workers are not in that month's payroll, so there was nothing to update. Details
   CSV and payroll - the user was asked whether they should count without being accepted, no answer yet. Committed
   (390d7b0), app rebuilt, `download` branch (700dd47) and PR #2 description updated. None of the session's page changes
   were clicked through in a browser. Next, on the user's go-ahead: Phase C. Details: PROGRESS.md 17.
+- **Session 18 (2026-10-12): company-first payroll, stage 1** on branch `company-first` (local, not merged, app not
+  rebuilt): Payroll opens on a month overview (one row per company), each company has a "Needs you" list; the old
+  page is behind "Old payroll page". Next: the user's OK to merge / rebuild, then stage 2 (the one-look panel) from
+  the spec in `docs/superpowers/specs/`. Details: PROGRESS.md 18.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists

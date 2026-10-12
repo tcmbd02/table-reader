@@ -1,5 +1,32 @@
 # Progress log
 
+## Session 18 - 2026-10-12 - Company-first payroll, stage 1: month overview and company screen
+Branch `company-first` (from `pdf-text`), local commits only. **Not merged, not pushed, app not rebuilt.** 422 tests
+pass; Malay checks pass. Design: `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md`; plan:
+`docs/superpowers/plans/2026-10-12-company-first-payroll-stage-1.md`.
+- The user called the Payroll page terrible (matching ~100 files to ~84 employees by scrolling). Decisions taken with
+  them: one company at a time; only the problems; one look per employee for yellow cells (stage 2); one Million file at
+  month end; a "New in Million" list now, a Million import test later; a month default with per-company exceptions.
+- **Built (stage 1 of 4):** `companies.py` (pure: the calculation's problems -> "Needs you" items, Employee No. items,
+  company status, month overview; no arithmetic). `app.py`: `open_month` (shared by the old page and the new
+  screens), GET `/api/payroll/{month}/companies` and `/company?name=`, POST `/place` (a card on an employee or a new
+  one), POST `/api/payroll/file-month` (the month of a file that prints none, or "not a time card"; kept in
+  `payroll\file-months.json`), PUT `/employees/{id}` (accept the number Million offers). `static/companies.js`: the two
+  screens. Payroll now opens on the overview; the old page is at `#/payroll/<month>/old` ("Old payroll page") and opens
+  on the right company and employee when an employee is clicked.
+- An employee the month file would hold back for a reason no item names gets a "held" item with the reasons, so a
+  company is never "Ready" while the file would leave someone out (`payroll.month_run` now returns the employee id).
+- A damaged reading no longer breaks the page: it is that employee's problem ("could not be opened").
+- **Real September data, on a copy (counts only): every calculated figure and problem is identical before and after**
+  (84 employees, 36 complete, same fingerprint). The new screens show 30 rows (25 need the user, 2 ready, 3 ready and
+  waiting for Million) and these items: 28 cards to check, 29 "days that do not add up", 20 cards on no employee,
+  8 employees with no card, 8 Employee Nos. to fix, 1 offered number, 1 file with no company.
+- **Checked in a real browser engine (headless Edge, made-up data, scripted clicks): 19 of 19.** The Chrome extension
+  was not connected, so nobody has looked at the layout with their eyes yet.
+- Not in stage 1 (old page until then): the one-look panel (stage 2), company settings (3), the "New in Million"
+  screen and removing the old page (4). Open from before: do yellow cells count before they are accepted (user asked,
+  no answer); does Million accept a 10-character Employee No.
+
 ## Session 17 - 2026-10-12 - A new worker's Employee No. filled in from Million's list (whole name only)
 402 tests pass; Malay checks pass. **Committed and pushed on `pdf-text` (390d7b0); app rebuilt and restarted; `download`
 branch updated (700dd47: new zip, both Million guides); PR #2 description updated.**
