@@ -58,7 +58,12 @@ for m in re.finditer(r'(title|aria-label)="([^"]+)"[^>]*data-t-(?:title|aria)', 
     used.append(m.group(2))
 # words looked up through variables
 used += ["January", "Sun", "Working day", "benefit", "leave", "allowance", "deduction", "Day", "Type", "Hours written", "Note",
-         "Clear", "Change the language"]
+         "Clear", "Change the language",
+         # companies.js: item heads, employee statuses and table heads
+         "{name}: cells to check on the card", "{name}: days that do not add up",
+         "{name}: Table Reader cannot work out the days", "{name}: no time card yet",
+         "{name}: not ready for the Million file", "Waiting for Million", "Needs you", "Ready", "Employee No.", "Name",
+         "Days Worked", "OT 1.5 (hours)", "Rest day (days)", "Status"]
 missing = sorted(set(u for u in used if u not in ms_keys))
 print("texts used:", len(set(used)), "| missing Malay:", len(missing))
 for m in missing:

@@ -189,3 +189,10 @@ tr.company-row { cursor: pointer; }
 tr.company-row:hover td, tr.company-row:focus td { background: var(--bg); }
 tr.company-row.needs td:last-child { font-weight: 700; }
 tr.company-row.none td { color: var(--muted); }
+ol.needs { margin: 0; padding-left: 22px; }
+ol.needs li.need { padding: 8px 0; border-bottom: 1px solid var(--line); }
+ol.needs li.need:last-child { border-bottom: 0; }
+.need .legend { margin: 2px 0; }
+.need-buttons { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
+.need-buttons button { padding: 4px 12px; }
+.need-buttons input { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; }
