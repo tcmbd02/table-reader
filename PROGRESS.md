@@ -1,5 +1,44 @@
 # Progress log
 
+## Session 19 - 2026-10-12 - Company-first payroll, stage 2: the one-look panel
+Branch `look-panel` (from `pdf-text`, which already holds stage 1, merged and rebuilt by the user after session 18).
+**Local commits only: not merged, not pushed, app not rebuilt.** 447 tests pass; Malay checks pass. Plan:
+`docs/superpowers/plans/2026-10-12-company-first-payroll-stage-2.md`.
+- **What the user sees:** on a company screen, an employee's "cells to check" item now says "n lines of the time cards
+  to check" and has a **Look** button. It opens the panel (`#/payroll/<month>/look/<employee id>`, same tab): one card
+  at a time ("Card 1 of 2", < >), the card's page on the left (click = closer view), on the right only the lines the
+  calculation could not use, each labelled "Day 9 (row 9)" with a box per cell it reads there. A yellow box shows what
+  Claude saw without a leading / trailing "?" (as the document page); a box that is empty or has a "?" inside says
+  "Must be typed"; an empty one has a **Nothing written** button (the user says it is empty, never assumed).
+  **Accept all n cells** stays disabled until every must-type box is typed, saves the card in one go, then shows the
+  next card; after the last it goes back to the company screen, where the item has gone.
+- **How:** the calculation itself says where each line problem is (`"at"` on unclear / date problems: document, page,
+  row, day, the columns read), so the panel cannot drift from it. `companies.look_cards` builds the panel;
+  GET `/api/payroll/{month}/look?employee=`; accepting goes through the existing cells endpoint, each correction marked
+  `"via": "look"`. Claude's reading is untouched.
+- **Decided with the user:** no highlight of the row on the picture (readings carry no positions, a box drawn anywhere
+  would be a guess); built here, reviewed at the end by a fresh reviewer.
+- **Decided while building (rulings):** a line labelled by its day does not repeat the date as a box (the date is a box
+  only when it is the problem); a line with a problem that is not yellow (IN without OUT, "abc") is shown with the
+  calculation's sentence, and only changed boxes of it are saved; "days that do not add up" items about one line get
+  the Look button too, the others keep "Open employee"; "Nothing written" must be pressed again after paging away.
+- **Real September data (read-only, counts only):** all 84 employees' figures and problem texts identical before and
+  after; 26 employees have 313 lines for the panel; every unclear/date problem has its place (the last one, a sheet's
+  mark in a day-31 column of a 30-day month, was found this way and added).
+- **Checked in headless Edge on made-up cards:** 26/26 scripted clicks, then 13/13 after the review fix; the saved
+  corrections carry `via: "look"`, the blank one saved as empty.
+- **Whole-branch review (fresh reviewer): ready "with fixes", 0 critical, 1 important, 7 minor.** Fixed: Accept could
+  write the panel's old prefill over a correction typed in another window since. Now each box tells the server how the
+  cell looked when shown; if it was corrected since, nothing is saved ("This card was changed in another window...")
+  and the panel shows what is saved. Left for later (minor): a problem sentence is hidden on a line that also has a
+  yellow cell; "Nothing written" is lost when the panel redraws on coming back to the tab; if the save works but the
+  reload fails Accept stays disabled until reload; the Accept label counts yellow boxes only; Escape does not clear
+  "Nothing written"; the endpoint reads each card twice (a re-read in between could give an error); no test that a
+  grid row's save lands on the document's row (the row number itself is tested).
+- Not in stage 2: company settings (stage 3), "New in Million" and removing the old page (stage 4). Still open from
+  before: do yellow cells count before they are accepted (asked, no answer; the panel makes accepting quick); does
+  Million accept a 10-character Employee No.
+
 ## Session 18 - 2026-10-12 - Company-first payroll, stage 1: month overview and company screen
 Branch `company-first` (from `pdf-text`), merged into `pdf-text` locally. **Not pushed.** 426 tests pass; Malay checks
 pass. Design: `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md`; plan:
