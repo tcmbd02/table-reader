@@ -1278,14 +1278,14 @@ def located(result, kind="unclear"):
 def test_an_unclear_hours_cell_says_where_it_is():
     rows = [day(1, "9"), {"Date": good("2"), "Total": cell(None, "9?", 30, "smudged")}, day(3, "9")]
     r = payroll.calculate(plan_for(), [("c", merged(rows))], employee())
-    assert [i["at"] for i in located(r)] == [{"doc": 0, "page": 1, "row": 1, "day": 2, "columns": ["Date", "Total"]}]
+    assert [i["at"] for i in located(r)] == [{"doc": 0, "page": 1, "row": 1, "day": 2, "columns": ["Total"]}]
 
 
 def test_an_unclear_in_out_time_says_its_columns():
     rows = [{"Date": good("4"), "In": good("08:00"), "Out": cell(None, "17:0?", 30, "faded")}]
     r = payroll.calculate(plan_for(), [("c", merged(rows, labels=("Date", "In", "Out")))], employee())
     [at] = [i["at"] for i in located(r)]
-    assert at["columns"] == ["Date", "In", "Out"] and at["day"] == 4 and at["row"] == 0
+    assert at["columns"] == ["In", "Out"] and at["day"] == 4 and at["row"] == 0       # the date was read: a label
 
 
 def test_an_unclear_date_has_no_day():

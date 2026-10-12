@@ -197,3 +197,19 @@ ol.needs li.need:last-child { border-bottom: 0; }
 .need-buttons button { padding: 4px 12px; }
 .need-buttons input { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; }
 .recent-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+/* the one-look panel */
+.look-picture img { cursor: zoom-in; }
+.look-picture.zoom img { width: auto; max-width: none; cursor: zoom-out; }
+.look-lines { list-style: none; margin: 0; padding: 0; }
+.look-line { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }
+.look-line.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.look-boxes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.look-box { display: flex; flex-direction: column; gap: 2px; min-width: 120px; max-width: 220px; }
+.look-box label { font-size: .8rem; color: var(--muted); }
+.look-box .cell { border: 1px solid var(--line); border-radius: 6px; }
+.look-box small { font-size: .78rem; color: var(--muted); }
+.look-box small.must { color: var(--bad); font-weight: 600; }
+.look-box button { font-size: .8rem; padding: 1px 8px; align-self: flex-start; }
+.look-box button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.look-foot { display: flex; gap: 12px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin: 10px 0; }

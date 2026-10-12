@@ -78,6 +78,31 @@
   <section class="card"><h3 data-t>Employees</h3><div id="co-employees"></div></section>
 </main>
 
+<main id="look" hidden>
+  <div class="doc-bar">
+    <button id="lk-back" class="link" data-t>&larr; Back to the company</button>
+    <h2 id="lk-title"></h2>
+    <div class="doc-actions">
+      <span id="lk-count" class="muted"></span>
+      <button id="lk-prev" type="button" aria-label="Card before" data-t-aria>&lt;</button>
+      <button id="lk-next" type="button" aria-label="Card after" data-t-aria>&gt;</button>
+    </div>
+  </div>
+  <div id="lk-error" class="banner error" hidden></div>
+  <div id="lk-body" hidden>
+    <p id="lk-card" class="doc-status"></p>
+    <div class="page-grid">
+      <div id="lk-picture" class="page-image look-picture"></div>
+      <div>
+        <div id="lk-note" class="banner info" hidden></div>
+        <ol id="lk-lines" class="look-lines"></ol>
+        <div class="look-foot"><span id="lk-left" class="muted" aria-live="polite"></span>
+          <button id="lk-accept" class="primary" type="button"></button></div>
+      </div>
+    </div>
+  </div>
+</main>
+
 <main id="payroll" hidden>
   <div class="doc-bar">
     <button id="pr-back" class="link" data-t>&larr; All companies</button>
@@ -122,5 +147,6 @@
 <script src="app.js"></script>
 <script src="payroll.js"></script>
 <script src="companies.js"></script>
+<script src="look.js"></script>
 </body>
 </html>

@@ -149,11 +149,17 @@ function itemNode(item) {
     head = t(ITEM_HEADS[item.kind], { name });
     // what the month file says about an employee comes without its "- who: " start: runReason translates those
     details = item.texts.map(item.kind === "held" ? runReason : tm);
-    if (item.kind === "look") {
+    if (item.places) {
+      // lines of the cards the calculation could not use: all of them in one panel, beside the card's picture
+      details.unshift(tn(item.places, "{n} line of the time cards to check.", "{n} lines of the time cards to check."));
+      buttons.push(el("button", { type: "button", class: "primary", text: t("Look"),
+        onclick: () => { location.hash = `#/payroll/${moMonth}/look/${encodeURIComponent(item.employee)}`; } }));
+    }
+    if (item.kind === "look" && item.texts.length) {               // problems the panel cannot show: on the card
       item.cards.forEach((c, n) => buttons.push(el("button", { type: "button", title: c.name,
         text: item.cards.length > 1 ? t("Open card {n}", { n: n + 1 }) : t("Open the card"),
         onclick: () => openInNewTab(`#/doc/${encodeURIComponent(c.id)}`) })));
-    } else buttons.push(openEmployeeButton(item.employee));
+    } else if (item.kind !== "look") buttons.push(openEmployeeButton(item.employee));
   } else if (item.kind === "offer") {
     head = t("{name}: Million has Employee No. {no} for {million}", { name, no: item.emp_no, million: item.million_name });
     const use = el("button", { type: "button", class: "primary", text: t("Use {no}", { no: item.emp_no }) });
@@ -249,11 +255,10 @@ async function refreshOnReturn() {
   if (typing) return;                                                  // do not wipe a box the user is typing in
   lastReturn = Date.now();
   if (!$("company").hidden) loadCompany();
+  else if (!$("look").hidden) refreshLook();
   else if (!$("month").hidden) {
     try { drawMonth(await api("GET", `/api/payroll/${moMonth}/companies`)); } catch (e) { moError(e.message); }
   }
 }
 document.addEventListener("visibilitychange", refreshOnReturn);
 window.addEventListener("focus", refreshOnReturn);
-
-if (location.hash.startsWith("#/payroll")) route();      // the page was opened on a payroll screen: app.js ran before this file

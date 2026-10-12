@@ -840,7 +840,8 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
     A month-grid tick is a day worked with no hours ("present", hours None).
     A problem about one line of a card also says where that line is, for the one-look panel: "at" = {"doc": position
     in ``docs``, "page", "row": 0-based in the document's page (a page holding one worker's row of a sheet says where
-    that row is, ``first_row``), "day": None when the date is the problem, "columns": the columns read on the line}."""
+    that row is, ``first_row``), "day": None when the date is the problem, "columns": the columns read on the line
+    (the date column only when the date is the problem: otherwise the day names the line)}."""
     days: dict[int, dict] = {}
     issues: list[dict] = []
     for k, (name, pages) in enumerate(docs):
@@ -876,8 +877,9 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                 timed = ([hcell] if hcell else []) + stamps
 
                 def at(day: int | None, read: list[str]) -> dict:
+                    # the date column only when the date is the problem; else the day is the line's label
                     return {"doc": k, "page": page["page"], "row": page.get("first_row", 0) + r - 1, "day": day,
-                            "columns": [c for c in page["column_labels"] if c == date_col or c in read]}
+                            "columns": [c for c in page["column_labels"] if c in read or (day is None and c == date_col)]}
 
                 if dcell["needs_review"] or not (dcell["value"] or "").strip():
                     if any(c["value"] or c["needs_review"] or (c["raw_text"] or "").strip() for c in timed):

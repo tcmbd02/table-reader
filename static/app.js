@@ -403,7 +403,7 @@ async function pollDoc(first) {
 
 // Only one screen shows at a time: the start page, a document, the month overview, a company, or the old payroll page.
 function hideScreens() {
-  for (const id of ["home", "doc", "month", "company", "payroll"]) $(id).hidden = true;
+  for (const id of ["home", "doc", "month", "company", "look", "payroll"]) $(id).hidden = true;
 }
 
 function showHome() {
@@ -413,11 +413,13 @@ function showHome() {
 }
 
 // #/payroll[/2026-09] = the month overview; .../c/<company> = one company; .../old = the old payroll page
-// (.../old/e/<employee id> = on that employee and their company).
+// (.../old/e/<employee id> = on that employee and their company); .../look/<employee id> = the one-look panel.
+// The payroll screens' scripts load after this one; the last of them calls route() when the page opens on one.
 function route() {
   const m = location.hash.match(/^#\/doc\/(.+)$/);
-  const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?(?:\/(old)(?:\/e\/([^/]+))?|\/c\/(.*))?$/);
+  const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?(?:\/(old)(?:\/e\/([^/]+))?|\/c\/(.*)|\/look\/([^/]+))?$/);
   if (m) openDoc(decodeURIComponent(m[1]));
+  else if (pm && pm[5] !== undefined) { if (typeof showLook === "function") showLook(pm[1], decodeURIComponent(pm[5])); }
   else if (pm && pm[2] && typeof showPayroll === "function") showPayroll(pm[1], pm[3] ? decodeURIComponent(pm[3]) : null);
   else if (pm && pm[4] !== undefined && typeof showCompany === "function") showCompany(pm[1], decodeURIComponent(pm[4]));
   else if (pm && typeof showMonth === "function") showMonth(pm[1]);

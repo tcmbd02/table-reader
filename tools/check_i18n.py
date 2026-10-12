@@ -10,7 +10,7 @@ import esprima
 
 S = Path(__file__).resolve().parent.parent / "static"
 trees = {}
-for name in ("i18n.js", "app.js", "payroll.js", "companies.js"):
+for name in ("i18n.js", "app.js", "payroll.js", "companies.js", "look.js"):
     try:
         src = (S / name).read_text(encoding="utf-8")
         src = re.sub(r"catch \{", "catch (_e) {", src)             # optional catch binding: valid, too new for esprima
@@ -47,7 +47,7 @@ def find_calls(node):
         for a in args[: (1 if node.callee.name == "t" else 2)]:
             if a.type == "Literal" and isinstance(a.value, str):
                 used.append(a.value)
-for name in ("app.js", "payroll.js", "companies.js"):
+for name in ("app.js", "payroll.js", "companies.js", "look.js"):
     walk(trees[name], find_calls)
 # data-t texts in index.html
 html = (S / "index.html").read_text(encoding="utf-8")
@@ -67,4 +67,4 @@ used += ["January", "Sun", "Working day", "benefit", "leave", "allowance", "dedu
 missing = sorted(set(u for u in used if u not in ms_keys))
 print("texts used:", len(set(used)), "| missing Malay:", len(missing))
 for m in missing:
-    print("  MISSING:", m)
+    print("  MISSING:", m.encode("ascii", "backslashreplace").decode())
