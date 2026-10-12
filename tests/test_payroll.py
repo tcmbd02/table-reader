@@ -1331,3 +1331,56 @@ def test_whole_page_problems_have_no_place():
 def test_a_grid_mark_on_a_day_the_month_does_not_have_says_where_it_is():
     r = payroll.calculate(plan_for(), [("grid", grid(grid_row("ZUL", {31: "✓"})))], employee())
     assert [i["at"] for i in located(r, "date")] == [{"doc": 0, "page": 1, "row": 0, "day": 31, "columns": ["31"]}]
+
+
+# ------------------------------------------------------------------------------------- month and company settings
+def bina_own(p, **values):
+    p.setdefault("companies", {})["BINA"] = payroll.own_settings(p, values or None)
+    return p
+
+
+def test_a_company_with_its_own_settings_is_calculated_with_them():
+    p = plan_for()
+    days = dict(p["day_types"], **{"7": "rest"})
+    bina_own(p, normal_hours=9, break_hours=1, day_types=days)
+    p["employees"] = [employee(id="e1", jobs=["c"]), employee(id="e2", jobs=["c"]), employee(id="e3", jobs=["c"])]
+    loader = lambda ref: ("c", card(1, 30, not_worked={6, 13, 20, 27}))
+    bina, maju, nobody = payroll.compute_all(p, loader, None, ["BINA", "MAJU JAYA", ""])
+    assert values(bina)["ot_1_5"] == 0 and values(bina)["working_days"] == 25 and values(bina)["ot_rest_day"] == 1
+    assert values(maju)["ot_1_5"] == 26 and values(maju)["working_days"] == 26
+    assert values(nobody) == values(maju)
+
+
+def test_no_companies_gives_the_same_figures():
+    p = plan_for(employees=[employee(jobs=["c"])])
+    loader = lambda ref: ("c", card(1, 30))
+    assert payroll.compute_all(p, loader) == payroll.compute_all(p, loader, None, ["BINA"])
+
+
+def test_validate_keeps_company_settings_and_refuses_bad_ones():
+    p = bina_own(plan_for())
+    p["companies"]["A & B (M)  SDN. BHD."] = payroll.own_settings(p, {"normal_hours": 9, "keep": True})
+    kept = payroll.validate_plan(p, set())["companies"]
+    assert set(kept) == {"BINA", "A & B (M) SDN. BHD."} and kept["A & B (M) SDN. BHD."]["keep"] is True
+    assert kept["A & B (M) SDN. BHD."]["normal_hours"] == 9 and kept["BINA"]["keep"] is False
+    assert payroll.validate_plan(plan_for(), set())["companies"] == {}
+    for change, message in (({"normal_hours": 25}, "Normal hours per day must be a number from 1 to 24."),
+                            ({"break_hours": 6}, "The break must be a number of hours from 0 to 5.")):
+        bad = bina_own(plan_for())
+        bad["companies"]["BINA"].update(change)
+        with pytest.raises(ocr.OcrError) as err:
+            payroll.validate_plan(bad, set())
+        assert err.value.message == message
+    bad = bina_own(plan_for())
+    del bad["companies"]["BINA"]["day_types"]["30"]
+    with pytest.raises(ocr.OcrError):
+        payroll.validate_plan(bad, set())
+
+
+def test_default_changed_after_own_settings():
+    p = bina_own(plan_for())
+    assert not payroll.default_changed(p, "BINA") and not payroll.default_changed(p, "MAJU JAYA")
+    p["day_types"]["16"] = "holiday"                       # a public holiday marked in the month's default afterwards
+    assert payroll.default_changed(p, "BINA")
+    assert payroll.settings_for(p, "BINA")["day_types"]["16"] == "work"      # its own calendar does not change
+    assert payroll.settings_for(p, "MAJU JAYA")["day_types"]["16"] == "holiday"

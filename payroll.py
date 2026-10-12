@@ -591,16 +591,8 @@ def validate_plan(plan, known_jobs: set[str]) -> dict:
         raise bad
     month = plan.get("month")
     n_days = days_in(month if isinstance(month, str) else "")
-    hours = plan.get("normal_hours")
-    if isinstance(hours, bool) or not isinstance(hours, (int, float)) or not 1 <= hours <= 24:
-        raise OcrError("BAD_PAYROLL", "Normal hours per day must be a number from 1 to 24.")
-    break_hours = plan.get("break_hours", DEFAULT_BREAK)            # a plan saved before IN/OUT cards: 1 hour
-    if isinstance(break_hours, bool) or not isinstance(break_hours, (int, float)) or not 0 <= break_hours <= 5:
-        raise OcrError("BAD_PAYROLL", "The break must be a number of hours from 0 to 5.")
-    types = plan.get("day_types")
-    if not isinstance(types, dict) or set(types) != {str(d) for d in range(1, n_days + 1)} \
-            or any(v not in DAY_TYPES for v in types.values()):
-        raise bad
+    default = _valid_settings(plan, n_days)
+    companies = _valid_companies(plan.get("companies"), n_days)
     lists = validate_lists(plan.get("lists"))
     employees, seen_ids, used_jobs, whole, in_parts = [], set(), {}, set(), set()
     whole_pages, row_pages = set(), set()           # (document, page) chosen as a page / through one of its rows
@@ -664,8 +656,78 @@ def validate_plan(plan, known_jobs: set[str]) -> dict:
                           **({"emp_no_million": emp_no.strip()} if emp_no.strip() and e.get("emp_no_million") == emp_no.strip() else {}),
                           # made by Table Reader (new_employee_nos): the same
                           **({"emp_no_new": emp_no.strip()} if emp_no.strip() and e.get("emp_no_new") == emp_no.strip() else {})})
-    return {"month": month, "normal_hours": float(hours), "break_hours": float(break_hours), "day_types": dict(types),
-            "lists": lists, "employees": employees}
+    return {"month": month, **default, "companies": companies, "lists": lists, "employees": employees}
+
+
+def _valid_settings(values, n_days: int) -> dict:
+    """Normal hours, break and calendar (the month's default, or a company's own set), checked."""
+    bad = OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+    if not isinstance(values, dict):
+        raise bad
+    hours = values.get("normal_hours")
+    if isinstance(hours, bool) or not isinstance(hours, (int, float)) or not 1 <= hours <= 24:
+        raise OcrError("BAD_PAYROLL", "Normal hours per day must be a number from 1 to 24.")
+    break_hours = values.get("break_hours", DEFAULT_BREAK)          # a plan saved before IN/OUT cards: 1 hour
+    if isinstance(break_hours, bool) or not isinstance(break_hours, (int, float)) or not 0 <= break_hours <= 5:
+        raise OcrError("BAD_PAYROLL", "The break must be a number of hours from 0 to 5.")
+    types = values.get("day_types")
+    if not isinstance(types, dict) or set(types) != {str(d) for d in range(1, n_days + 1)} \
+            or any(v not in DAY_TYPES for v in types.values()):
+        raise bad
+    return {"normal_hours": float(hours), "break_hours": float(break_hours), "day_types": dict(types)}
+
+
+def _valid_companies(companies, n_days: int) -> dict:
+    """The companies with their own settings: {name: {normal_hours, break_hours, day_types, keep, based_on}}."""
+    if companies is None:
+        return {}
+    bad = OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+    if not isinstance(companies, dict) or len(companies) > 500:
+        raise bad
+    out = {}
+    for name, entry in companies.items():
+        name = " ".join(name.split()) if isinstance(name, str) else ""
+        if not name or len(name) > 80 or not isinstance(entry, dict) or not isinstance(entry.get("keep", False), bool):
+            raise bad
+        out[name] = {**_valid_settings(entry, n_days), "keep": entry.get("keep", False),
+                     "based_on": _valid_settings(entry.get("based_on"), n_days)}
+    return out
+
+
+# ------------------------------------------------------------------------------------- month and company settings
+# The month keeps one default (calendar, normal hours, break). A company either follows it completely or has its own
+# complete set, in plan["companies"]; its employees are worked out with that set. "based_on" is the default as it was
+# when the company's set was last saved, so a later change of the default can be pointed out (never applied by itself).
+SETTING_KEYS = ("normal_hours", "break_hours", "day_types")
+
+
+def _default_of(plan: dict) -> dict:
+    return {"normal_hours": plan["normal_hours"], "break_hours": plan.get("break_hours", DEFAULT_BREAK),
+            "day_types": dict(plan["day_types"])}
+
+
+def settings_for(plan: dict, company: str) -> dict:
+    """The settings an employee of ``company`` is worked out with: the company's own set, else the month's default."""
+    own = (plan.get("companies") or {}).get(company) if company else None
+    return {k: (own or _default_of(plan))[k] for k in SETTING_KEYS}
+
+
+def with_settings(plan: dict, company: str) -> dict:
+    return {**plan, **settings_for(plan, company)}
+
+
+def default_changed(plan: dict, company: str) -> bool:
+    """The company has its own settings and the month's default was changed after they were last saved."""
+    own = (plan.get("companies") or {}).get(company) if company else None
+    return bool(own) and own.get("based_on") != _default_of(plan)
+
+
+def own_settings(plan: dict, values: dict | None) -> dict:
+    """A company's own set from the user's values (None: a copy of the month's default), remembering the default."""
+    default = _default_of(plan)
+    values = values or {}
+    return {**{k: values.get(k, default[k]) for k in SETTING_KEYS}, "keep": bool(values.get("keep", False)),
+            "based_on": default}
 
 
 # ---------------------------------------------------------------------------------------- reading days from tables
@@ -1181,11 +1243,12 @@ def _ranges(days: list[int]) -> str:
 
 
 def compute_all(plan: dict, load_pages: Callable[[str], tuple[str, list[dict]]],
-                million: dict[str, dict] | None = None) -> list[dict]:
+                million: dict[str, dict] | None = None, companies: list[str] | None = None) -> list[dict]:
     """``million``: the employees of Million's imported list by Employee No. in lower case (their Pay Basis and Basic
-    Rate are used while none is typed)."""
+    Rate are used while none is typed). ``companies``: each employee's company, in the plan's order; an employee is
+    then worked out with that company's settings (with_settings). Without it, everyone gets the month's default."""
     results = []
-    for e in plan["employees"]:
+    for n, e in enumerate(plan["employees"]):
         docs, refs, lost = [], [], []
         for job_id in e["jobs"]:
             try:
@@ -1193,7 +1256,8 @@ def compute_all(plan: dict, load_pages: Callable[[str], tuple[str, list[dict]]],
                 refs.append(job_id)
             except OcrError as exc:
                 lost.append({"kind": "missing", "text": exc.message, "job": job_id})
-        result = calculate(plan, docs, e, (million or {}).get(e["emp_no"].strip().casefold()))
+        settings = with_settings(plan, companies[n]) if companies else plan
+        result = calculate(settings, docs, e, (million or {}).get(e["emp_no"].strip().casefold()))
         for issue in result["issues"]:
             if "at" in issue:                                   # the document's id instead of its position
                 issue["at"] = {**issue["at"], "doc": split_ref(refs[issue["at"]["doc"]])[0]}
