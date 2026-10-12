@@ -144,3 +144,14 @@ def test_cards_on_no_employee():
     assert [c["ref"] for c in companies.unplaced(p, cands)] == ["d2#p2", "d3#p1r1", "d4", "d5#p1"]
     p = plan_of(worker("e1", jobs=("d5",)), worker("e2", jobs=("d3#p1",)))
     assert [c["ref"] for c in companies.unplaced(p, cands)] == ["d1", "d2#p1", "d2#p2", "d2", "d4"]
+
+
+def test_an_employee_waiting_for_million_still_shows_another_reason_the_file_holds_them_back():
+    p = plan_of(worker("e1", emp_no="MJ(9)", name="AMIN"), worker("e2", emp_no="MJ(8)", name="ZUL"))
+    held = {"e1": ["Zakat is not a figure of the office file."],                     # the file names this reason first
+            "e2": ["Employee No. MJ(8) is not in the Million employee list."]}       # only what "New in Million" says
+    view = companies.company_view("MAJU JAYA", p, [calc("e1"), calc("e2")], ["MAJU JAYA", "MAJU JAYA"], LISTED, {}, held, [])
+    assert [(i["kind"], i["employee"], i["texts"]) for i in view["items"]] == [
+        ("held", "e1", ["Zakat is not a figure of the office file."])]
+    assert view["status"] == "needs" and view["waiting"] == 2
+    assert [e["status"] for e in view["employees"]] == ["needs", "million"]

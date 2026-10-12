@@ -407,19 +407,20 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         with auto_lock:
             plan, docs = plans.load(month), finished_documents()
             gone = drop_gone_documents(plan, known_refs(docs))
+            try:
+                payroll.validate_plan(plan, known_refs(docs))
+            except OcrError:
+                # A plan that cannot be saved as it is (old data, for example one card on two employees) is left
+                # alone: nothing joins it and nobody is numbered until the user has put it right on the old page.
+                return plan, docs, gone, None, 0
             if gone:
                 plans.save(payroll.validate_plan(plan, known_refs(docs)))
             added = add_new_documents(plan, docs)
             # everyone still without an Employee No. gets a new one here too (the user's rule: no number, make one),
             # also employees who were in the payroll before; like the files above, only when the page is opened
-            numbered = 0
-            try:
-                payroll.validate_plan(plan, known_refs(docs))
-                numbered = number_new_employees(plan, docs, set())
-                if numbered:
-                    plans.save(payroll.validate_plan(plan, known_refs(docs)))
-            except OcrError:
-                pass                                    # a plan that cannot be saved as it is: left alone
+            numbered = number_new_employees(plan, docs, set())
+            if numbered:
+                plans.save(payroll.validate_plan(plan, known_refs(docs)))
         return plan, docs, gone, added, numbered
 
     @app.get("/api/payroll/{month}")
@@ -519,7 +520,11 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         with auto_lock:
             plan, docs = plans.load(month), finished_documents()
             drop_gone_documents(plan, known_refs(docs))
-            candidate = next((c for d in docs for c in candidates_of(d) if c["ref"] == body["ref"]), None)
+            doc = next((d for d in docs if d["id"] == payroll.split_part(body["ref"])[0]), None)
+            try:                                        # only this card's document is opened, not every reading
+                candidate = next((c for c in candidates_of(doc) if c["ref"] == body["ref"]), None) if doc else None
+            except (OSError, ValueError) as exc:
+                raise OcrError("JOB_NOT_FOUND", "That card could not be opened. Read the file again.") from exc
             if candidate is None:
                 raise OcrError("JOB_NOT_FOUND", "That card was not found. It may have been moved or deleted.")
             before = {e["id"] for e in plan["employees"]}

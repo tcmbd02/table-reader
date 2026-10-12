@@ -819,3 +819,74 @@ def test_the_overview_opens_on_a_month_whose_stored_plan_cannot_be_saved_as_it_i
         path.write_text(json.dumps(plan), encoding="utf-8")
         over = c.get(f"/api/payroll/{month}/companies")
         assert over.status_code == 200 and over.json()["companies"][0]["employees"] == 2
+
+
+def test_an_old_bad_plan_is_left_alone_when_a_new_file_of_the_month_arrives(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        c.get(f"/api/payroll/{month}/companies")
+        path = tmp_path / "payroll" / f"{month}.json"
+        plan = json.loads(path.read_text(encoding="utf-8"))
+        plan["employees"].append(dict(plan["employees"][0], id="twin1"))    # one card on two employees: old, bad data
+        path.write_text(json.dumps(plan), encoding="utf-8")
+        upload(c, tmp_path, name=f"BINA ZUL SEPT {YEAR}.png")               # and now a new file of the month is read
+        store.wait_idle()
+        set_company(c, "BINA ZUL", "BINA")
+        over = c.get(f"/api/payroll/{month}/companies")
+        assert over.status_code == 200, over.json()
+        assert c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).status_code == 200
+        assert c.get(f"/api/payroll/{month}").status_code == 200           # the old page, where it can be put right
+        # nothing was added to the plan that cannot be saved, and no number was remembered for someone not in it
+        assert len(json.loads(path.read_text(encoding="utf-8"))["employees"]) == 2
+        remembered = json.loads((tmp_path / "payroll" / "employees.json").read_text(encoding="utf-8"))
+        assert not [k for k in remembered if "zul" in k]
+        # once the plan is put right, the waiting file joins by itself
+        plan = c.get(f"/api/payroll/{month}").json()["plan"]
+        plan["employees"] = plan["employees"][:1]
+        assert c.put(f"/api/payroll/{month}", json=plan).status_code == 200
+        view = c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).json()
+        assert sorted(e["name"] for e in view["employees"]) == ["SITI", "ZUL"]
+
+
+def test_placing_a_card_works_while_another_reading_is_damaged(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        upload(c, tmp_path, name=f"BINA ZUL SEPT {YEAR}.png")
+        upload(c, tmp_path, name=f"BINA AMIN SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        plan = c.get(f"/api/payroll/{month}").json()["plan"]
+        siti = next(e for e in plan["employees"] if e["name"] == "SITI")
+        ref, siti["jobs"] = siti["jobs"][0], []                           # the user takes SITI's card off
+        c.put(f"/api/payroll/{month}", json=plan)
+        for j in c.get("/api/jobs").json():                               # every other reading is damaged
+            if "SITI" not in j["name"]:
+                (store.root / j["id"] / "result.json").write_text("{ damaged", encoding="utf-8")
+        r = c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": siti["id"]})
+        assert r.status_code == 200 and r.json()["ok"] is True, r.json()
+        damaged = next(j["id"] for j in c.get("/api/jobs").json() if "ZUL" in j["name"])
+        r = c.post(f"/api/payroll/{month}/place", json={"ref": damaged, "employee": siti["id"]})
+        assert r.status_code in (400, 404) and "could not be opened" in r.json()["message"]
+
+
+def test_a_card_that_is_nobodys_can_be_set_aside_as_not_a_time_card(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        plan = c.get(f"/api/payroll/{month}").json()["plan"]
+        plan["employees"] = []                                            # the employee is removed: the card is nobody's
+        c.put(f"/api/payroll/{month}", json=plan)
+        item = c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).json()["items"][0]
+        assert item["kind"] == "unplaced" and item["doc"] == item["ref"]
+        assert c.post("/api/payroll/file-month", json={"id": item["doc"], "month": "none"}).json() == {"ok": True}
+        view = c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).json()
+        assert view["items"] == [] and view["employees"] == []           # and it does not come back by itself

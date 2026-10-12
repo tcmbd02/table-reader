@@ -401,6 +401,7 @@ const MS = {
   "Each line needs a name (up to 80 characters).": "Setiap baris perlu ada nama (sehingga 80 aksara).",
   "One of the chosen documents was not found. It may have been moved or deleted.": "Salah satu dokumen yang dipilih tidak dijumpai. Ia mungkin telah dipindahkan atau dipadam.",
   "That card was not found. It may have been moved or deleted.": "Kad itu tidak dijumpai. Ia mungkin telah dipindahkan atau dipadam.",
+  "That card could not be opened. Read the file again.": "Kad itu tidak dapat dibuka. Baca fail itu semula.",
   "That file was not found. It may have been moved or deleted.": "Fail itu tidak dijumpai. Ia mungkin telah dipindahkan atau dipadam.",
   "The Employee No. could not be understood. Reload the page and try again.": "No. Pekerja tidak dapat difahami. Muat semula halaman dan cuba lagi.",
   "That employee is not in this month's payroll any more. Reload the page.": "Pekerja itu tidak lagi ada dalam gaji bulan ini. Muat semula halaman.",

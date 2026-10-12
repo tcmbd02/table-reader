@@ -76,6 +76,9 @@ def employee_status(items: list[dict]) -> str:
     return "million" if all(i["kind"] == "million_new" for i in items) else "needs"
 
 
+_NOT_IN_MILLION = "is not in the Million employee list"       # payroll.month_run's reason for an unknown Employee No.
+
+
 def company_view(company: str, plan: dict, results: list[dict], company_of: list[str], million: list[dict] | None,
                  offers: dict[str, dict], held: dict[str, list[str]], file_items: list[dict]) -> dict:
     """Everything the company screen shows for ``company`` ("" = employees with no company).
@@ -89,8 +92,11 @@ def company_view(company: str, plan: dict, results: list[dict], company_of: list
         if c != company:
             continue
         own = issue_items(r, e) + numbers[e["id"]]
-        if e["id"] in held and not own:
-            own = [{"kind": "held", "employee": e["id"], "texts": list(held[e["id"]])}]
+        if e["id"] in held and all(i["kind"] == "million_new" for i in own):
+            # held back for something no item of theirs names (being new in Million is its own item, not a reason here)
+            reasons = [text for text in held[e["id"]] if _NOT_IN_MILLION not in text]
+            if reasons:
+                own.append({"kind": "held", "employee": e["id"], "texts": reasons})
         items += [i for i in own if i["kind"] != "million_new"]
         if any(i["kind"] == "million_new" for i in own):
             million_new.append({"emp_no": e["emp_no"].strip(), "name": e["name"]})

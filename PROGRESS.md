@@ -1,8 +1,8 @@
 # Progress log
 
 ## Session 18 - 2026-10-12 - Company-first payroll, stage 1: month overview and company screen
-Branch `company-first` (from `pdf-text`), local commits only. **Not merged, not pushed, app not rebuilt.** 422 tests
-pass; Malay checks pass. Design: `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md`; plan:
+Branch `company-first` (from `pdf-text`), merged into `pdf-text` locally. **Not pushed.** 426 tests pass; Malay checks
+pass. Design: `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md`; plan:
 `docs/superpowers/plans/2026-10-12-company-first-payroll-stage-1.md`.
 - The user called the Payroll page terrible (matching ~100 files to ~84 employees by scrolling). Decisions taken with
   them: one company at a time; only the problems; one look per employee for yellow cells (stage 2); one Million file at
@@ -21,8 +21,30 @@ pass; Malay checks pass. Design: `docs/superpowers/specs/2026-10-12-company-firs
   (84 employees, 36 complete, same fingerprint). The new screens show 30 rows (25 need the user, 2 ready, 3 ready and
   waiting for Million) and these items: 28 cards to check, 29 "days that do not add up", 20 cards on no employee,
   8 employees with no card, 8 Employee Nos. to fix, 1 offered number, 1 file with no company.
-- **Checked in a real browser engine (headless Edge, made-up data, scripted clicks): 19 of 19.** The Chrome extension
-  was not connected, so nobody has looked at the layout with their eyes yet.
+- **Checked in a real browser engine (headless Edge, made-up data, scripted clicks): 18 of 18** (an earlier note said
+  19; it was a miscount). The Chrome extension was not connected, so nobody has looked at the layout with their eyes yet.
+- **Merged into `pdf-text` (fast-forward, local) and the app rebuilt on the user's OK, before the review came back.**
+- **Independent whole-branch review: no critical findings, 6 important.** Fixed after the rebuild (426 tests; **the
+  running app does not have these fixes until it is rebuilt again**):
+  1. An old plan that cannot be saved as it is (one card on two employees) blocked the overview as soon as a new file
+     of the month was read, and a number was remembered for an employee never saved. Now such a plan is left alone
+     completely until it is put right on the old page (`open_month`).
+  2. Placing a card failed with "Something went wrong" when another document's reading was damaged. Now only the
+     card's own document is opened.
+  3. A file of the month that is nobody's card could not be set aside: "Not a time card" is now on that item too.
+  4. The month file's reasons on a "held" item were not translated to Malay (now through `runReason`). No automated
+     test: there is no JS test runner.
+  5. A company could read "Ready, n waiting for Million" while the month file held that employee for a second reason;
+     the reason is now shown.
+  6. Speed (each screen reads every document several times): measured on the real September data, 0.7 s for the
+     overview and for the largest company, the same as the old page. Left as it is.
+- Review findings left for later (minor): a refused action leaves the old list on screen until reload; "Not a time
+  card" cannot be undone from the new screens; a hand-typed address with a bad `%` or month 13 shows a blank screen;
+  a slow answer can draw under the wrong title after fast clicks; "Open employee" changes the Company chooser in the
+  top bar; the old page open in a second tab can save over what the new screens did; a broken office-mapping file now
+  blocks the overview (and tests read this PC's mapping file); one test's name promises "being read" but only tests a
+  damaged reading; a damaged reading is listed under "days that do not add up"; upper/lower case differs between the
+  overview's shared-number check and the month file's.
 - Not in stage 1 (old page until then): the one-look panel (stage 2), company settings (3), the "New in Million"
   screen and removing the old page (4). Open from before: do yellow cells count before they are accepted (user asked,
   no answer); does Million accept a 10-character Employee No.

@@ -147,7 +147,8 @@ function itemNode(item) {
   let head = "", details = [];
   if (ITEM_HEADS[item.kind]) {
     head = t(ITEM_HEADS[item.kind], { name });
-    details = item.texts.map(tm);
+    // what the month file says about an employee comes without its "- who: " start: runReason translates those
+    details = item.texts.map(item.kind === "held" ? runReason : tm);
     if (item.kind === "look") {
       item.cards.forEach((c, n) => buttons.push(el("button", { type: "button", title: c.name,
         text: item.cards.length > 1 ? t("Open card {n}", { n: n + 1 }) : t("Open the card"),
@@ -176,7 +177,13 @@ function itemNode(item) {
     }
     const fresh = el("button", { type: "button", text: t("New employee") });
     fresh.addEventListener("click", () => place(fresh, null));
-    buttons.push(fresh, openCardButton(item.doc));
+    buttons.push(fresh);
+    if (item.ref === item.doc) {                 // a whole file that is nobody's card (a notice, a second scan)
+      const none = el("button", { type: "button", text: t("Not a time card") });
+      none.addEventListener("click", () => coAct(none, () => api("POST", "/api/payroll/file-month", { id: item.doc, month: "none" })));
+      buttons.push(none);
+    }
+    buttons.push(openCardButton(item.doc));
   } else if (item.kind === "month") {
     head = t("{file}: which month is this for?", { file: item.name });
     details = [tm(item.why)];
