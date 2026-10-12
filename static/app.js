@@ -168,12 +168,12 @@ function companyBox(j, companies) {
     el("datalist", { id: "company-names" }, ...companies.map((c) => el("option", { value: c }))));
 }
 
-// Does a file's / employee's company pass the Company chosen in the top bar?
+// Does a file's company pass the Company chosen beside "Recent files"?
 function companyMatches(company) {
   return !companyFilter || (companyFilter === NO_COMPANY ? !company : company === companyFilter);
 }
 
-// The Company chooser in the top bar. It filters Recent files and the Payroll screen, and is remembered.
+// The Company chooser beside "Recent files" on the start page. It filters that list only, and is remembered.
 let companySignature = "";
 function renderCompanyFilter(jobs) {
   const companies = [...new Set(jobs.map((j) => j.company).filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -192,15 +192,10 @@ function renderCompanyFilter(jobs) {
     companyFilter = sel.value;
     companySignature = JSON.stringify([options, companyFilter]);
     try { localStorage.setItem("companyFilter", companyFilter); } catch (_) { /* private window */ }
-    if (!$("home").hidden) loadRecent();
-    else if (!$("payroll").hidden && typeof payrollCompanyChanged === "function") payrollCompanyChanged();
+    loadRecent();
   });
   $("company-box").replaceChildren(el("label", {}, t("Company"), sel));
   return companies;
-}
-
-async function refreshCompanies() {
-  try { renderCompanyFilter(await api("GET", "/api/jobs")); } catch (_) { /* shown elsewhere */ }
 }
 
 async function loadRecent() {
@@ -419,7 +414,6 @@ function showHome() {
 
 // #/payroll[/2026-09] = the month overview; .../c/<company> = one company; .../old = the old payroll page.
 function route() {
-  refreshCompanies();                                          // the Company chooser is on every screen
   const m = location.hash.match(/^#\/doc\/(.+)$/);
   const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?(?:\/(old)|\/c\/(.*))?$/);
   if (m) openDoc(decodeURIComponent(m[1]));

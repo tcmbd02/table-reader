@@ -196,3 +196,4 @@ ol.needs li.need:last-child { border-bottom: 0; }
 .need-buttons { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
 .need-buttons button { padding: 4px 12px; }
 .need-buttons input { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.recent-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }

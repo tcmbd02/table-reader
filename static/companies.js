@@ -60,6 +60,7 @@ function drawMonth(over) {
 }
 
 $("mo-back").addEventListener("click", () => { location.hash = ""; });
+$("mo-old").addEventListener("click", () => { window.prOpenCompany = ""; });      // the old page on every company
 $("mo-prev").addEventListener("click", () => { location.hash = `#/payroll/${shiftMonth(moMonth, -1)}`; });
 $("mo-next").addEventListener("click", () => { location.hash = `#/payroll/${shiftMonth(moMonth, 1)}`; });
 
@@ -119,8 +120,7 @@ function employeeName(id) {
 
 // Open the old payroll page on this company and this employee: every figure, the cards, the number, the overrides.
 function openEmployee(id) {
-  companyFilter = coCompany || NO_COMPANY;
-  try { localStorage.setItem("companyFilter", companyFilter); } catch (_) { /* private window */ }
+  window.prOpenCompany = coCompany || NO_COMPANY;
   window.prOpenEmployee = id;
   location.hash = `#/payroll/${moMonth}/old`;
 }

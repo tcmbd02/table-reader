@@ -38,6 +38,11 @@ pass. Design: `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md
      the reason is now shown.
   6. Speed (each screen reads every document several times): measured on the real September data, 0.7 s for the
      overview and for the largest company, the same as the old page. Left as it is.
+- **Company chooser moved (user: it only works for the file list, so put it there):** it now sits beside "Recent
+  files" on the start page and filters only that list. The old payroll page has its own chooser (`prFilter` in
+  payroll.js, not remembered): a company screen opens the page on its company, the "Old payroll page" link on all
+  companies. This also settles the review's point that opening an employee changed the start page's filter.
+  Click-through repeated: 22 of 22. 427 tests.
 - Review findings left for later (minor): a refused action leaves the old list on screen until reload; "Not a time
   card" cannot be undone from the new screens; a hand-typed address with a bad `%` or month 13 shows a blank screen;
   a slow answer can draw under the wrong title after fast clicks; "Open employee" changes the Company chooser in the

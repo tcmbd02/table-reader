@@ -34,6 +34,8 @@ async function showPayroll(month) {
   try {
     pr = await api("GET", payrollUrl());
     prDirty = false;
+    // opened from a company screen: on that company; from the month page's "Old payroll page" link: on all companies
+    if (window.prOpenCompany !== undefined) { prFilter = window.prOpenCompany; window.prOpenCompany = undefined; }
     renderPayroll();
     // opened from a company screen for one employee: show that employee in the results window
     if (window.prOpenEmployee) {
@@ -230,19 +232,34 @@ function payrollChoices() {
   return out;
 }
 
-// --- the Company chosen in the top bar (app.js: companyFilter, companyMatches) decides which employees are shown
-const chosenCompany = () => (companyFilter && companyFilter !== NO_COMPANY ? companyFilter : "");
+// --- the Company chosen at the top of this page decides which employees are shown. It is this page's own (the
+// chooser on the start page filters only Recent files): "" = all companies; a company screen opens the page on its company.
+let prFilter = "";
+const chosenCompany = () => (prFilter && prFilter !== NO_COMPANY ? prFilter : "");
+function prMatches(company) { return !prFilter || (prFilter === NO_COMPANY ? !company : company === prFilter); }
 // the employee's company: set on the employee, else the one company of their ticked files (as payroll.employee_company)
 function empCompany(e) { return e.company || startCompany(e); }
 function visibleIndexes() {
-  return pr.plan.employees.map((e, i) => (companyMatches(empCompany(e)) ? i : -1)).filter((i) => i >= 0);
+  return pr.plan.employees.map((e, i) => (prMatches(empCompany(e)) ? i : -1)).filter((i) => i >= 0);
 }
 
 function renderAutoCompany() {
   const c = chosenCompany();
-  $("pr-auto-company").textContent = companyFilter === NO_COMPANY ? t("Choose a company at the top (or “All companies”).")
+  $("pr-auto-company").textContent = prFilter === NO_COMPANY ? t("Choose a company at the top (or “All companies”).")
     : c ? t("for {c}", { c }) : t("for all companies");
-  $("pr-auto").disabled = companyFilter === NO_COMPANY;
+  $("pr-auto").disabled = prFilter === NO_COMPANY;
+}
+
+function renderCompanyChooser() {
+  const names = [...new Set([...pr.documents.map((d) => d.company), ...pr.plan.employees.map(empCompany)].filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  if (prFilter && prFilter !== NO_COMPANY && !names.includes(prFilter)) prFilter = "";
+  const sel = el("select", { id: "pr-company", "aria-label": t("Company") },
+    el("option", { value: "", text: t("All companies"), selected: prFilter === "" }),
+    ...names.map((c) => el("option", { value: c, text: c, selected: prFilter === c })),
+    el("option", { value: NO_COMPANY, text: t("No company yet"), selected: prFilter === NO_COMPANY }));
+  sel.addEventListener("change", () => { prFilter = sel.value; payrollCompanyChanged(); });
+  $("pr-company-box").replaceChildren(el("label", {}, t("Company"), sel));
 }
 
 // Million Payroll's own employee list (imported by the user): its Employee Nos. are offered in every Employee No. box.
@@ -271,7 +288,7 @@ $("pr-million-file").addEventListener("change", async () => {
   } catch (e) { prShowError(e.message); }
 });
 
-// Called by app.js when the Company at the top changes while this screen is open.
+// The Company at the top of this page was changed.
 function payrollCompanyChanged() {
   prShowInfo("");
   renderAutoCompany(); renderEmployees(); renderResults(); renderDaily();
@@ -293,7 +310,7 @@ function renderEmployees() {
   }));
   const companies = [...new Set(pr.documents.map((d) => d.company).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const list = pr.plan.employees.map((e, i) => {
-    if (!companyMatches(empCompany(e))) return null;            // another company: hidden, not removed
+    if (!prMatches(empCompany(e))) return null;                 // another company: hidden, not removed
     const filter = el("input", { type: "text", placeholder: t("Find a file…"), "aria-label": t("Find a file"), style: "flex:1 1 200px" });
     if (!(e.id in prCompany)) prCompany[e.id] = empCompany(e) || chosenCompany();
     if (prCompany[e.id] && prCompany[e.id] !== NO_COMPANY && !companies.includes(prCompany[e.id])) prCompany[e.id] = "";
@@ -656,7 +673,7 @@ function renderResults() {
 }
 
 function renderPayroll() {
-  renderMonth(); renderAutoCompany(); renderMillion(); renderEmployees(); renderResults(); renderDaily();
+  renderCompanyChooser(); renderMonth(); renderAutoCompany(); renderMillion(); renderEmployees(); renderResults(); renderDaily();
   setSaveState("");
 }
 

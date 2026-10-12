@@ -55,6 +55,13 @@ def test_the_page_has_the_company_first_screens(client):
     assert html.index("payroll.js") < html.index("companies.js")        # it uses the old page's helpers
 
 
+def test_the_company_chooser_for_files_is_on_the_start_page_only(client):
+    html = client.get("/").text
+    at = html.index('id="company-box"')
+    assert html.index('<main id="home"') < at < html.index('<main id="doc"')    # with Recent files, which it filters
+    assert 'id="pr-company-box"' in html                                # the old payroll page has its own chooser
+
+
 def test_script_addresses_change_when_a_script_changes(client, tmp_path, monkeypatch):
     import re
     import shutil
