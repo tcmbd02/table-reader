@@ -1,8 +1,8 @@
 # Progress log
 
 ## Session 19 - 2026-10-12 - Company-first payroll, stage 2: the one-look panel
-Branch `look-panel` (from `pdf-text`, which already holds stage 1, merged and rebuilt by the user after session 18).
-**Local commits only: not merged, not pushed, app not rebuilt.** 447 tests pass; Malay checks pass. Plan:
+Built on branch `look-panel` (from `pdf-text`, which already held stage 1), then **merged into `pdf-text`
+(fast-forward, local, not pushed) and the app rebuilt** on the user's OK; the rebuilt app serves the panel. 447 tests pass; Malay checks pass. Plan:
 `docs/superpowers/plans/2026-10-12-company-first-payroll-stage-2.md`.
 - **What the user sees:** on a company screen, an employee's "cells to check" item now says "n lines of the time cards
   to check" and has a **Look** button. It opens the panel (`#/payroll/<month>/look/<employee id>`, same tab): one card

@@ -56,11 +56,11 @@ workers are not in that month's payroll, so there was nothing to update. Details
 - **Session 18 (2026-10-12): company-first payroll, stage 1:** Payroll opens on a month overview (one row per
   company), each company has a "Needs you" list; the old page is behind "Old payroll page". **Merged into `pdf-text`
   and the app rebuilt** (by the user, after the session). Details: PROGRESS.md 18.
-- **Session 19 (2026-10-12): stage 2, the one-look panel** on branch `look-panel` (from `pdf-text`; local commits,
-  **not merged, not pushed, app not rebuilt**): a Look button on an employee's "cells to check" item opens all their
+- **Session 19 (2026-10-12): stage 2, the one-look panel**, merged into `pdf-text` (local, **not pushed**) and the
+  app rebuilt on the user's OK: a Look button on an employee's "cells to check" item opens all their
   lines that the calculation could not use, card by card beside the picture, with one Accept per card. Reviewed by a
-  fresh reviewer, its one important finding fixed; 7 minor ones listed in PROGRESS.md 19. Next: the user's OK to
-  merge into `pdf-text` and rebuild; then stage 3 (company settings) from the spec in `docs/superpowers/specs/`.
+  fresh reviewer, its one important finding fixed; 7 minor ones listed in PROGRESS.md 19. Next: stage 3 (company
+  settings) from the spec in `docs/superpowers/specs/`. Nobody has used the panel on a real card picture yet.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -84,7 +84,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | **Million import file (.xls)** for the office | **Done (session 7).** Button "Download Million file (.xls)"; the office checker says READY on invented figures. Real September file not made yet (needs Employee Nos.). |
 | Browser check | Never clicked through by Claude (Chrome extension was not connected). All checks were tests + API + real-data scripts. |
 
-Tests: **447 pass** on `look-panel` (`.venv\Scripts\python -m pytest -q`). Package last rebuilt after session 18. Sessions up to 18 are committed on `pdf-text` (PR #2, base `main`, not merged); session 19 on `look-panel`.
+Tests: **447 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 19. Sessions up to 19 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed).
 
 ## 2. Git / GitHub
 
