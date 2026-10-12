@@ -156,6 +156,22 @@ def test_a_correction_from_the_panel_is_marked(tmp_path):
     assert s.load_edits(meta["id"])["edits"] == [{"page": 1, "row": 0, "column": "In", "value": "7:40"}]
 
 
+def test_the_panel_does_not_save_over_a_cell_changed_since_it_was_shown(tmp_path):
+    s = jobs.Jobs(tmp_path / "jobs", reader=FakeReader(default=lambda n: record(
+        [{"Date": good("1"), "In": cell(None, "7:3?", 40, "faded")}])))
+    meta = make(s, pages_=1, tmp_path=tmp_path)
+    assert s.wait_idle()
+    s.save_edits(meta["id"], [{"page": 1, "row": 0, "column": "In", "value": "7:40"}])    # typed in another window
+    stale = {"page": 1, "row": 0, "column": "In", "value": "7:3", "via": "look", "seen": {"edited": False, "value": None}}
+    with pytest.raises(ocr.OcrError) as err:
+        s.save_edits(meta["id"], [stale])
+    assert err.value.code == "CELL_CHANGED"
+    assert s.load_edits(meta["id"])["edits"] == [{"page": 1, "row": 0, "column": "In", "value": "7:40"}]
+    fresh = {**stale, "value": "7:45", "seen": {"edited": True, "value": "7:40"}}       # shown after that change
+    s.save_edits(meta["id"], [fresh])
+    assert s.load_edits(meta["id"])["edits"] == [{"page": 1, "row": 0, "column": "In", "value": "7:45", "via": "look"}]
+
+
 def test_an_unknown_via_is_refused(tmp_path):
     s = jobs.Jobs(tmp_path / "jobs", reader=FakeReader())
     meta = make(s, pages_=1, tmp_path=tmp_path)

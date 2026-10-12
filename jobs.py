@@ -418,14 +418,24 @@ class Jobs:
 
         A cell change is {"page", "row", "column", "value"}; a form-field change is {"page", "header", "value"}
         (row / header are 0-based positions). ``value`` "" means "checked, it is really empty"; ``None`` takes the
-        correction back, so Claude's reading shows again."""
+        correction back, so Claude's reading shows again.
+        A change may say how the cell looked when it was shown ("seen": {"edited", "value"}; the payroll's one-look
+        panel sends it for every box): if the cell was corrected since (in another window), nothing is saved."""
         result = self.load_result(job_id)
         by_page = {p["page"]: p for p in result["pages"]}
         with self._lock:
             edits = self.load_edits(job_id)
             kept = {_edit_key(e): e for e in edits["edits"]}
-            for change in changes:
-                entry = _validate_edit(change, by_page)
+            entries = [(_validate_edit(change, by_page), change.get("seen")) for change in changes]
+            for entry, seen in entries:
+                if seen is None:
+                    continue
+                now = kept.get(_edit_key(entry))
+                if not isinstance(seen, dict) or (now is not None) != seen.get("edited") \
+                        or (now is not None and now["value"] != seen.get("value")):
+                    raise OcrError("CELL_CHANGED", "This card was changed in another window, so nothing was saved. "
+                                                   "Check it again: it now shows what is saved.")
+            for entry, _ in entries:
                 if entry["value"] is None:
                     kept.pop(_edit_key(entry), None)
                 else:

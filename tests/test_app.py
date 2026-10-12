@@ -932,6 +932,10 @@ def test_the_look_panel_lists_the_yellow_lines_and_accepting_clears_them(tmp_pat
         change = {"page": 1, "row": 8, "column": "Total", "value": "9", "via": "look"}
         assert c.put(f"/api/jobs/{card['doc']}/cells", json={"changes": [change]}).status_code == 200
         assert c.get(f"/api/payroll/{month}/look", params={"employee": siti["id"]}).json()["cards"] == []
+        # a second window still showing the yellow cell cannot save over what was just saved
+        stale = {**change, "value": "8", "seen": {"edited": False, "value": None}}
+        r = c.put(f"/api/jobs/{card['doc']}/cells", json={"changes": [stale]})
+        assert r.status_code == 409 and r.json()["code"] == "CELL_CHANGED"
         items = c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).json()["items"]
         assert "look" not in [i["kind"] for i in items]
 

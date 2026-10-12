@@ -27,7 +27,7 @@ from ocr import OcrError
 MAX_UPLOAD_BYTES = 150 * 1024 * 1024
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}          # urlparse().hostname is lower-case and drops the [ ]
 _STATUS_FOR_CODE = {"JOB_NOT_FOUND": 404, "EMPLOYEE_NOT_FOUND": 404, "PAGE_NOT_FOUND": 404, "JOB_BUSY": 409,
-                    "JOB_NOT_FINISHED": 409}
+                    "JOB_NOT_FINISHED": 409, "CELL_CHANGED": 409}
 
 
 NO_RETRY_CODES = {"FILE_TYPE", "PDF_UNREADABLE", "PDF_EMPTY", "TOO_MANY_PAGES", "IMAGE_UNREADABLE", "FILE_MISSING"}

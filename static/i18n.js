@@ -131,6 +131,7 @@ const MS = {
   "{n} boxes still need typing.": "{n} kotak masih perlu ditaip.",
   "Page {n}. Click the picture to see it closer.": "Halaman {n}. Klik gambar untuk melihatnya lebih dekat.",
   "This employee is no longer in the payroll of this month. Go back to the company and open it again.": "Pekerja ini tidak lagi ada dalam gaji bulan ini. Kembali ke syarikat dan bukanya semula.",
+  "This card was changed in another window, so nothing was saved. Check it again: it now shows what is saved.": "Kad ini telah diubah dalam tetingkap lain, jadi tiada apa-apa yang disimpan. Semak semula: kini ia menunjukkan apa yang telah disimpan.",
   "Open card {n}": "Buka kad {n}",
   "Open the card": "Buka kad",
   "{name}: Million has Employee No. {no} for {million}": "{name}: Million ada No. Pekerja {no} untuk {million}",

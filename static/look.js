@@ -161,8 +161,10 @@ $("lk-accept").addEventListener("click", async () => {
     const key = draftKey(card.doc, box.line, box.cell.column);
     if (seen.has(key)) continue;
     seen.add(key);
+    // how the cell looked when it was shown: if it was corrected since (another window), the server saves nothing
+    const asShown = { edited: box.cell.edited, value: box.cell.edited ? box.cell.value : null };
     changes.push({ page: box.line.page, row: box.line.row, column: box.cell.column,
-      value: box.empty ? "" : typed(box), via: "look" });
+      value: box.empty ? "" : typed(box), via: "look", seen: asShown });
   }
   const button = $("lk-accept");
   button.disabled = true;
@@ -171,7 +173,11 @@ $("lk-accept").addEventListener("click", async () => {
     for (const key of [...lkDraft.keys()]) if (key.startsWith(`${card.doc}|`)) lkDraft.delete(key);
     lkError("");
     await loadLook(card.doc, true);
-  } catch (e) { lkError(e.message); paintAccept(); }
+  } catch (e) {
+    await loadLook(card.doc, false);                           // show what is saved now; what was typed here is kept
+    lkError(e.message);
+    paintAccept();
+  }
 });
 
 $("lk-prev").addEventListener("click", () => { if (lkCard > 0) { lkCard -= 1; lkLine = 0; drawLookCard(false); } });
