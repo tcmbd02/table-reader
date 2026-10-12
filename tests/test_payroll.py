@@ -1268,3 +1268,61 @@ def test_the_employees_company_is_set_or_comes_from_their_files():
     p = plan_for()
     payroll.auto_employees(p, [candidate("j1", "MAJU JAYA ALI SEPT 26.jpeg")], {}, lambda: "a")
     assert p["employees"][0]["company"] == "MAJU JAYA"
+
+
+# ------------------------------------------------------------------- where a line problem is (the one-look panel)
+def located(result, kind="unclear"):
+    return [i for i in result["issues"] if i["kind"] == kind and "at" in i]
+
+
+def test_an_unclear_hours_cell_says_where_it_is():
+    rows = [day(1, "9"), {"Date": good("2"), "Total": cell(None, "9?", 30, "smudged")}, day(3, "9")]
+    r = payroll.calculate(plan_for(), [("c", merged(rows))], employee())
+    assert [i["at"] for i in located(r)] == [{"doc": 0, "page": 1, "row": 1, "day": 2, "columns": ["Date", "Total"]}]
+
+
+def test_an_unclear_in_out_time_says_its_columns():
+    rows = [{"Date": good("4"), "In": good("08:00"), "Out": cell(None, "17:0?", 30, "faded")}]
+    r = payroll.calculate(plan_for(), [("c", merged(rows, labels=("Date", "In", "Out")))], employee())
+    [at] = [i["at"] for i in located(r)]
+    assert at["columns"] == ["Date", "In", "Out"] and at["day"] == 4 and at["row"] == 0
+
+
+def test_an_unclear_date_has_no_day():
+    rows = [day(1, "9"), {"Date": cell(None, "?", 20, "smudged"), "Total": good("9")}]
+    r = payroll.calculate(plan_for(), [("c", merged(rows))], employee())
+    [at] = [i["at"] for i in located(r)]
+    assert at["day"] is None and at["row"] == 1 and at["columns"] == ["Date", "Total"]
+
+
+def test_a_date_outside_the_month_says_where_it_is():
+    rows = [day(1, "9"), day(32, "9")]
+    r = payroll.calculate(plan_for(), [("c", merged(rows))], employee())
+    assert [i["at"]["row"] for i in located(r, "date")] == [1]
+
+
+def test_a_grid_row_part_points_at_the_documents_row():
+    page = grid(grid_row("ZUL", {5: ""}))[0]
+    page["rows"][0]["cells"]["5"].update(needs_review=True, raw_text="?")
+    page["first_row"] = 2                                   # the third worker's row of the sheet
+    r = payroll.calculate(plan_for(), [("grid (row 3)", [page])], employee())
+    assert [i["at"] for i in located(r)] == [{"doc": 0, "page": 1, "row": 2, "day": 5, "columns": ["5"]}]
+
+
+def test_compute_all_names_the_document_of_a_problem():
+    rows = [day(1, "9"), {"Date": good("2"), "Total": cell(None, "9?", 30, "smudged")}]
+
+    def load(ref):
+        if ref == "gone":
+            raise ocr.OcrError("JOB_NOT_FOUND", "gone")
+        return "card", merged(rows)
+
+    p = plan_for(employees=[employee(jobs=["gone", "d9#p1"])])
+    [r] = payroll.compute_all(p, load)
+    assert [i["at"]["doc"] for i in located(r)] == ["d9"]
+
+
+def test_whole_page_problems_have_no_place():
+    r = payroll.calculate(plan_for(), [("c", merged([{"Date": good("1"), "Note": good("x")}], labels=("Date", "Note")))],
+                          employee())
+    assert [i for i in r["issues"] if i["kind"] == "column" and "at" not in i]

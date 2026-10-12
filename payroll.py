@@ -748,13 +748,14 @@ def parse_clock(value: str | None) -> float | None:
 
 
 def _clock_day(cells: dict, pairs: list[tuple[str, str]], break_hours: float, where: str, day: int, name: str,
-               issues: list[dict]) -> dict:
+               issues: list[dict], at: dict) -> dict:
     """One day of an IN/OUT time card: the hours between each IN and its OUT, added up. One pair: the break is taken
     off. Several pairs: no break (the gap between them is the break). Only one IN and one OUT in a later pair (morning
     IN, overtime OUT: the worker clocked twice): one span, the break taken off. A day word instead of times (OFF, PH,
-    CUTI, MC: see DAY_WORD_MARKS) marks the day as on a month grid. Anything unclear leaves the day out."""
+    CUTI, MC: see DAY_WORD_MARKS) marks the day as on a month grid. Anything unclear leaves the day out. ``at``: where
+    the line is (see read_days)."""
     def unclear(text: str) -> dict:
-        issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: {text}"})
+        issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: {text}", "at": at})
         return {"hours": None, "status": "unclear", "source": where, "printed": None}
 
     if any(cells[c]["needs_review"] for pair in pairs for c in pair):
@@ -836,15 +837,18 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
     "source": text, "printed": {field: hours} | None (clock-system report figures for that day),
     "mark": None | "present" | "hours" | "absent" | "holiday" | "off" | "leave" (month grids), "code": what was written,
     "clock": {"hours", "break", "pairs"} on an IN/OUT time card (how the hours were worked out)}.
-    A month-grid tick is a day worked with no hours ("present", hours None)."""
+    A month-grid tick is a day worked with no hours ("present", hours None).
+    A problem about one line of a card also says where that line is, for the one-look panel: "at" = {"doc": position
+    in ``docs``, "page", "row": 0-based in the document's page (a page holding one worker's row of a sheet says where
+    that row is, ``first_row``), "day": None when the date is the problem, "columns": the columns read on the line}."""
     days: dict[int, dict] = {}
     issues: list[dict] = []
-    for name, pages in docs:
+    for k, (name, pages) in enumerate(docs):
         for page in pages:
             where = f"{name}" + (f", page {page['page']}" if len(pages) > 1 else "")
             grid = grid_columns(page["column_labels"])
             if grid:                                                # month grid: rows = workers, columns = days
-                _read_grid(page, grid, where, name, n_days, days, issues)
+                _read_grid(page, grid, where, name, n_days, days, issues, k)
                 continue
             date_col, hours_col = pick_columns(page["column_labels"], hours_column)
             report = {c: REPORT_COLUMNS[_key(c)] for c in page["column_labels"] if _key(c) in REPORT_COLUMNS}
@@ -863,35 +867,45 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                                 for row in page["rows"]):
                     issues.append({"kind": "flat", "job": name, "text": f"{where}: the report has Flat overtime. "
                                    "Table Reader does not add it: type it in the right Million Payroll field yourself."})
+            timed_cols = ([hours_col] if hours_col else []) + [c for pair in pairs for c in pair]
             for r, row in enumerate(page["rows"], start=1):
                 cells = row["cells"]
                 dcell = cells[date_col]
                 hcell = cells[hours_col] if hours_col else None
                 stamps = [cells[c] for pair in pairs for c in pair]
                 timed = ([hcell] if hcell else []) + stamps
+
+                def at(day: int | None, read: list[str]) -> dict:
+                    return {"doc": k, "page": page["page"], "row": page.get("first_row", 0) + r - 1, "day": day,
+                            "columns": [c for c in page["column_labels"] if c == date_col or c in read]}
+
                 if dcell["needs_review"] or not (dcell["value"] or "").strip():
                     if any(c["value"] or c["needs_review"] or (c["raw_text"] or "").strip() for c in timed):
                         issues.append({"kind": "unclear", "text": f"{where}, row {r}: the date is unclear, so its hours "
-                                                                  "were left out. Fix the date in the document.", "job": name})
+                                                                  "were left out. Fix the date in the document.", "job": name,
+                                       "at": at(None, timed_cols)})
                     continue
                 day, problem = parse_day(dcell["value"], month_number)
                 if day is None or not 1 <= day <= n_days:
                     if any(not _NO_STAMP.match((c["value"] or "").strip()) for c in stamps) or \
                             hcell and (hcell["value"] or "").strip() and parse_hours(hcell["value"]):
                         issues.append({"kind": "date", "text": f"{where}, row {r}: " + (problem or f"day {day} is not in this month")
-                                       + ", so its hours were left out.", "job": name})
+                                       + ", so its hours were left out.", "job": name, "at": at(None, timed_cols)})
                     continue
                 written = hcell is not None and (hcell["needs_review"] or bool((hcell["value"] or "").strip()))
                 if pairs and not written:                       # no Total written that day: the IN/OUT times
-                    _put_day(days, day, _clock_day(cells, pairs, break_hours, where, day, name, issues), name, issues)
+                    _put_day(days, day, _clock_day(cells, pairs, break_hours, where, day, name, issues,
+                                                   at(day, timed_cols)), name, issues)
                     continue
+                read = [hours_col, *report]                     # what the lines below read
                 if not written and any(cells[c]["needs_review"] or parse_clock(cells[c]["value"]) is not None
                                        for c in others):
                     # the Total is empty but the row holds times (or yellow cells) in columns not known as IN/OUT:
                     # empty does not mean "not worked" here
+                    busy = [c for c in others if cells[c]["needs_review"] or parse_clock(cells[c]["value"]) is not None]
                     issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: the {hours_col} column "
                                    "is empty but other columns of the row have times or yellow cells. Type the hours in the "
-                                   f"{hours_col} column of the document."})
+                                   f"{hours_col} column of the document.", "at": at(day, [hours_col, *busy])})
                     _put_day(days, day, {"hours": None, "status": "unclear", "source": where, "printed": None}, name, issues)
                     continue
                 if hcell["needs_review"]:
@@ -901,10 +915,12 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                     entry = {"hours": hours, "status": "ok" if hours is not None else "unclear", "source": where}
                     if hours is None:
                         issues.append({"kind": "unclear", "text": f"{where}, day {day}: '{hcell['value']}' is not a number "
-                                                                  "of hours. Correct it in the document.", "job": name})
+                                                                  "of hours. Correct it in the document.", "job": name,
+                                       "at": at(day, read)})
                 if entry["status"] == "unclear" and hcell["needs_review"]:
                     issues.append({"kind": "unclear", "text": f"{where}, day {day}: the hours are still unclear. Check the "
-                                                              "yellow cell in the document.", "job": name})
+                                                              "yellow cell in the document.", "job": name,
+                                   "at": at(day, read)})
                 entry["printed"] = None
                 if report:
                     printed = {}
@@ -914,7 +930,8 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                         if value is None:
                             entry["status"] = "unclear"
                             issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: the {col} "
-                                           "figure is unclear or not a number of hours. Check it in the document."})
+                                           "figure is unclear or not a number of hours. Check it in the document.",
+                                           "at": at(day, read)})
                         else:
                             printed[field] = printed.get(field, 0.0) + value
                     entry["printed"] = printed
@@ -940,13 +957,18 @@ def _put_day(days: dict, day: int, entry: dict, name: str, issues: list[dict]) -
                                                f"{entry['source']}). It was left out until you fix it.", "job": name})
 
 
-def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: dict, issues: list[dict]) -> None:
-    """One worker's row of a month grid: each day column holds a mark (see GRID_MARKS) or hours."""
+def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: dict, issues: list[dict], k: int) -> None:
+    """One worker's row of a month grid: each day column holds a mark (see GRID_MARKS) or hours. ``k``: the document's
+    position in the employee's documents (for "at", see read_days)."""
     if len(page["rows"]) != 1:
         issues.append({"kind": "column", "job": name, "text": f"{where}: this sheet lists {len(page['rows'])} workers. "
                                                               "Tick each worker's own row instead of the whole file."})
         return
     cells = page["rows"][0]["cells"]
+
+    def at(day: int) -> dict:
+        return {"doc": k, "page": page["page"], "row": page.get("first_row", 0), "day": day, "columns": [g["days"][day]]}
+
     worked = holidays = 0
     unclear = False
     for day, label in sorted(g["days"].items()):
@@ -960,7 +982,7 @@ def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: di
         if cell["needs_review"]:
             unclear = True
             issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: the mark is still unclear. "
-                                                                   "Check the yellow cell in the document."})
+                                                                   "Check the yellow cell in the document.", "at": at(day)})
             _put_day(days, day, {"hours": None, "status": "unclear", "source": where, "printed": None}, name, issues)
             continue
         if not text:
@@ -969,7 +991,7 @@ def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: di
         if mark is None:
             unclear = True
             issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: '{text}' is not a mark Table "
-                           "Reader knows (✓, 0, PH, OFF, AL, MC or hours). Correct it in the document."})
+                           "Reader knows (✓, 0, PH, OFF, AL, MC or hours). Correct it in the document.", "at": at(day)})
             _put_day(days, day, {"hours": None, "status": "unclear", "source": where, "printed": None}, name, issues)
             continue
         worked += mark == "present" or (mark == "hours" and hours > 0)
@@ -1162,13 +1184,17 @@ def compute_all(plan: dict, load_pages: Callable[[str], tuple[str, list[dict]]],
     Rate are used while none is typed)."""
     results = []
     for e in plan["employees"]:
-        docs, lost = [], []
+        docs, refs, lost = [], [], []
         for job_id in e["jobs"]:
             try:
                 docs.append(load_pages(job_id))
+                refs.append(job_id)
             except OcrError as exc:
                 lost.append({"kind": "missing", "text": exc.message, "job": job_id})
         result = calculate(plan, docs, e, (million or {}).get(e["emp_no"].strip().casefold()))
+        for issue in result["issues"]:
+            if "at" in issue:                                   # the document's id instead of its position
+                issue["at"] = {**issue["at"], "doc": split_ref(refs[issue["at"]["doc"]])[0]}
         if lost:
             result["issues"] = lost + result["issues"]
             result["complete"] = False
