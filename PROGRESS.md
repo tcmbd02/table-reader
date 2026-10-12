@@ -43,6 +43,11 @@ pass. Design: `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md
   payroll.js, not remembered): a company screen opens the page on its company, the "Old payroll page" link on all
   companies. This also settles the review's point that opening an employee changed the start page's filter.
   Click-through repeated: 22 of 22. 427 tests.
+- **Opening from a company screen is in a new tab (user's request):** "Open the card", "Open employee" and a click on
+  an employee row open a new browser tab, so the "Needs you" list stays where it is; the old page takes the employee
+  from its address (`#/payroll/<month>/old/e/<employee id>`) and shows their company. Coming back to the list's tab
+  draws it again. Click-through 24 of 24, with the browser's "open a tab" call stood in for; a real second tab and the
+  redraw on coming back were not exercised.
 - Review findings left for later (minor): a refused action leaves the old list on screen until reload; "Not a time
   card" cannot be undone from the new screens; a hand-typed address with a bad `%` or month 13 shows a blank screen;
   a slow answer can draw under the wrong title after fast clicks; "Open employee" changes the Company chooser in the

@@ -412,13 +412,14 @@ function showHome() {
   loadRecent();
 }
 
-// #/payroll[/2026-09] = the month overview; .../c/<company> = one company; .../old = the old payroll page.
+// #/payroll[/2026-09] = the month overview; .../c/<company> = one company; .../old = the old payroll page
+// (.../old/e/<employee id> = on that employee and their company).
 function route() {
   const m = location.hash.match(/^#\/doc\/(.+)$/);
-  const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?(?:\/(old)|\/c\/(.*))?$/);
+  const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?(?:\/(old)(?:\/e\/([^/]+))?|\/c\/(.*))?$/);
   if (m) openDoc(decodeURIComponent(m[1]));
-  else if (pm && pm[2] && typeof showPayroll === "function") showPayroll(pm[1]);
-  else if (pm && pm[3] !== undefined && typeof showCompany === "function") showCompany(pm[1], decodeURIComponent(pm[3]));
+  else if (pm && pm[2] && typeof showPayroll === "function") showPayroll(pm[1], pm[3] ? decodeURIComponent(pm[3]) : null);
+  else if (pm && pm[4] !== undefined && typeof showCompany === "function") showCompany(pm[1], decodeURIComponent(pm[4]));
   else if (pm && typeof showMonth === "function") showMonth(pm[1]);
   else if (!pm) showHome();
 }

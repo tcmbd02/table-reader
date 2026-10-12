@@ -26,7 +26,7 @@ function prShowError(message) {
   box.hidden = !message; box.textContent = message || "";
 }
 
-async function showPayroll(month) {
+async function showPayroll(month, employeeId = null) {
   clearTimeout(docTimer); currentId = null; currentDoc = null;
   hideScreens(); $("payroll").hidden = false;
   prMonth = month || defaultPayrollMonth();
@@ -34,15 +34,14 @@ async function showPayroll(month) {
   try {
     pr = await api("GET", payrollUrl());
     prDirty = false;
-    // opened from a company screen: on that company; from the month page's "Old payroll page" link: on all companies
-    if (window.prOpenCompany !== undefined) { prFilter = window.prOpenCompany; window.prOpenCompany = undefined; }
+    // opened for one employee (a company screen opens it so, in a new tab): on that employee's company, with that
+    // employee in the results window; from the month page's "Old payroll page" link: on all companies
+    const at = employeeId ? pr.plan.employees.findIndex((e) => e.id === employeeId) : -1;
+    if (at >= 0) prFilter = empCompany(pr.plan.employees[at]) || NO_COMPANY;
+    else if (window.prOpenCompany !== undefined) prFilter = window.prOpenCompany;
+    window.prOpenCompany = undefined;
     renderPayroll();
-    // opened from a company screen for one employee: show that employee in the results window
-    if (window.prOpenEmployee) {
-      const at = pr.plan.employees.findIndex((e) => e.id === window.prOpenEmployee);
-      window.prOpenEmployee = null;
-      if (at >= 0) { prIndex = at; renderResults(); }
-    }
+    if (at >= 0) { prIndex = at; renderResults(); }
     // employees who were still without an Employee No. got a new one when the page was opened
     const numbered = pr.numbered ? newNumbersText(pr.numbered) : "";
     prShowInfo([addedByThemselves(pr.added_by_themselves), numbered].filter(Boolean).join(" "));

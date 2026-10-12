@@ -118,19 +118,19 @@ function employeeName(id) {
   return e ? (e.name || t("An employee")) : t("An employee");
 }
 
-// Open the old payroll page on this company and this employee: every figure, the cards, the number, the overrides.
-function openEmployee(id) {
-  window.prOpenCompany = coCompany || NO_COMPANY;
-  window.prOpenEmployee = id;
-  location.hash = `#/payroll/${moMonth}/old`;
-}
+// Whatever a company screen opens (a card, an employee) opens in a new tab, so the list of what needs the user stays
+// where it is. Coming back to this tab draws the list again (see the end of this file).
+function openInNewTab(hash) { window.open(location.pathname + hash, "_blank"); }
+
+// The old payroll page on this employee and their company: every figure, the cards, the number, the overrides.
+function openEmployee(id) { openInNewTab(`#/payroll/${moMonth}/old/e/${encodeURIComponent(id)}`); }
 
 function openEmployeeButton(id) {
   return el("button", { type: "button", text: t("Open employee"), onclick: () => openEmployee(id) });
 }
 
 function openCardButton(doc) {
-  return el("button", { type: "button", text: t("Open the card"), onclick: () => { location.hash = `#/doc/${encodeURIComponent(doc)}`; } });
+  return el("button", { type: "button", text: t("Open the card"), onclick: () => openInNewTab(`#/doc/${encodeURIComponent(doc)}`) });
 }
 
 const ITEM_HEADS = {
@@ -152,7 +152,7 @@ function itemNode(item) {
     if (item.kind === "look") {
       item.cards.forEach((c, n) => buttons.push(el("button", { type: "button", title: c.name,
         text: item.cards.length > 1 ? t("Open card {n}", { n: n + 1 }) : t("Open the card"),
-        onclick: () => { location.hash = `#/doc/${encodeURIComponent(c.id)}`; } })));
+        onclick: () => openInNewTab(`#/doc/${encodeURIComponent(c.id)}`) })));
     } else buttons.push(openEmployeeButton(item.employee));
   } else if (item.kind === "offer") {
     head = t("{name}: Million has Employee No. {no} for {million}", { name, no: item.emp_no, million: item.million_name });
@@ -240,5 +240,20 @@ function drawCompany() {
 }
 
 $("co-back").addEventListener("click", () => { location.hash = `#/payroll/${moMonth}`; });
+
+// Back in this tab after fixing something in another one: show what is true now.
+let lastReturn = 0;
+async function refreshOnReturn() {
+  if (document.hidden || Date.now() - lastReturn < 1000) return;      // the two events below often come together
+  const typing = document.activeElement && document.activeElement.tagName === "INPUT";
+  if (typing) return;                                                  // do not wipe a box the user is typing in
+  lastReturn = Date.now();
+  if (!$("company").hidden) loadCompany();
+  else if (!$("month").hidden) {
+    try { drawMonth(await api("GET", `/api/payroll/${moMonth}/companies`)); } catch (e) { moError(e.message); }
+  }
+}
+document.addEventListener("visibilitychange", refreshOnReturn);
+window.addEventListener("focus", refreshOnReturn);
 
 if (location.hash.startsWith("#/payroll")) route();      // the page was opened on a payroll screen: app.js ran before this file
