@@ -979,7 +979,7 @@ def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: di
         if day > n_days:
             if cell["needs_review"] or text:
                 issues.append({"kind": "date", "job": name, "text": f"{where}: day {day} is not in this month, so its "
-                                                                    "mark was left out."})
+                                                                    "mark was left out.", "at": at(day)})
             continue
         if cell["needs_review"]:
             unclear = True

@@ -1326,3 +1326,8 @@ def test_whole_page_problems_have_no_place():
     r = payroll.calculate(plan_for(), [("c", merged([{"Date": good("1"), "Note": good("x")}], labels=("Date", "Note")))],
                           employee())
     assert [i for i in r["issues"] if i["kind"] == "column" and "at" not in i]
+
+
+def test_a_grid_mark_on_a_day_the_month_does_not_have_says_where_it_is():
+    r = payroll.calculate(plan_for(), [("grid", grid(grid_row("ZUL", {31: "✓"})))], employee())
+    assert [i["at"] for i in located(r, "date")] == [{"doc": 0, "page": 1, "row": 0, "day": 31, "columns": ["31"]}]
