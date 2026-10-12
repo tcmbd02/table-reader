@@ -213,3 +213,7 @@ ol.needs li.need:last-child { border-bottom: 0; }
 .look-box button { font-size: .8rem; padding: 1px 8px; align-self: flex-start; }
 .look-box button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .look-foot { display: flex; gap: 12px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin: 10px 0; }
+
+/* month and company settings */
+label.check { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.own-settings { margin: 4px 0 8px 26px; }

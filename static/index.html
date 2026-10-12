@@ -56,6 +56,7 @@
       <button id="mo-prev" type="button" aria-label="Month before" data-t-aria>&lt;</button>
       <button id="mo-next" type="button" aria-label="Month after" data-t-aria>&gt;</button>
       <a id="mo-old" class="navlink" href="#/payroll" data-t>Old payroll page</a>
+      <button id="mo-settings-open" type="button" data-t>Month settings</button>
       <button id="mo-million-import" type="button" data-t>Import employee list from Million</button>
       <input id="mo-million-file" type="file" accept=".xls" hidden>
       <button id="mo-run" class="primary" data-t>Make the month's Million file (all companies)</button>
@@ -64,6 +65,7 @@
   <div id="mo-error" class="banner error" hidden></div>
   <div id="mo-info" class="banner info" hidden></div>
   <div id="mo-run-result" class="banner info" hidden></div>
+  <section id="mo-settings" class="card" hidden></section>
   <section class="card"><div id="mo-companies"></div><p id="mo-total" class="legend"></p></section>
 </main>
 
@@ -71,9 +73,11 @@
   <div class="doc-bar">
     <button id="co-back" class="link" data-t>&larr; All companies</button>
     <h2 id="co-title"></h2>
-    <div class="doc-actions"><span id="co-status" class="muted" aria-live="polite"></span></div>
+    <div class="doc-actions"><span id="co-status" class="muted" aria-live="polite"></span>
+      <button id="co-settings-open" type="button" data-t>Company settings</button></div>
   </div>
   <div id="co-error" class="banner error" hidden></div>
+  <section id="co-settings" class="card" hidden></section>
   <section class="card"><h3 data-t>Needs you</h3><div id="co-items"></div></section>
   <section class="card"><h3 data-t>Employees</h3><div id="co-employees"></div></section>
 </main>
@@ -147,6 +151,7 @@
 <script src="app.js"></script>
 <script src="payroll.js"></script>
 <script src="companies.js"></script>
+<script src="settings.js"></script>
 <script src="look.js"></script>
 </body>
 </html>

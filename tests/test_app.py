@@ -44,7 +44,7 @@ def test_page_is_served(client):
 
 
 def test_browser_must_not_keep_an_old_script_after_an_update(client):
-    for path in ("/", "/app.js", "/payroll.js", "/companies.js", "/look.js", "/i18n.js", "/app.css"):
+    for path in ("/", "/app.js", "/payroll.js", "/companies.js", "/settings.js", "/look.js", "/i18n.js", "/app.css"):
         assert client.get(path).headers["cache-control"] == "no-cache", path
     assert client.get("/api/ping").headers["cache-control"] == "no-store"
 
@@ -54,6 +54,8 @@ def test_the_page_has_the_company_first_screens(client):
     assert 'id="month"' in html and 'id="company"' in html and "companies.js?v=" in html
     assert html.index("payroll.js") < html.index("companies.js")        # it uses the old page's helpers
     assert 'id="look"' in html and html.index("companies.js") < html.index("look.js?v=")     # the one-look panel
+    assert html.index("companies.js") < html.index("settings.js?v=") < html.index("look.js")  # month / company settings
+    assert 'id="mo-settings"' in html and 'id="co-settings"' in html
 
 
 def test_the_company_chooser_for_files_is_on_the_start_page_only(client):
@@ -69,7 +71,8 @@ def test_script_addresses_change_when_a_script_changes(client, tmp_path, monkeyp
 
     page = client.get("/").text
     stamped = re.findall(r'(?:src|href)="([\w.-]+)\?v=([0-9a-f]{8})"', page)
-    assert [name for name, _ in stamped] == ["app.css", "i18n.js", "app.js", "payroll.js", "companies.js", "look.js"]
+    assert [name for name, _ in stamped] == ["app.css", "i18n.js", "app.js", "payroll.js", "companies.js", "settings.js",
+                                             "look.js"]
     assert client.get("/index.html").text == page
     assert all(client.get(f"/{name}?v={v}").status_code == 200 for name, v in stamped)
 

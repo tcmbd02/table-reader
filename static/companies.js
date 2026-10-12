@@ -3,6 +3,7 @@
 // Loaded after app.js and payroll.js and uses their helpers. The old payroll page stays at #/payroll/<month>/old.
 
 let moMonth = null;        // the month the overview / company screen shows ("2026-09")
+let moOver = null;         // what the server last sent for the overview (its "settings" = the month's default)
 
 function monthTitle(month) {
   const [y, m] = month.split("-").map(Number);
@@ -33,19 +34,22 @@ async function showMonth(month) {
   $("mo-title").textContent = t("Payroll {month}", { month: monthTitle(moMonth) });
   $("mo-old").href = `#/payroll/${moMonth}/old`;
   $("mo-run-result").hidden = true;
+  $("mo-settings").hidden = true;
   moError("");
   try { drawMonth(await api("GET", `/api/payroll/${moMonth}/companies`)); }
   catch (e) { moError(e.message); }
 }
 
 function drawMonth(over) {
+  moOver = over;
   const info = [addedByThemselves(over.added_by_themselves), over.numbered ? newNumbersText(over.numbered) : ""].filter(Boolean).join(" ");
   $("mo-info").hidden = !info; $("mo-info").textContent = info;
   const rows = over.companies.map((c) => {
     const open = () => { location.hash = companyHash(moMonth, c.company); };
     return el("tr", { class: `company-row ${c.status}`, tabindex: "0", onclick: open,
       onkeydown: (e) => { if (e.key === "Enter") open(); } },
-    el("td", { text: c.company || t("(no company)") }), el("td", { text: String(c.employees) }), el("td", { text: statusText(c) }));
+    el("td", { text: c.company || t("(no company)") }), el("td", { text: String(c.employees) }),
+    el("td", { text: statusText(c) + (c.own ? ` · ${t("own settings")}` : "") }));
   });
   $("mo-companies").replaceChildren(rows.length
     ? el("table", { class: "daytable companies" },
@@ -95,6 +99,8 @@ async function showCompany(month, company) {
   moMonth = month || defaultPayrollMonth();
   coCompany = company;
   $("co-title").textContent = `${company || t("(no company)")} - ${monthTitle(moMonth)}`;
+  $("co-settings").hidden = true;
+  $("co-settings-open").hidden = !company;                   // files with no company have no settings of their own
   coError("");
   await loadCompany();
 }
@@ -160,6 +166,12 @@ function itemNode(item) {
         text: item.cards.length > 1 ? t("Open card {n}", { n: n + 1 }) : t("Open the card"),
         onclick: () => openInNewTab(`#/doc/${encodeURIComponent(c.id)}`) })));
     } else if (item.kind !== "look") buttons.push(openEmployeeButton(item.employee));
+  } else if (item.kind === "settings") {
+    head = t("{company}: the month's default changed after this company got its own settings", { company: item.company });
+    details = [t("Public holidays and rest days marked in the month's settings are not copied to a company with its own settings. Check its calendar.")];
+    const right = el("button", { type: "button", text: t("It is right") });
+    right.addEventListener("click", () => keepCompanySettings(right));
+    buttons.push(el("button", { type: "button", class: "primary", text: t("Open settings"), onclick: openCompanySettings }), right);
   } else if (item.kind === "offer") {
     head = t("{name}: Million has Employee No. {no} for {million}", { name, no: item.emp_no, million: item.million_name });
     const use = el("button", { type: "button", class: "primary", text: t("Use {no}", { no: item.emp_no }) });
