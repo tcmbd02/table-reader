@@ -61,12 +61,11 @@ workers are not in that month's payroll, so there was nothing to update. Details
   lines that the calculation could not use, card by card beside the picture, with one Accept per card. Reviewed by a
   fresh reviewer, its one important finding fixed; 7 minor ones listed in PROGRESS.md 19. Nobody has used the panel
   on a real card picture yet.
-- **Session 20 (2026-10-12): stage 3, month and company settings** on branch `company-settings` (from `pdf-text`;
-  local commits, **not merged, not pushed, app not rebuilt**): Month settings on the overview, Company settings on a
+- **Session 20 (2026-10-12): stage 3, month and company settings**, merged into `pdf-text` (local, **not pushed**)
+  and the app rebuilt on the user's OK: Month settings on the overview, Company settings on a
   company screen (own hours, break, calendar; "next month" carry-over), an item when the default changes after a
-  company's own settings. Reviewed, its one important finding fixed; 7 minor ones in PROGRESS.md 20. Next: the user's
-  OK to merge into `pdf-text` and rebuild; then stage 4 ("New in Million", the summary before the month file, removing
-  the old page).
+  company's own settings. Reviewed, its one important finding fixed; 7 minor ones in PROGRESS.md 20. Next: stage 4
+  ("New in Million", the summary before the month file, removing the old page).
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -90,7 +89,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | **Million import file (.xls)** for the office | **Done (session 7).** Button "Download Million file (.xls)"; the office checker says READY on invented figures. Real September file not made yet (needs Employee Nos.). |
 | Browser check | Never clicked through by Claude (Chrome extension was not connected). All checks were tests + API + real-data scripts. |
 
-Tests: **463 pass** on `company-settings` (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 19. Sessions up to 19 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed); session 20 on `company-settings`.
+Tests: **463 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 20. Sessions up to 20 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed).
 
 ## 2. Git / GitHub
 

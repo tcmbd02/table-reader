@@ -1,7 +1,8 @@
 # Progress log
 
 ## Session 20 - 2026-10-12 - Company-first payroll, stage 3: month and company settings
-Branch `company-settings` (from `pdf-text`). **Local commits only: not merged, not pushed, app not rebuilt.** 463 tests
+Built on branch `company-settings` (from `pdf-text`), then **merged into `pdf-text` (fast-forward, local, not
+pushed) and the app rebuilt** on the user's OK; the rebuilt app has Month settings and Company settings. 463 tests
 pass; Malay checks pass. Plan: `docs/superpowers/plans/2026-10-12-company-first-payroll-stage-3.md`.
 - **What the user sees:** **Month settings** on the month overview: the month's default (normal hours, break,
   calendar: click a day for working -> rest -> public holiday), saved with Save. **Company settings** on a company
