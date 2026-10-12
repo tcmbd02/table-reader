@@ -42,8 +42,10 @@ workers are not in that month's payroll, so there was nothing to update. Details
   PROGRESS.md sessions 15 and 15b.
 - **Session 16 (2026-10-12):** IN/OUT cards with an empty Total column were counted as "not worked" (fixed);
   one IN + one later OUT = one span minus the break; OFF / PH / CUTI / MC on cards = day marks; "Use this" drops a
-  leading / trailing "?". Session 16b: Phase B built (newly read files join their month's payroll when it is opened).
-  Next, waiting for the user's go-ahead: Phase C (Claude names unknown columns). Details: PROGRESS.md 16, 16b.
+  leading / trailing "?". Session 16b: Phase B built (newly read files join their month's payroll when it is opened),
+  committed and pushed on `pdf-text` (0045a5d), app rebuilt 2026-10-12.
+  Next, waiting for the user's go-ahead: update the PR #2 description, update the `download` branch zip, Phase C
+  (Claude names unknown columns, text only; the calculation stays in code). Details: PROGRESS.md 16, 16b.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -53,7 +55,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 
 | Area | State |
 |---|---|
-| Reading scans/photos → table → CSV | Working. Packaged app in `dist\Table Reader\` (rebuilt 2026-10-09, latest code). |
+| Reading scans/photos → table → CSV | Working. Packaged app in `dist\Table Reader\` (rebuilt 2026-10-12, latest code). |
 | Company per file + Company chooser in the top bar | Done. Filters Recent files *and* the Payroll screen. Remembered in the browser. |
 | Bahasa Melayu | Done (button in the top bar). Edit Payroll copy + CSVs stay English on purpose. |
 | Payroll: Leave table, Allowance & Deduction tab, colour key on days | Done. |
@@ -67,7 +69,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | **Million import file (.xls)** for the office | **Done (session 7).** Button "Download Million file (.xls)"; the office checker says READY on invented figures. Real September file not made yet (needs Employee Nos.). |
 | Browser check | Never clicked through by Claude (Chrome extension was not connected). All checks were tests + API + real-data scripts. |
 
-Tests: **369 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 9. Sessions up to 15b are committed on `pdf-text` (PR #2, base `main`, not merged).
+Tests: **397 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 16b. Sessions up to 16b are committed on `pdf-text` (PR #2, base `main`, not merged).
 
 ## 2. Git / GitHub
 

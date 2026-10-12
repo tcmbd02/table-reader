@@ -1,8 +1,9 @@
 # Progress log
 
 ## Session 16b - 2026-10-12 - Phase B: newly read files go into their month's payroll by themselves
-397 tests pass; Malay checks pass (130 messages). **Not committed, app not rebuilt** (worktree branch
-`claude/use-this-question-mark`, on top of 8e1fec5).
+397 tests pass; Malay checks pass (130 messages). **Committed and pushed on `pdf-text` (0045a5d, PR #2); app rebuilt
+and restarted 2026-10-12** (nothing was being read). First start of the new app wrote the index: all 62 documents
+"before", September payroll file untouched.
 - **The month of a file** (`payroll.document_month`): the card's Month / Bulan / Period field (+ its Year / Tahun field,
   or a full date "01/09/2026") and the file name. A file name counts only with a year beside the month ("SEPT 2026",
   "SEPT26", "Sep-26"), so a worker named Mei / Jun is not a month; a 2-digit year is taken only within a year of today
