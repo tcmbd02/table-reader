@@ -521,14 +521,14 @@ def new_employee_nos(plan: dict, companies: dict[str, str], used: set[str]) -> d
     """A new Employee No. for each employee in ``companies`` ({employee id: company}) who has none: the company's
     letters and the next free number, three digits ("MAJUJAY001", then "MAJUJAY002"). The next number is one more than
     the highest such number in the plan or in ``used`` (every number known elsewhere: other months, earlier months'
-    workers, Million's list), so a number is never given twice. Nobody gets one without a name or a company.
+    workers, Million's list), so a number is never given twice. Nobody gets one without a company.
     Returns {employee id: Employee No.}; the plan is not changed."""
     taken = [no.strip() for no in used] + [e["emp_no"].strip() for e in plan["employees"]]
     last: dict[str, int] = {}
     out = {}
     for e in plan["employees"]:
         prefix = company_prefix(companies.get(e["id"], ""))
-        if e["id"] not in companies or e["emp_no"].strip() or not e["name"].strip() or not prefix:
+        if e["id"] not in companies or e["emp_no"].strip() or not prefix:
             continue
         if prefix not in last:
             numbers = [re.fullmatch(re.escape(prefix) + r"(\d+)", no, re.IGNORECASE) for no in taken]

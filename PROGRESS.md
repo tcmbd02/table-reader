@@ -42,6 +42,13 @@ branch updated (700dd47: new zip, both Million guides); PR #2 description update
   "unclear" in the payroll - because of the never-guess rule. **Asked the user** whether yellow readings should count
   without being accepted; not changed until they say so. `packaging/guide/guide.html` updated, its PDF not regenerated.
 - Not clicked through in the browser (tests + syntax check only). Guides (EN, BM) say it; the PDF guide does not.
+- **Follow-up, same day (user: "generate the Employee No. if it does not have one"), not committed, app not rebuilt:**
+  the month run listed 67 employees as "Employee No. is empty" because employees already in a payroll only got a
+  number through the button. Now everyone without a number gets one when the month's Payroll page is opened (GET,
+  under the lock, saved; `view["numbered"]`, message on the page), also an employee with no name (was skipped). Still
+  not: no company, or Million's list has a number to offer (button). **These employees then show "Employee No. … is
+  not in the Million employee list" in the month run until they are created in Million and its list is imported
+  again** - Million only updates employees it has. 402 tests pass.
 - The rebuilt app serves the new page script and offers the same 62 new numbers on September (counts only). The
   `download` worktree is `.claude\worktrees\download`.
 

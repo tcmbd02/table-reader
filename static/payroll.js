@@ -35,7 +35,9 @@ async function showPayroll(month) {
     pr = await api("GET", payrollUrl());
     prDirty = false;
     renderPayroll();
-    prShowInfo(addedByThemselves(pr.added_by_themselves));
+    // employees who were still without an Employee No. got a new one when the page was opened
+    const numbered = pr.numbered ? newNumbersText(pr.numbered) : "";
+    prShowInfo([addedByThemselves(pr.added_by_themselves), numbered].filter(Boolean).join(" "));
   } catch (e) { prShowError(e.message); }
 }
 
@@ -68,13 +70,15 @@ function addedByThemselves(info) {
 
 // After employees were made from files: how many got their Employee No. from Million's list, how many got a new one,
 // and what is left to type.
+function newNumbersText(n) {
+  return tn(n,
+    "{n} employee without an Employee No. was given a new one (the company's first 7 letters and a number). Create that employee in Million with this number before you import.",
+    "{n} employees without an Employee No. were given new ones (the company's first 7 letters and a number). Create those employees in Million with these numbers before you import.");
+}
+
 function employeeNoHint(fromMillion, newNumbers) {
   const parts = [];
-  if (newNumbers) {
-    parts.push(tn(newNumbers,
-      "{n} employee without an Employee No. was given a new one (the company's first 7 letters and a number). Create that employee in Million with this number before you import.",
-      "{n} employees without an Employee No. were given new ones (the company's first 7 letters and a number). Create those employees in Million with these numbers before you import."));
-  }
+  if (newNumbers) parts.push(newNumbersText(newNumbers));
   if (fromMillion) {
     parts.push(tn(fromMillion,
       "{n} Employee No. was filled in from Million's list, because the name on the card is that employee's whole name there. Check it.",

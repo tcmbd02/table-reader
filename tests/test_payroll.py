@@ -431,7 +431,7 @@ def test_a_new_employee_no_is_the_companys_first_seven_letters_and_the_next_numb
     companies = {"e1": "MAJU JAYA", "e2": "Maju  Jaya", "e3": "MAJU JAYA", "e4": "MAJU JAYA", "e5": "", "e6": "ACME", "e7": "MAJU JAYA"}
     # 004 is in this plan and 012 somewhere else (another month, Million's list): the next ones follow the highest
     assert payroll.new_employee_nos(p, companies, {"MAJUJAY012", "MAJUJAYA900", "ACME7", "OTHER001"}) == {
-        "e1": "MAJUJAY013", "e2": "MAJUJAY014", "e6": "ACME008"}     # not: has a number, no name, no company, not asked
+        "e1": "MAJUJAY013", "e2": "MAJUJAY014", "e4": "MAJUJAY015", "e6": "ACME008"}   # not: has a number, no company, not asked
     assert [e["emp_no"] for e in p["employees"]][:2] == ["", ""]     # the plan itself is not changed
     assert payroll.new_employee_nos(plan_for(employees=[person(1, "ALI")]), {"e1": "MAJU JAYA"}, set()) == {"e1": "MAJUJAY001"}
     # the mark stays while the number is the one made, and goes when the user types another

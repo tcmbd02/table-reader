@@ -360,6 +360,13 @@ def test_add_employees_from_files_of_a_company(tmp_path):
         assert "emp_no_new" not in saved["plan"]["employees"][0]
         nov_view = c.post("/api/payroll/2026-11/auto", json={"company": "MAJU JAYA"}).json()
         assert nov_view["plan"]["employees"][0]["emp_no"] == "MJ(1)"       # ... and that is filled in next month
+        # an employee already in a payroll with no number gets one when the month's page is opened, once
+        plan = c.get("/api/payroll/2026-09").json()["plan"]
+        plan["employees"].append({"id": "byhand1", "emp_no": "", "name": "SITI", "jobs": [], "company": "MAJU JAYA"})
+        assert c.put("/api/payroll/2026-09", json=plan).json()["results"][-1]["assign"] == "MAJUJAY002"   # offered ...
+        opened = c.get("/api/payroll/2026-09").json()
+        assert opened["numbered"] == 1 and opened["plan"]["employees"][-1]["emp_no_new"] == "MAJUJAY002"  # ... then given
+        assert c.get("/api/payroll/2026-09").json()["numbered"] == 0
         assert c.post("/api/payroll/2026-09/auto", json={"company": 5}).status_code == 400
 
 

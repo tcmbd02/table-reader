@@ -392,8 +392,19 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             if gone:
                 plans.save(payroll.validate_plan(plan, known_refs(docs)))
             added = add_new_documents(plan, docs)
+            # everyone still without an Employee No. gets a new one here too (the user's rule: no number, make one),
+            # also employees who were in the payroll before; like the files above, only when the page is opened
+            numbered = 0
+            try:
+                payroll.validate_plan(plan, known_refs(docs))
+                numbered = number_new_employees(plan, docs, set())
+                if numbered:
+                    plans.save(payroll.validate_plan(plan, known_refs(docs)))
+            except OcrError:
+                pass                                    # a plan that cannot be saved as it is: left alone
         view = payroll_view(plan, docs, gone)
         view["added_by_themselves"] = added
+        view["numbered"] = numbered
         return view
 
     @app.put("/api/payroll/{month}")
