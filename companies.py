@@ -16,24 +16,76 @@ ITEM_OF_ISSUE = {"unclear": "look", "conflict": "days", "missing": "days", "dayt
 _ITEM_ORDER = ("look", "days", "column", "nocard")
 
 
-def issue_items(result: dict, employee: dict) -> list[dict]:
-    """The calculation's problems for one employee as items, one per kind: {kind, employee, texts, cards}.
-    ``texts`` are the calculation's own sentences (each once, in its order); ``cards`` the documents the employee's
-    cards are in, for the page to open."""
+def _card_ids(employee: dict) -> list[str]:
+    """The documents the employee's cards are in, in their order, each once."""
     cards: list[str] = []
     for ref in employee.get("jobs", []):
         base = payroll.split_ref(ref)[0]
         if base not in cards:
             cards.append(base)
+    return cards
+
+
+def _place(at: dict) -> tuple:
+    return at["doc"], at["page"], at["row"], at["day"]
+
+
+def issue_items(result: dict, employee: dict) -> list[dict]:
+    """The calculation's problems for one employee as items, one per kind: {kind, employee, texts, places, cards}.
+    A problem that says where it is on a card ("at", payroll.read_days) is one of the item's ``places`` (lines to
+    look at in the one-look panel, each counted once); ``texts`` are the other problems' own sentences (each once, in
+    their order); ``cards`` the documents the employee's cards are in, for the page to open."""
+    cards = _card_ids(employee)
     found: dict[str, dict] = {}
+    places: dict[str, set] = {}
     for issue in result["issues"]:
         kind = ITEM_OF_ISSUE.get(issue["kind"])
         if kind is None:
             continue
-        item = found.setdefault(kind, {"kind": kind, "employee": result["id"], "texts": [], "cards": cards})
-        if issue["text"] not in item["texts"]:
+        item = found.setdefault(kind, {"kind": kind, "employee": result["id"], "texts": [], "places": 0, "cards": cards})
+        if "at" in issue:
+            places.setdefault(kind, set()).add(_place(issue["at"]))
+            item["places"] = len(places[kind])
+        elif issue["text"] not in item["texts"]:
             item["texts"].append(issue["text"])
     return [found[kind] for kind in _ITEM_ORDER if kind in found]
+
+
+_CELL_KEYS = ("value", "raw_text", "needs_review", "unclear_reason", "edited")
+
+
+def look_cards(result: dict, employee: dict, pages: dict[str, list[dict]], names: dict[str, str]) -> list[dict]:
+    """The one-look panel of one employee: [{doc, name, lines}], one per card (document) that has a problem on a line,
+    in the employee's card order. A line is [{page, row, day, texts, cells}]: one per place on the card (page, row,
+    day), with the calculation's sentences about it and every cell the calculation read there, as it is now (``pages``:
+    the documents' merged pages, jobs.merged_pages). A document missing from ``pages`` (it could not be opened) is
+    left out."""
+    lines: dict[tuple, dict] = {}
+    for issue in result["issues"]:
+        at = issue.get("at")
+        if not at or at["doc"] not in pages:
+            continue
+        line = lines.setdefault(_place(at), {"page": at["page"], "row": at["row"], "day": at["day"], "texts": [],
+                                             "columns": set()})
+        line["columns"].update(at["columns"])
+        if issue["text"] not in line["texts"]:
+            line["texts"].append(issue["text"])
+    cards = []
+    for doc in _card_ids(employee):
+        mine = sorted((key for key in lines if key[0] == doc), key=lambda k: (k[1], k[2], k[3] or 0))
+        if not mine:
+            continue
+        by_page = {p["page"]: p for p in pages[doc]}
+        out = []
+        for key in mine:
+            line = lines[key]
+            page = by_page[line["page"]]
+            row = page["rows"][line["row"]]["cells"]
+            out.append({"page": line["page"], "row": line["row"], "day": line["day"], "texts": line["texts"],
+                        "cells": [{"column": c, **{k: row[c][k] for k in _CELL_KEYS}}
+                                  for c in page["column_labels"] if c in line["columns"]]})
+        cards.append({"doc": doc, "name": names.get(doc, ""), "lines": out})
+    return cards
 
 
 def emp_no_items(plan: dict, million: list[dict] | None, offers: dict[str, dict]) -> dict[str, list[dict]]:

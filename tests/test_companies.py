@@ -15,7 +15,7 @@ def test_issues_become_one_item_per_kind_in_a_fixed_order():
                 ("column", "No hours column.")])
     items = companies.issue_items(r, worker(jobs=("d1", "d2#p2", "d1#p1")))
     assert [i["kind"] for i in items] == ["look", "days", "column"]
-    assert items[0] == {"kind": "look", "employee": "e1", "cards": ["d1", "d2"],
+    assert items[0] == {"kind": "look", "employee": "e1", "cards": ["d1", "d2"], "places": 0,
                         "texts": ["Day 3 is unclear.", "Day 7 is unclear."]}
     assert items[1]["texts"] == ["No entry found for day 4.", "Day 9 is written twice."]
 
@@ -155,3 +155,84 @@ def test_an_employee_waiting_for_million_still_shows_another_reason_the_file_hol
         ("held", "e1", ["Zakat is not a figure of the office file."])]
     assert view["status"] == "needs" and view["waiting"] == 2
     assert [e["status"] for e in view["employees"]] == ["needs", "million"]
+
+
+# ------------------------------------------------------------------------------------------- the one-look panel
+def mcell(value, review=False, raw=None, reason=None, edited=False):
+    """A cell as jobs.merged_pages gives it."""
+    return {"value": value, "raw_text": value if raw is None else raw, "confidence": 30 if review else 95,
+            "unclear_reason": reason, "needs_review": review, "edited": edited, "claude_value": value}
+
+
+def mpage(number, labels, rows):
+    return {"page": number, "column_labels": list(labels), "header_fields": [], "quality": "CLEAR", "notes": [],
+            "rows": [{"cells": dict(zip(labels, row))} for row in rows]}
+
+
+def at(doc, page, row, day, *columns):
+    return {"doc": doc, "page": page, "row": row, "day": day, "columns": list(columns)}
+
+
+def placed(kind, text, where):
+    return {"kind": kind, "text": text, "job": None, "at": where}
+
+
+CARD = ("Date", "Total", "OT")
+
+
+def test_look_cards_one_card_per_document_in_card_order():
+    d1 = [mpage(1, CARD, [[mcell("1"), mcell(None, True, "9?", "smudged"), mcell("0")]]),
+          mpage(2, CARD, [[mcell("2"), mcell(None, True, "", "faded"), mcell("0")]])]
+    d2 = [mpage(1, CARD, [[mcell("3"), mcell("abc"), mcell("0")]])]
+    r = {"id": "e1", "issues": [placed("unclear", "d1 p2", at("d1", 2, 0, 2, "Date", "Total")),
+                                placed("unclear", "d1 p1", at("d1", 1, 0, 1, "Date", "Total")),
+                                placed("unclear", "d2", at("d2", 1, 0, 3, "Date", "Total")),
+                                {"kind": "missing", "text": "No entry for day 4.", "job": None}]}
+    cards = companies.look_cards(r, worker(jobs=("d2", "d1#p1", "d1#p2")), {"d1": d1, "d2": d2},
+                                 {"d1": "one.pdf", "d2": "two.png"})
+    assert [(c["doc"], c["name"]) for c in cards] == [("d2", "two.png"), ("d1", "one.pdf")]
+    assert [(line["page"], line["row"], line["day"], line["texts"]) for line in cards[1]["lines"]] == [
+        (1, 0, 1, ["d1 p1"]), (2, 0, 2, ["d1 p2"])]
+    total = cards[1]["lines"][0]["cells"][1]
+    assert total == {"column": "Total", "value": None, "raw_text": "9?", "needs_review": True,
+                     "unclear_reason": "smudged", "edited": False}
+
+
+def test_a_line_with_two_problems_is_one_line_with_both_columns_and_texts():
+    d1 = [mpage(1, CARD, [[mcell("1"), mcell(None, True, "9?"), mcell(None, True, "?")]])]
+    r = {"id": "e1", "issues": [placed("unclear", "hours", at("d1", 1, 0, 1, "Date", "Total")),
+                                placed("unclear", "ot", at("d1", 1, 0, 1, "Date", "Total", "OT"))]}
+    [card] = companies.look_cards(r, worker(), {"d1": d1}, {"d1": "one.pdf"})
+    [line] = card["lines"]
+    assert [c["column"] for c in line["cells"]] == ["Date", "Total", "OT"] and line["texts"] == ["hours", "ot"]
+
+
+def test_two_days_of_one_grid_row_are_two_lines():
+    labels = ("Name", "1", "2")
+    d1 = [mpage(1, labels, [[mcell("ALI"), mcell(None, True, "?"), mcell(None, True, "?")]])]
+    r = {"id": "e1", "issues": [placed("unclear", "day 1", at("d1", 1, 0, 1, "1")),
+                                placed("unclear", "day 2", at("d1", 1, 0, 2, "2"))]}
+    [card] = companies.look_cards(r, worker(), {"d1": d1}, {"d1": "grid.jpg"})
+    assert [(line["day"], [c["column"] for c in line["cells"]]) for line in card["lines"]] == [(1, ["1"]), (2, ["2"])]
+
+
+def test_look_cards_show_the_cells_as_they_are_now_and_leave_out_a_card_not_loaded():
+    d1 = [mpage(1, CARD, [[mcell("1"), mcell("abc", edited=True), mcell("0")]])]
+    r = {"id": "e1", "issues": [placed("unclear", "x", at("d1", 1, 0, 1, "Date", "Total")),
+                                placed("unclear", "y", at("d9", 1, 0, 2, "Date", "Total"))]}
+    [card] = companies.look_cards(r, worker(jobs=("d1", "d9")), {"d1": d1}, {"d1": "one.pdf"})
+    assert card["lines"][0]["cells"][1]["edited"] is True and card["lines"][0]["cells"][1]["needs_review"] is False
+
+
+def test_a_look_item_counts_places_and_keeps_only_unplaced_texts():
+    r = {"id": "e1", "issues": [placed("unclear", "a", at("d1", 1, 0, 1, "Date", "Total")),
+                                placed("unclear", "b", at("d1", 1, 0, 1, "Date", "Total", "OT")),
+                                placed("unclear", "c", at("d1", 1, 3, 4, "Date", "Total")),
+                                {"kind": "unclear", "text": "unplaced", "job": None},
+                                placed("date", "day 32", at("d1", 1, 5, None, "Date", "Total")),
+                                {"kind": "missing", "text": "No entry for day 4.", "job": None}]}
+    look, days = companies.issue_items(r, worker())
+    assert (look["places"], look["texts"]) == (2, ["unplaced"])
+    assert (days["places"], days["texts"]) == (1, ["No entry for day 4."])
+    only = companies.issue_items({"id": "e1", "issues": r["issues"][:1]}, worker())
+    assert [(i["kind"], i["places"], i["texts"]) for i in only] == [("look", 1, [])]
