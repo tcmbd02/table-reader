@@ -44,13 +44,15 @@ workers are not in that month's payroll, so there was nothing to update. Details
   one IN + one later OUT = one span minus the break; OFF / PH / CUTI / MC on cards = day marks; "Use this" drops a
   leading / trailing "?". Session 16b: Phase B built (newly read files join their month's payroll when it is opened),
   committed and pushed on `pdf-text` (0045a5d), app rebuilt 2026-10-12.
-  Next, waiting for the user's go-ahead: update the PR #2 description, update the `download` branch zip, Phase C
-  (Claude names unknown columns, text only; the calculation stays in code). Details: PROGRESS.md 16, 16b.
+  Not built: Phase C (Claude names unknown columns, text only; the calculation stays in code). Details: PROGRESS.md
+  16, 16b.
 - **Session 17 (2026-10-12):** a new worker's Employee No. is filled in from Million's list when the name read on the
   card is one employee's whole name there (marked on the page); otherwise a worker of a company gets a new number,
   company's first 7 letters + 3 digits (MAJUJAY001), to be created in Million before the import. Open: does Million
-  accept 10 characters? Not committed, app not rebuilt; the `download` branch
-  update and the PR #2 description are prepared but not published. Details: PROGRESS.md 17.
+  accept 10 characters? Yellow cells now show only what Claude saw (Enter accepts); they are still unconfirmed in the
+  CSV and payroll - the user was asked whether they should count without being accepted, no answer yet. Committed
+  (390d7b0), app rebuilt, `download` branch (700dd47) and PR #2 description updated. None of the session's page changes
+  were clicked through in a browser. Next, on the user's go-ahead: Phase C. Details: PROGRESS.md 17.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists

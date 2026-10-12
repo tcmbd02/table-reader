@@ -1,7 +1,8 @@
 # Progress log
 
 ## Session 17 - 2026-10-12 - A new worker's Employee No. filled in from Million's list (whole name only)
-402 tests pass; Malay checks pass. **Not committed, app not rebuilt** (main folder, branch `pdf-text`, on top of 9d298bc).
+402 tests pass; Malay checks pass. **Committed and pushed on `pdf-text` (390d7b0); app rebuilt and restarted; `download`
+branch updated (700dd47: new zip, both Million guides); PR #2 description updated.**
 - The user asked for the Employee No. to be put on an employee by itself after reading. Already there: a number typed
   once is remembered per worker; a partly fitting name gets the "Use ..." button. The user chose: fill in by itself
   only on a whole-name match.
@@ -41,8 +42,8 @@
   "unclear" in the payroll - because of the never-guess rule. **Asked the user** whether yellow readings should count
   without being accepted; not changed until they say so. `packaging/guide/guide.html` updated, its PDF not regenerated.
 - Not clicked through in the browser (tests + syntax check only). Guides (EN, BM) say it; the PDF guide does not.
-- Still open from this session: the `download` branch (new zip + guides, uncommitted in `.claude\worktrees\download`)
-  and the PR #2 description were prepared but not published (the commands were blocked by the permission check).
+- The rebuilt app serves the new page script and offers the same 62 new numbers on September (counts only). The
+  `download` worktree is `.claude\worktrees\download`.
 
 ## Session 16b - 2026-10-12 - Phase B: newly read files go into their month's payroll by themselves
 397 tests pass; Malay checks pass (130 messages). **Committed and pushed on `pdf-text` (0045a5d, PR #2); app rebuilt
