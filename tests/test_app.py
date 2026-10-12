@@ -897,3 +897,87 @@ def test_a_card_that_is_nobodys_can_be_set_aside_as_not_a_time_card(tmp_path):
         assert c.post("/api/payroll/file-month", json={"id": item["doc"], "month": "none"}).json() == {"ok": True}
         view = c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).json()
         assert view["items"] == [] and view["employees"] == []           # and it does not come back by itself
+
+
+# ------------------------------------------------------------------------------------------- the one-look panel
+def day_9_unclear(image):
+    rows = [{"Date": good(str(d)), "Total": good("9")} for d in range(1, 31)]
+    rows[8]["Total"] = cell(None, "9?", 30, "smudged")
+    return record(rows, labels=("Date", "Total"))
+
+
+def employee_named(c, month, name):
+    return next(e for e in c.get(f"/api/payroll/{month}").json()["plan"]["employees"] if e["name"] == name)
+
+
+def test_the_look_panel_lists_the_yellow_lines_and_accepting_clears_them(tmp_path):
+    store, client = company_client(tmp_path, day_9_unclear)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        siti = employee_named(c, month, "SITI")
+        look = c.get(f"/api/payroll/{month}/look", params={"employee": siti["id"]}).json()
+        assert (look["name"], look["company"], look["month"]) == ("SITI", "BINA", month)
+        [card] = look["cards"]
+        [line] = card["lines"]
+        assert (line["page"], line["row"], line["day"]) == (1, 8, 9)
+        total = next(x for x in line["cells"] if x["column"] == "Total")
+        assert total["needs_review"] and total["raw_text"] == "9?"
+        item = next(i for i in c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).json()["items"]
+                    if i["kind"] == "look")
+        assert item["places"] == 1
+        change = {"page": 1, "row": 8, "column": "Total", "value": "9", "via": "look"}
+        assert c.put(f"/api/jobs/{card['doc']}/cells", json={"changes": [change]}).status_code == 200
+        assert c.get(f"/api/payroll/{month}/look", params={"employee": siti["id"]}).json()["cards"] == []
+        items = c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).json()["items"]
+        assert "look" not in [i["kind"] for i in items]
+
+
+def test_the_look_panel_points_at_the_documents_row_of_a_grid(tmp_path):
+    labels = ("Name",) + tuple(str(d) for d in range(1, 32)) + ("Remark",)
+    marks = {str(d): good("" if d in (6, 13, 20, 27, 31) else "✓") for d in range(1, 32)}
+
+    def sheet(image):
+        rows = [{"Name": good(n), **marks, "Remark": good("26")} for n in ("ALI", "AMIN", "ZUL")]
+        rows[2]["2"] = cell(None, "?", 20, "smudged")
+        return record(rows, labels=labels, header=[("CLEANER NAME", good("ALI"))])
+
+    store, client = company_client(tmp_path, sheet)
+    with client as c:
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR}.png")
+        store.wait_idle()
+        month = f"{YEAR}-09"
+        zul = employee_named(c, month, "ZUL")
+        [card] = c.get(f"/api/payroll/{month}/look", params={"employee": zul["id"]}).json()["cards"]
+        assert [(line["row"], line["day"], [x["column"] for x in line["cells"]]) for line in card["lines"]] == [
+            (2, 2, ["2"])]
+
+
+def test_the_look_panel_for_an_unknown_employee_says_so(tmp_path):
+    store, client = company_client(tmp_path, day_9_unclear)
+    with client as c:
+        r = c.get(f"/api/payroll/{YEAR}-09/look", params={"employee": "e-gone"})
+        assert r.status_code == 404 and r.json()["code"] == "EMPLOYEE_NOT_FOUND"
+
+
+def test_the_look_panel_leaves_out_a_card_that_cannot_be_opened(tmp_path):
+    store, client = company_client(tmp_path, day_9_unclear)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        upload(c, tmp_path, name=f"BINA SITI 2 SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        plan = c.get(f"/api/payroll/{month}").json()["plan"]
+        siti = next(e for e in plan["employees"] if e["name"] == "SITI")
+        others = [e for e in plan["employees"] if e is not siti]
+        siti["jobs"] = sorted({j for e in plan["employees"] for j in e["jobs"]})
+        plan["employees"] = [siti]
+        assert c.put(f"/api/payroll/{month}", json=plan).status_code == 200, others
+        broken = siti["jobs"][0]
+        (store.root / broken / "result.json").write_text("{ damaged", encoding="utf-8")
+        r = c.get(f"/api/payroll/{month}/look", params={"employee": siti["id"]})
+        assert r.status_code == 200
+        assert [card["doc"] for card in r.json()["cards"]] == [siti["jobs"][1]]

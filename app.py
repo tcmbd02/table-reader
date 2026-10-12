@@ -8,6 +8,7 @@ import re
 import sys
 import threading
 import uuid
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
@@ -25,7 +26,8 @@ from ocr import OcrError
 
 MAX_UPLOAD_BYTES = 150 * 1024 * 1024
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}          # urlparse().hostname is lower-case and drops the [ ]
-_STATUS_FOR_CODE = {"JOB_NOT_FOUND": 404, "PAGE_NOT_FOUND": 404, "JOB_BUSY": 409, "JOB_NOT_FINISHED": 409}
+_STATUS_FOR_CODE = {"JOB_NOT_FOUND": 404, "EMPLOYEE_NOT_FOUND": 404, "PAGE_NOT_FOUND": 404, "JOB_BUSY": 409,
+                    "JOB_NOT_FINISHED": 409}
 
 
 NO_RETRY_CODES = {"FILE_TYPE", "PDF_UNREADABLE", "PDF_EMPTY", "TOO_MANY_PAGES", "IMAGE_UNREADABLE", "FILE_MISSING"}
@@ -230,7 +232,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         chosen = [p for p in pages if p["page"] == page]
         if row is None:
             return chosen
-        return [{**p, "rows": p["rows"][row - 1:row]} for p in chosen]
+        return [{**p, "rows": p["rows"][row - 1:row], "first_row": row - 1} for p in chosen]
 
     def known_refs(docs: list[dict]) -> set[str]:
         return {d["id"] for d in docs} | {p["ref"] for d in docs for p in d["parts"]}
@@ -247,7 +249,10 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                     e["jobs"] = kept
         return gone
 
-    def payroll_view(plan: dict, docs: list[dict], gone: dict[str, int] | None = None) -> dict:
+    def page_loader() -> tuple[Callable[[str], tuple[str, list[dict]]], dict[str, tuple[str, list[dict]]]]:
+        """(load_pages, its cache) for payroll.compute_all: a card's name and pages by ref, each read once. A part
+        (one worker's page of a report, or row of a sheet) gets only its own pages; a row says where it is in the
+        document (``first_row``), so a problem in it points at the right row."""
         cache: dict[str, tuple[str, list[dict]]] = {}
 
         def load_pages(ref: str) -> tuple[str, list[dict]]:
@@ -268,8 +273,15 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                     cache[ref] = (part_name(meta["name"], page, row, len(pages)), part_pages(pages, page, row))
             return cache[ref]
 
+        return load_pages, cache
+
+    def million_by_no(million: dict | None) -> dict[str, dict] | None:
+        return {e["emp_no"].casefold(): e for e in million["employees"]} if million else None
+
+    def payroll_view(plan: dict, docs: list[dict], gone: dict[str, int] | None = None) -> dict:
+        load_pages, cache = page_loader()
         million = plans.load_million()
-        results = payroll.compute_all(plan, load_pages, {e["emp_no"].casefold(): e for e in million["employees"]} if million else None)
+        results = payroll.compute_all(plan, load_pages, million_by_no(million))
         for r in results:
             n = (gone or {}).get(r["id"])
             if n:
@@ -555,6 +567,29 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             months[body["id"]] = body["month"]
             plans.save_file_months(months)
         return {"ok": True}
+
+    @app.get("/api/payroll/{month}/look")
+    def look_panel(month: str, employee: str = ""):
+        """The one-look panel of one employee: each of their cards with the lines the calculation could not use, and
+        every cell it read there as it is now. Accepting goes through PUT /api/jobs/{id}/cells ("via": "look").
+        Changes nothing: the month was opened by the company screen this comes from."""
+        plan = plans.load(month)
+        person = next((e for e in plan["employees"] if e["id"] == employee), None)
+        if person is None:
+            raise OcrError("EMPLOYEE_NOT_FOUND", "This employee is no longer in the payroll of this month. Go back to "
+                                                 "the company and open it again.")
+        files = {j["id"]: j for j in store.list_jobs()}
+        load_pages, _ = page_loader()
+        [result] = payroll.compute_all({**plan, "employees": [person]}, load_pages, million_by_no(plans.load_million()))
+        pages = {}
+        for doc in {i["at"]["doc"] for i in result["issues"] if "at" in i}:
+            try:
+                pages[doc] = merged_pages(store.load_result(doc), store.load_edits(doc))
+            except (OcrError, OSError, ValueError):
+                continue                                # changed or damaged since: that card is left out
+        return {"month": month, "employee": person["id"], "name": person["name"],
+                "company": payroll.employee_company(person, {i: j["company"] for i, j in files.items()}),
+                "cards": companies.look_cards(result, person, pages, {i: j["name"] for i, j in files.items()})}
 
     @app.put("/api/payroll/{month}/employees/{employee_id}")
     async def set_employee_no(month: str, employee_id: str, request: Request):
