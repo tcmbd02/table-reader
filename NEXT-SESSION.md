@@ -7,6 +7,20 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 > Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 20), then let's continue.
 
+**To start stage 4 of the company-first payroll, paste this instead:**
+
+> Continue the company-first payroll with stage 4. Read NEXT-SESSION.md (section 0), PROGRESS.md sessions 18 to 20,
+> and the spec `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md` (sections 3.3, 3.4, 7, 8 and 9.3);
+> the stage 1-3 plans in `docs/superpowers/plans/` show how earlier stages were planned. State: stages 1-3 are merged
+> into `pdf-text` (local, not pushed) and the app is rebuilt. Stage 4 = the "New in Million" list per company (spec 7),
+> the summary before making the month's Million file (spec 8), and removing the old payroll page at the end (spec
+> 3.4). Before the old page can go, what only it does must move: the employee detail view (every figure, overrides,
+> allowances and deductions, the message, Employee No. / name, the employee's cards with move / take off, the hours
+> column, remove employee), the pay preview, the payroll CSV and "Add employee". If that is too much for one plan,
+> propose how to split stage 4 first. Work as before: write the plan, make a new branch from `pdf-text`, build it here
+> with tests first, click it through in headless Edge on made-up data, compare the real September figures read-only
+> (counts only), then one fresh reviewer for the whole branch. Ask me before merging, pushing or rebuilding.
+
 ---
 
 ## 0. Open problem from sessions 8–9 (2026-10-09) — read before anything else
