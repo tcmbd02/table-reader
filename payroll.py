@@ -722,6 +722,29 @@ def default_changed(plan: dict, company: str) -> bool:
     return bool(own) and own.get("based_on") != _default_of(plan)
 
 
+def carry_companies(previous: dict, plan: dict) -> dict:
+    """The own settings of ``previous``'s companies marked "keep", to start ``plan`` (the next month) with: the same
+    normal hours and break, and the new month's default calendar where a weekday is a rest day if every one of its
+    days was a rest day for the company last month (public holidays left out of that count), else a working day.
+    Public holidays come from the new month's default only; last month's are never carried over."""
+    out = {}
+    py, pm = parse_month(previous["month"])
+    ny, nm = parse_month(plan["month"])
+    for name, own in (previous.get("companies") or {}).items():
+        if not own.get("keep"):
+            continue
+        seen: dict[int, set] = {}
+        for d, kind in own["day_types"].items():
+            if kind != "holiday":
+                seen.setdefault(date(py, pm, int(d)).weekday(), set()).add(kind)
+        rest = {w for w, kinds in seen.items() if kinds == {"rest"}}
+        types = {d: "holiday" if kind == "holiday" else "rest" if date(ny, nm, int(d)).weekday() in rest else "work"
+                 for d, kind in plan["day_types"].items()}
+        out[name] = own_settings(plan, {"normal_hours": own["normal_hours"], "break_hours": own["break_hours"],
+                                        "day_types": types, "keep": True})
+    return out
+
+
 def own_settings(plan: dict, values: dict | None) -> dict:
     """A company's own set from the user's values (None: a copy of the month's default), remembering the default."""
     default = _default_of(plan)
@@ -1733,6 +1756,12 @@ class PayrollStore:
         if plan is None:
             plan = default_plan(month)
             plan["lists"] = self._latest_lists(month) or plan["lists"]
+            before = self._latest_before(month)
+            if before:                                              # companies whose settings are kept for next month
+                try:
+                    plan["companies"] = carry_companies(before, plan)
+                except (KeyError, TypeError, ValueError, AttributeError, OcrError):
+                    plan["companies"] = {}                          # a damaged earlier month: start from the default
         if "lists" not in plan:                                     # saved before the lists existed
             plan["lists"] = default_lists()
         plan.setdefault("break_hours", DEFAULT_BREAK)               # saved before IN/OUT time cards
@@ -1754,6 +1783,17 @@ class PayrollStore:
             plan = self._read(self.root / f"{other}.json", other)
             if plan and isinstance(plan.get("lists"), dict):
                 return plan["lists"]
+        return None
+
+    def _latest_before(self, month: str) -> dict | None:
+        """The latest saved month before this one."""
+        if not self.root.is_dir():
+            return None
+        for other in sorted((p.stem for p in self.root.glob("*.json") if _MONTH.match(p.stem) and p.stem < month),
+                            reverse=True):
+            plan = self._read(self.root / f"{other}.json", other)
+            if plan:
+                return plan
         return None
 
     def save(self, plan: dict) -> None:

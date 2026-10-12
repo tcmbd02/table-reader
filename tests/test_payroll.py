@@ -1384,3 +1384,47 @@ def test_default_changed_after_own_settings():
     assert payroll.default_changed(p, "BINA")
     assert payroll.settings_for(p, "BINA")["day_types"]["16"] == "work"      # its own calendar does not change
     assert payroll.settings_for(p, "MAJU JAYA")["day_types"]["16"] == "holiday"
+
+
+def weekend_company(month, holidays=(), keep=True, sundays_worked=()):
+    """BINA resting on Saturdays and Sundays (except ``sundays_worked``), working 9 hours, in ``month``."""
+    p = plan_for(month)
+    y, m = payroll.parse_month(month)
+    days = {}
+    for d in range(1, payroll.days_in(month) + 1):
+        weekday = date(y, m, d).weekday()
+        days[str(d)] = "holiday" if d in holidays else "rest" if weekday >= 5 and d not in sundays_worked else "work"
+    return bina_own(p, normal_hours=9, break_hours=0.5, day_types=days, keep=keep)
+
+
+def test_kept_settings_start_the_next_month_by_weekday():
+    august = weekend_company("2026-08", holidays=(31, 15))     # 31 = a Monday, 15 = a Saturday: both public holidays
+    september = plan_for("2026-09")
+    september["day_types"]["16"] = "holiday"                  # the new month's default has its own public holiday
+    bina = payroll.carry_companies(august, september)["BINA"]
+    assert (bina["normal_hours"], bina["break_hours"], bina["keep"]) == (9, 0.5, True)
+    types = bina["day_types"]
+    assert [d for d, t in types.items() if t == "rest"] == ["5", "6", "12", "13", "19", "20", "26", "27"]
+    assert [d for d, t in types.items() if t == "holiday"] == ["16"]            # August's are not carried
+    assert bina["based_on"]["day_types"] == september["day_types"]
+    assert not payroll.default_changed({**september, "companies": {"BINA": bina}}, "BINA")
+
+
+def test_a_company_working_some_sundays_works_sundays_next_month():
+    august = weekend_company("2026-08", sundays_worked=(2,))
+    types = payroll.carry_companies(august, plan_for("2026-09"))["BINA"]["day_types"]
+    assert types["6"] == "work" and types["5"] == "rest"       # 6 September is a Sunday, 5 a Saturday
+
+
+def test_settings_not_kept_do_not_carry():
+    assert payroll.carry_companies(weekend_company("2026-08", keep=False), plan_for("2026-09")) == {}
+
+
+def test_a_new_month_file_starts_with_the_kept_settings(tmp_path):
+    store = payroll.PayrollStore(tmp_path)
+    store.save(payroll.validate_plan(weekend_company("2026-08"), set()))
+    september = store.load("2026-09")
+    assert september["companies"]["BINA"]["normal_hours"] == 9
+    assert payroll.settings_for(september, "BINA")["day_types"]["5"] == "rest"
+    assert payroll.settings_for(september, "MAJU JAYA")["day_types"]["5"] == "work"
+    assert store.load("2026-08")["companies"]["BINA"]["day_types"]["1"] == "rest"     # a saved month is as it was
