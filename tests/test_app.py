@@ -1069,6 +1069,20 @@ def test_the_old_page_keeps_company_settings_when_it_saves(tmp_path):
         assert c.get(f"/api/payroll/{month}").json()["plan"]["companies"]["A & B (M)"]["normal_hours"] == 9
 
 
+def test_an_old_page_tab_opened_before_company_settings_does_not_wipe_them(tmp_path):
+    store, client, month = ali_of_a_and_b(tmp_path)
+    with client as c:
+        upload(c, tmp_path, name=f"A & B (M) ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "A & B", "A & B (M)")
+        stale = c.get(f"/api/payroll/{month}").json()["plan"]           # "Open employee": the old page in a new tab
+        c.put(f"/api/payroll/{month}/company-settings", json={"company": "A & B (M)", "own": True, "normal_hours": 9})
+        stale["employees"][0]["message"] = "typed in the old tab"
+        assert c.put(f"/api/payroll/{month}", json=stale).status_code == 200
+        plan = c.get(f"/api/payroll/{month}").json()["plan"]
+        assert plan["companies"]["A & B (M)"]["normal_hours"] == 9 and plan["employees"][0]["message"] == "typed in the old tab"
+
+
 def test_bad_settings_are_refused(tmp_path):
     store, client, month = ali_of_a_and_b(tmp_path)
     with client as c:

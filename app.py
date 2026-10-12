@@ -671,8 +671,12 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         if isinstance(body, dict):
             body["month"] = month
             gone = drop_gone_documents(body, known_refs(docs))
-        plan = payroll.validate_plan(body, known_refs(docs))
         with auto_lock:
+            if isinstance(body, dict):
+                # the old page never edits company settings, and a tab of it opened before they were changed holds
+                # old ones: they are always taken from what is saved (Company settings on the company screen)
+                body["companies"] = plans.load(month).get("companies") or {}
+            plan = payroll.validate_plan(body, known_refs(docs))
             plans.save(plan)
         directory = plans.load_directory()
         if payroll.remember_employees(plan, directory):              # Employee No. typed: kept for next month
