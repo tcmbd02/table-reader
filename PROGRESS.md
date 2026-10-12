@@ -8,6 +8,28 @@
   reading like "18:5?" shows `Use "18:5"` and the missing digit is visible. A "?" inside ("1?:50") stays; "??" alone
   gets no Use button. Malay entry added; guide text updated. Checked in the browser on an invented card (throwaway data
   folder via `TABLE_READER_HOME`). 369 tests pass (front-end only, no new test: there is no JS test runner).
+- **Found while looking at two cards of one worker that the user uploaded: a silent wrong result.** Cards with IN/OUT columns
+  AND a Total column nobody fills in: the payroll took the empty Total as 0 hours every day, ignored the times and the
+  yellow time cells, and called the employee COMPLETE with Days Worked 0. 18 cards, 11 of 83 September employees (7 of
+  them "complete"); none had an Employee No., so none reached a Million file. Card (2) also had bilingual labels
+  ("Sebelum T/Hari Before Noon / Masuk In") that were not taken as IN/OUT. Grouping the two cards into one employee
+  already worked (file name).
+- **Phase A built (user's choice: a written Total counts; build A then stop):** IN/OUT times count on days the Total
+  is empty; bilingual IN/OUT labels paired (`clock_pairs`); a row with an empty Total and times / yellow cells in
+  columns not known as IN/OUT is reported, not "not worked". Real data: exactly those 11 employees change, none is
+  complete now (their days are unclear). 373 tests pass, Malay checks pass (128 messages).
+- **Why so many days stay unclear (counts on all multi-pair cards):** 119 yellow times; and the commonest written
+  pattern is morning IN + OVERTIME OUT (73 rows) or morning IN + afternoon OUT (22): one IN and one OUT across pairs,
+  which today reads as "IN but no OUT". Words in time cells: OFF, OFF DAY(S), AHAD, PH, CUTI, MC (20 "not a clock time").
+  User's decisions, built: **one IN and one OUT in a later pair = one span minus the month's break** (the existing
+  break box next to Normal hours; "customable" was taken to mean that box - ask if per-employee was meant); **day
+  words = day marks** as on month grids (`DAY_WORD_MARKS`: holiday / off / leave only, never "worked"; words split
+  over cells are joined; added to GRID_MARKS: OFF DAY(S), REST DAY, AHAD = off; CUTI = leave; CUTI AM / CUTI UMUM =
+  holiday). Real data after both: "IN but no OUT" 77 -> 3, "not a clock time" 20 -> 7; the 11 employees now have
+  days worked 0-13 and the rest of their days wait on 139 yellow time cells. Other 72 employees unchanged.
+  375 tests pass; Malay checks pass. **Not committed, app not rebuilt** (worktree branch
+  `claude/use-this-question-mark`, to fast-forward into `pdf-text`). Phases B (finished files join the month's payroll
+  by themselves) and C (Claude names unknown columns) wait for the user's go-ahead.
 
 ## Session 15b - 2026-10-09 - Process Pay on the three test employees (user's OK): what Million really calculates
 Process Pay run on 100, 101, 102 in the October test month (~17:28), payslips read on screen (View Payslip).

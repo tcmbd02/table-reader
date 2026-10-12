@@ -105,6 +105,11 @@ io_rows = [{"Date": good("1"), "IN": good("07:55"), "OUT": cell(None, raw="1?:0?
 io_rec = record(io_rows, labels=("Date", "IN", "OUT")); io_rec["page"] = 1
 msgs += [i["text"] for i in payroll.calculate(p, [("in-out.jpg", jobs.merged_pages({"pages": [io_rec]}, {"edits": []}))],
                                               emp)["issues"]]
+# an empty Total with times in columns not known as IN/OUT
+st_rec = record([{"Date": good("1"), "Start": good("08:00"), "Finish": good("17:00"), "Jumlah Total": good("")}],
+                labels=("Date", "Start", "Finish", "Jumlah Total")); st_rec["page"] = 1
+msgs += [i["text"] for i in payroll.calculate(p, [("card.jpg", jobs.merged_pages({"pages": [st_rec]}, {"edits": []}))],
+                                              emp)["issues"]]
 
 # Million file refusals, built by the real code
 mapping = payroll.load_office_mapping(ROOT / "million" / "office-mapping.csv")

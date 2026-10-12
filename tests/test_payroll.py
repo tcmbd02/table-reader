@@ -621,6 +621,103 @@ def test_an_hours_column_wins_over_in_and_out_times():
     assert r["days"][0]["hours"] == 9.0 and r["days"][0]["clock"] is None
 
 
+def test_bilingual_in_out_labels_are_paired():
+    labels = ["Tarikh Date", "Sebelum T/Hari Before Noon / Masuk In", "Sebelum T/Hari Before Noon / Keluar Out",
+              "Selepas T/Hari After Noon / Masuk In", "Selepas T/Hari After Noon / Keluar Out", "Jumlah Total"]
+    assert payroll.clock_pairs(labels) == [(labels[1], labels[2]), (labels[3], labels[4])]
+    assert payroll.clock_pairs(["Date", "Masa Masuk / Time In", "Masa Keluar / Time Out"]) == [
+        ("Masa Masuk / Time In", "Masa Keluar / Time Out")]
+    assert payroll.clock_pairs(["Date", "In / Out", "Out"]) == []                  # one column for both is no pair
+
+
+TOTAL_CARD = ("Date", "Before Noon / In", "Before Noon / Out", "After Noon / In", "After Noon / Out", "Total")
+
+
+def test_an_empty_total_column_does_not_hide_the_in_and_out_times():
+    rows = [(1, {TOTAL_CARD[1]: "08:00", TOTAL_CARD[2]: "12:00", TOTAL_CARD[3]: "13:00", TOTAL_CARD[4]: "18:00"}),
+            (2, {TOTAL_CARD[1]: "08:00", TOTAL_CARD[2]: "12:00", TOTAL_CARD[3]: "13:00", TOTAL_CARD[4]: "17:00",
+                 "Total": "7"}),                                         # a written Total counts (the user's choice)
+            (3, {})]                                                     # nothing written: not worked
+    r = payroll.calculate(plan_for(), [("card", in_out(rows, labels=TOTAL_CARD))], employee())
+    by_day = {d["day"]: d for d in r["days"]}
+    assert by_day[1]["hours"] == 9.0 and by_day[1]["clock"]["pairs"] == 2
+    assert by_day[2]["hours"] == 7.0 and by_day[2]["clock"] is None
+    assert by_day[3]["hours"] == 0.0 and by_day[3]["status"] == "ok"
+    v = values(r)
+    assert v["days_worked"] == 2 and v["ot_1_5"] == 1.0
+
+
+def test_unclear_times_behind_an_empty_total_make_the_day_unclear_not_unworked():
+    rows = [{"Date": good("1"), TOTAL_CARD[1]: cell(None, raw="0?:00", reason="faded"), TOTAL_CARD[2]: good("12:00"),
+             TOTAL_CARD[3]: good(""), TOTAL_CARD[4]: good(""), "Total": good("")}]
+    r = payroll.calculate(plan_for(), [("card", merged(rows, labels=TOTAL_CARD))], employee())
+    assert r["days"][0]["status"] == "unclear" and r["days"][0]["hours"] is None
+    assert values(r)["days_worked"] == 0 and not r["complete"]
+    assert any("an IN or OUT time is still unclear" in i["text"] for i in r["issues"])
+
+
+def test_an_empty_total_with_times_in_unknown_columns_is_reported():
+    labels = ("Date", "Start", "Finish", "Total")                       # not recognised as IN/OUT
+    rows = [{"Date": good("1"), "Start": good("08:00"), "Finish": good("17:00"), "Total": good("")},
+            {"Date": good("2"), "Start": good(""), "Finish": cell(None, raw="1?", reason="smudged"), "Total": good("")},
+            {"Date": good("3"), "Start": good(""), "Finish": good(""), "Total": good("")},
+            {"Date": good("4"), "Start": good("08:00"), "Finish": good("17:00"), "Total": good("8")}]
+    r = payroll.calculate(plan_for(), [("card", merged(rows, labels=labels))], employee())
+    by_day = {d["day"]: d for d in r["days"]}
+    assert by_day[1]["status"] == by_day[2]["status"] == "unclear"
+    assert by_day[3]["hours"] == 0.0 and by_day[4]["hours"] == 8.0
+    texts = [i["text"] for i in r["issues"] if i["kind"] == "unclear"]
+    assert texts[0] == ("card, day 1: the Total column is empty but other columns of the row have times or yellow cells. "
+                        "Type the hours in the Total column of the document.")
+    assert not r["complete"]
+
+
+THREE_PAIRS = ("DATE", "MORNING / IN", "MORNING / OUT", "AFTERNOON / IN", "AFTERNOON / OUT", "OVERTIME / IN",
+               "OVERTIME / OUT")
+
+
+def test_one_in_and_one_later_out_are_one_span_with_the_break_taken_off():
+    m_in, m_out, a_in, a_out, o_in, o_out = THREE_PAIRS[1:]
+    rows = [(1, {m_in: "08:00", o_out: "19:00"}),                       # clocked in the morning, out after overtime
+            (2, {m_in: "08:00", a_out: "17:00"}),
+            (3, {m_in: "08:00", a_in: "13:00", o_out: "19:00"}),         # two INs, one OUT: not worked out
+            (4, {m_out: "12:00", a_in: "13:00"})]                        # OUT before IN: not worked out
+    p = plan_for()
+    r = payroll.calculate(p, [("card", in_out(rows, labels=THREE_PAIRS))], employee())
+    by_day = {d["day"]: d for d in r["days"]}
+    assert by_day[1]["hours"] == 10.0 and by_day[1]["code"] == "08:00 - 19:00"
+    assert by_day[1]["clock"] == {"hours": 10.0, "break": 1.0, "pairs": 1}
+    assert by_day[2]["hours"] == 8.0
+    assert by_day[3]["status"] == by_day[4]["status"] == "unclear"
+    assert values(r)["days_worked"] == 2 and values(r)["ot_1_5"] == 2.0
+    p["break_hours"] = 0.5                                               # the month's break box applies
+    assert payroll.calculate(p, [("card", in_out(rows[:1], labels=THREE_PAIRS))], employee())["days"][0]["hours"] == 10.5
+
+
+def test_day_words_on_an_in_out_card_mark_the_day():
+    m_in, m_out, a_in, a_out, o_in, o_out = THREE_PAIRS[1:]
+    p = plan_for()
+    p["day_types"]["16"] = "holiday"
+    rows = [(1, {m_in: "08:00", a_out: "17:00"}),
+            (2, {m_in: "OFF", m_out: "DAY"}),                            # one word over two cells
+            (3, {m_in: "O", m_out: "F", a_in: "F"}),                     # one letter per cell
+            (4, {m_in: "CUTI"}),
+            (5, {a_in: "MC"}),
+            (6, {m_in: "AHAD"}),                                         # Sunday
+            (7, {m_in: "PH"}),                                           # a working day in the calendar
+            (16, {m_in: "PH"}),
+            (17, {m_in: "08:00", m_out: "MC"}),                          # a time and a word: reported
+            (18, {m_in: "LATE"})]                                        # an unknown word: reported
+    r = payroll.calculate(p, [("card", in_out(rows, labels=THREE_PAIRS))], employee())
+    by_day = {d["day"]: d for d in r["days"]}
+    assert all(by_day[d]["status"] == "ok" and by_day[d]["hours"] == 0.0 for d in (2, 3, 4, 5, 6, 7, 16))
+    assert by_day[17]["status"] == by_day[18]["status"] == "unclear"
+    v = values(r)
+    assert v["days_worked"] == 1 and v["public_holiday"] == 1
+    kinds = {i["kind"]: i["text"] for i in r["issues"]}
+    assert "leave on day 4 (CUTI), 5 (MC)" in kinds["leave"] and "day 7 as a public holiday" in kinds["daytype"]
+
+
 def test_in_out_cards_are_readable_and_the_break_is_validated():
     assert payroll.readable(in_out([(1, {"IN": "08:00", "OUT": "17:00"})])[0])
     p = plan_for()

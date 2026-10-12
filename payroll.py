@@ -118,9 +118,12 @@ REPORT_TOTALS = {"shift details / actual": "total actual", "shift details / late
                  "shift details / earlyout": "total earlyout", "overtime / 1.5": "total ot 1.5",
                  "overtime / 2.0": "total ot 2.0"}
 # IN/OUT time cards: the last part of a column label ("MORNING / IN" -> "in"), and a clock time as written on them
-# (07:55, 7.55, 17:02:10, 5.30 PM). Anything else in an IN/OUT cell is reported, never guessed.
-_IN_LABEL = re.compile(r"^(?:(?:time|masa|clock)\s*)?(?:in|masuk)$")
-_OUT_LABEL = re.compile(r"^(?:(?:time|masa|clock)\s*)?(?:out|keluar|balik)$")
+# (07:55, 7.55, 17:02:10, 5.30 PM). Anything else in an IN/OUT cell is reported, never guessed. A label may give the
+# word in Malay and English ("Masuk In", "Masa Keluar / Time Out").
+_IN_WORD = r"(?:(?:time|masa|clock)\s*)?(?:in|masuk)"
+_OUT_WORD = r"(?:(?:time|masa|clock)\s*)?(?:out|keluar|balik)"
+_IN_LABEL = re.compile(rf"^{_IN_WORD}(?:\s+{_IN_WORD})?$")
+_OUT_LABEL = re.compile(rf"^{_OUT_WORD}(?:\s+{_OUT_WORD})?$")
 _NO_STAMP = re.compile(r"^[\s\-–—_./x]*$", re.IGNORECASE)
 _STAMP = re.compile(r"^(\d{1,2})\s*[:.,]\s*([0-5]\d)(?:\s*:\s*([0-5]\d))?\s*(?:([ap])\.?\s*m\.?)?$", re.IGNORECASE)
 DEFAULT_BREAK = 1.0
@@ -243,10 +246,11 @@ _GRID_TOTAL_LABEL = re.compile(r"total|jumlah|remark|catatan", re.IGNORECASE)
 GRID_MARKS = {
     "present": {"✓", "✔", "√", "/", "p", "1"},          # worked that day (a normal day, no overtime)
     "absent": {"0", "o"},
-    "holiday": {"ph", "p.h", "p.h.", "p/h"},
-    "off": {"off", "ro", "rd", "r/d", "rest"},
-    "leave": {"al", "mc", "el", "cl", "ml", "hl", "upl", "npl", "ul"},
+    "holiday": {"ph", "p.h", "p.h.", "p/h", "cuti am", "cuti umum"},
+    "off": {"off", "ro", "rd", "r/d", "rest", "off day", "off days", "rest day", "ahad"},
+    "leave": {"al", "mc", "el", "cl", "ml", "hl", "upl", "npl", "ul", "cuti"},
 }
+DAY_WORD_MARKS = ("holiday", "off", "leave")      # marks an IN/OUT card may carry instead of times (never "worked")
 _MARK_OF = {code: mark for mark, codes in GRID_MARKS.items() for code in codes}
 
 
@@ -551,13 +555,17 @@ def _key(label: str) -> str:
 
 def clock_pairs(labels: list[str]) -> list[tuple[str, str]]:
     """The (IN column, OUT column) pairs of an IN/OUT time card, in the card's order: "IN | OUT", "Time In | … | Time
-    Out", or one pair per group ("MORNING / IN | MORNING / OUT | AFTERNOON / IN | AFTERNOON / OUT")."""
+    Out", or one pair per group ("MORNING / IN | MORNING / OUT | AFTERNOON / IN | AFTERNOON / OUT"). The word may be
+    given twice ("Masuk In", "Masa Masuk / Time In")."""
     pairs, waiting = [], {}
     for label in labels:
-        group, _, last = _key(label).rpartition(" / ")
-        if _IN_LABEL.match(last):
+        parts, side = _key(label).split(" / "), set()
+        while parts and (_IN_LABEL.match(parts[-1]) or _OUT_LABEL.match(parts[-1])):
+            side.add("in" if _IN_LABEL.match(parts.pop()) else "out")
+        group = " / ".join(parts)
+        if side == {"in"}:
             waiting[group] = label
-        elif _OUT_LABEL.match(last) and group in waiting:
+        elif side == {"out"} and group in waiting:
             pairs.append((waiting.pop(group), label))
     return pairs
 
@@ -580,17 +588,30 @@ def parse_clock(value: str | None) -> float | None:
 def _clock_day(cells: dict, pairs: list[tuple[str, str]], break_hours: float, where: str, day: int, name: str,
                issues: list[dict]) -> dict:
     """One day of an IN/OUT time card: the hours between each IN and its OUT, added up. One pair: the break is taken
-    off. Several pairs: no break (the gap between them is the break). Anything unclear leaves the day out."""
+    off. Several pairs: no break (the gap between them is the break). Only one IN and one OUT in a later pair (morning
+    IN, overtime OUT: the worker clocked twice): one span, the break taken off. A day word instead of times (OFF, PH,
+    CUTI, MC: see DAY_WORD_MARKS) marks the day as on a month grid. Anything unclear leaves the day out."""
     def unclear(text: str) -> dict:
         issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: {text}"})
         return {"hours": None, "status": "unclear", "source": where, "printed": None}
 
+    if any(cells[c]["needs_review"] for pair in pairs for c in pair):
+        return unclear("an IN or OUT time is still unclear. Check the yellow cell in the document.")
+    stamps = [((cells[i]["value"] or "").strip(), (cells[o]["value"] or "").strip()) for i, o in pairs]
+    filled = [(k, side) for k, pair in enumerate(stamps) for side, text in zip(("in", "out"), pair)
+              if not _NO_STAMP.match(text)]
+    texts = [stamps[k][side == "out"] for k, side in filled]
+    if texts and all(parse_clock(t) is None for t in texts):
+        for words in (" ".join(texts), "".join(texts)):                   # "OFF" | "DAY", or "O" | "F" | "F"
+            mark, _ = grid_mark(words)
+            if mark in DAY_WORD_MARKS:
+                return {"hours": 0.0, "status": "ok", "source": where, "printed": None, "mark": mark,
+                        "code": " ".join(texts)}
+    if len(filled) == 2 and filled[0][1] == "in" and filled[1][1] == "out" and filled[0][0] < filled[1][0]:
+        stamps = [(stamps[filled[0][0]][0], stamps[filled[1][0]][1])]   # clocked IN once and OUT once: one span
+
     spans, written = [], []
-    for in_col, out_col in pairs:
-        cin, cout = cells[in_col], cells[out_col]
-        if cin["needs_review"] or cout["needs_review"]:
-            return unclear("an IN or OUT time is still unclear. Check the yellow cell in the document.")
-        tin, tout = (cin["value"] or "").strip(), (cout["value"] or "").strip()
+    for tin, tout in stamps:
         has_in, has_out = not _NO_STAMP.match(tin), not _NO_STAMP.match(tout)
         if not has_in and not has_out:
             continue
@@ -664,12 +685,15 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                 _read_grid(page, grid, where, name, n_days, days, issues)
                 continue
             date_col, hours_col = pick_columns(page["column_labels"], hours_column)
-            pairs = clock_pairs(page["column_labels"]) if hours_col is None else []     # IN/OUT time card
+            report = {c: REPORT_COLUMNS[_key(c)] for c in page["column_labels"] if _key(c) in REPORT_COLUMNS}
+            # IN/OUT time card; on a card that also has a Total column, the times count on days the Total is left empty
+            pairs = [] if report and hours_col else clock_pairs(page["column_labels"])
             if hours_col is None and not pairs:
                 issues.append({"kind": "column", "text": f"{where}: no column with the daily hours was found. "
                                                          "Choose it in the 'Hours column' list.", "job": name})
                 continue
-            report = {c: REPORT_COLUMNS[_key(c)] for c in page["column_labels"] if _key(c) in REPORT_COLUMNS}
+            others = [c for c in page["column_labels"] if c not in (date_col, hours_col)] if hours_col and not pairs \
+                and not report else []
             if report:
                 _check_report_totals(page, where, name, issues)
                 flat = next((c for c in page["column_labels"] if _key(c) == REPORT_FLAT), None)
@@ -680,7 +704,9 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
             for r, row in enumerate(page["rows"], start=1):
                 cells = row["cells"]
                 dcell = cells[date_col]
-                timed = [cells[hours_col]] if hours_col else [cells[c] for pair in pairs for c in pair]
+                hcell = cells[hours_col] if hours_col else None
+                stamps = [cells[c] for pair in pairs for c in pair]
+                timed = ([hcell] if hcell else []) + stamps
                 if dcell["needs_review"] or not (dcell["value"] or "").strip():
                     if any(c["value"] or c["needs_review"] or (c["raw_text"] or "").strip() for c in timed):
                         issues.append({"kind": "unclear", "text": f"{where}, row {r}: the date is unclear, so its hours "
@@ -688,15 +714,24 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                     continue
                 day, problem = parse_day(dcell["value"], month_number)
                 if day is None or not 1 <= day <= n_days:
-                    if any(not _NO_STAMP.match((c["value"] or "").strip()) for c in timed) if pairs else \
-                            (timed[0]["value"] or "").strip() and parse_hours(timed[0]["value"]):
+                    if any(not _NO_STAMP.match((c["value"] or "").strip()) for c in stamps) or \
+                            hcell and (hcell["value"] or "").strip() and parse_hours(hcell["value"]):
                         issues.append({"kind": "date", "text": f"{where}, row {r}: " + (problem or f"day {day} is not in this month")
                                        + ", so its hours were left out.", "job": name})
                     continue
-                if pairs:
+                written = hcell is not None and (hcell["needs_review"] or bool((hcell["value"] or "").strip()))
+                if pairs and not written:                       # no Total written that day: the IN/OUT times
                     _put_day(days, day, _clock_day(cells, pairs, break_hours, where, day, name, issues), name, issues)
                     continue
-                hcell = cells[hours_col]
+                if not written and any(cells[c]["needs_review"] or parse_clock(cells[c]["value"]) is not None
+                                       for c in others):
+                    # the Total is empty but the row holds times (or yellow cells) in columns not known as IN/OUT:
+                    # empty does not mean "not worked" here
+                    issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: the {hours_col} column "
+                                   "is empty but other columns of the row have times or yellow cells. Type the hours in the "
+                                   f"{hours_col} column of the document."})
+                    _put_day(days, day, {"hours": None, "status": "unclear", "source": where, "printed": None}, name, issues)
+                    continue
                 if hcell["needs_review"]:
                     entry = {"hours": None, "status": "unclear", "source": where}
                 else:

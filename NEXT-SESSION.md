@@ -5,7 +5,7 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 **To continue, paste this into the new session:**
 
-> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 15b), then let's continue.
+> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 16), then let's continue.
 
 ---
 
@@ -40,6 +40,10 @@ workers are not in that month's payroll, so there was nothing to update. Details
   840.00 vs Million 874.92 with a PH in the month; Monthly matches). **Open with HR:** should Working Days sent to
   Million include the public holiday? Second test round not finished (102's PH to 0, Process Pay again). Details:
   PROGRESS.md sessions 15 and 15b.
+- **Session 16 (2026-10-12):** IN/OUT cards with an empty Total column were counted as "not worked" (fixed);
+  one IN + one later OUT = one span minus the break; OFF / PH / CUTI / MC on cards = day marks; "Use this" drops a
+  leading / trailing "?". Next, waiting for the user's go-ahead: Phase B (finished files join the month's payroll
+  by themselves) and Phase C (Claude names columns Table Reader does not know). Details: PROGRESS.md session 16.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
