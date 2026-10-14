@@ -919,6 +919,36 @@ def columns_read(labels: list[str], hours_column: str | None, layouts: dict | No
     return read - {None}
 
 
+def built_in_layout(labels: list[str]) -> bool:
+    """A layout Table Reader reads fully by its own rules (a month grid, the clock report): never asked about."""
+    return bool(grid_columns(labels)) or any(_key(c) in REPORT_COLUMNS for c in labels)
+
+
+def map_as_read(labels: list[str], hours_column: str | None) -> dict:
+    """Today's reading of a page with these headings as a layout map, every other column ignored ("It is right as it
+    is" on a layout Table Reader asked about). Not for a month grid (BAD_LAYOUT): grids are read by their own rules."""
+    how = _layout_columns(labels, hours_column, None)
+    if how["grid"]:
+        raise OcrError("BAD_LAYOUT", "What the columns mean could not be understood. Open the card layout again.")
+    roles = {how["date"]: ("date", "none"), how["hours"]: ("hours", "hours"),
+             **{c: (field, "hours") for c, field in how["report"].items()},
+             **{c: (side, "none") for pair in how["pairs"] for c, side in zip(pair, ("in", "out"))}}
+    return {c: dict(zip(("role", "unit"), roles.get(c, ("ignore", "none")))) for c in labels}
+
+
+def is_row_number(label: str) -> bool:
+    """A column of row numbers or codes ("No.", "Bil", "#", "Emp. No."): never a figure for the payroll."""
+    words = _key(label).split()
+    return bool(words) and bool(_ROW_NUMBER.match(words[-1]))
+
+
+def is_figure_text(text: str | None) -> bool:
+    """A cell that holds a number or a clock time (what a column the payroll could use would hold)."""
+    value = (text or "").strip()
+    return bool(re.search(r"\d", value)) and (parse_clock(value) is not None or parse_hours(value) is not None
+                                              or _number_or_none(value) is not None)
+
+
 def _stamp_cells(cells: dict, stamp_cols: list[str]) -> tuple[dict, list[tuple[str, str]], str | None]:
     """A "stamps" cell (several clock times in one cell, a door-system export) as IN/OUT pairs in order:
     (cells, pairs, problem). An odd number of times, or anything in the cell that is not a clock time, is a problem;

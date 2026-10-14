@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import companies
+import layouts
 import ocr
 import payroll
 from inbox import Inbox
@@ -283,7 +284,8 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         million = plans.load_million()
         company_of_doc = {d["id"]: d["company"] for d in docs}
         results = payroll.compute_all(plan, load_pages, million_by_no(million),       # each with its company's settings
-                                      [payroll.employee_company(e, company_of_doc) for e in plan["employees"]])
+                                      [payroll.employee_company(e, company_of_doc) for e in plan["employees"]],
+                                      plans.load_layouts())
         for r in results:
             n = (gone or {}).get(r["id"])
             if n:
@@ -462,7 +464,28 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         million = listed["employees"] if listed else None
         return {"plan": plan, "docs": docs, "results": results, "company_of": company_of, "million": million,
                 "offers": payroll.suggest_employee_nos(plan, million) if million else {}, "held": held,
-                "added": added, "numbered": numbered, "files": file_items(plan, docs, month)}
+                "added": added, "numbered": numbered, "files": file_items(plan, docs, month),
+                "layouts": layout_items(plan, docs, company_of)}
+
+    def layout_items(plan: dict, docs: list[dict], company_of: list[str]) -> dict[str, list[dict]]:
+        """{company: "card layout" items} from the cards on its employees (companies.unknown_layouts). A grid row is
+        read by the grid's own rules and is left out; a card that cannot be opened is left out."""
+        names, pages_of, cards = {d["id"]: d["name"] for d in docs}, {}, {}
+        for e, company in zip(plan["employees"], company_of):
+            for ref in e["jobs"]:
+                doc, page, row = payroll.split_part(ref)
+                if row is not None:
+                    continue
+                if doc not in pages_of:
+                    try:
+                        pages_of[doc] = merged_pages(store.load_result(doc), store.load_edits(doc))
+                    except (OcrError, OSError, ValueError):
+                        pages_of[doc] = []
+                cards.setdefault(company, []).extend(
+                    {"doc": doc, "name": names.get(doc, ""), "page": p, "hours_column": e.get("hours_column")}
+                    for p in pages_of[doc] if page is None or p["page"] == page)
+        saved = plans.load_layouts()
+        return {company: companies.unknown_layouts(found, saved) for company, found in cards.items()}
 
     def file_items(plan: dict, docs: list[dict], month: str) -> dict[str, list[dict]]:
         """{company: items} for the finished files that need the user in ``month``: a card of the month that is on no
@@ -491,7 +514,8 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
     def view_of(state: dict, company: str) -> dict:
         return companies.company_view(company, state["plan"], state["results"], state["company_of"], state["million"],
                                       state["offers"], state["held"], state["files"].get(company, []),
-                                      payroll.settings_view(state["plan"], company) if company else None)
+                                      payroll.settings_view(state["plan"], company) if company else None,
+                                      state["layouts"].get(company, []))
 
     @app.get("/api/payroll/{month}/companies")
     def payroll_companies(month: str):
@@ -586,7 +610,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         company = payroll.employee_company(person, {i: j["company"] for i, j in files.items()})
         load_pages, _ = page_loader()
         [result] = payroll.compute_all({**plan, "employees": [person]}, load_pages, million_by_no(plans.load_million()),
-                                       [company])
+                                       [company], plans.load_layouts())
         pages = {}
         for doc in {i["at"]["doc"] for i in result["issues"] if "at" in i}:
             try:
@@ -595,6 +619,58 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                 continue                                # changed or damaged since: that card is left out
         return {"month": month, "employee": person["id"], "name": person["name"], "company": company,
                 "cards": companies.look_cards(result, person, pages, {i: j["name"] for i, j in files.items()})}
+
+    # ----------------------------------------------------------------------------- card layouts (layout maps)
+    def layout_page(doc: str, page: int) -> tuple[dict, str]:
+        """One page of a finished card, as read and corrected, and the file's name."""
+        try:
+            name = store.get_job(doc)["name"]
+            pages = merged_pages(store.load_result(doc), store.load_edits(doc))
+        except (OcrError, OSError, ValueError) as exc:
+            raise OcrError("JOB_NOT_FOUND", "That card could not be opened. Read the file again.") from exc
+        found = next((p for p in pages if p["page"] == page), None)
+        if found is None:
+            raise OcrError("PAGE_NOT_FOUND", "That page of the card was not found.")
+        return found, name
+
+    @app.get("/api/layouts")
+    def get_layout(doc: str, page: int, ask: bool = False):
+        """What the columns of a card's layout mean: the map the user saved, today's reading as a map, and the value
+        shapes Claude would see. ``ask``: Claude's suggestion too (only when nothing is saved; never by just
+        opening)."""
+        p, name = layout_page(doc, page)
+        labels = p["column_labels"]
+        saved = (plans.load_layouts().get(payroll.layout_signature(labels)) or {}).get("columns")
+        suggestion = error = as_read = None
+        if ask and saved is None:
+            try:
+                suggestion = layouts.suggest(p)
+            except OcrError as exc:
+                error = exc.message
+        try:
+            as_read = payroll.map_as_read(labels, None)
+        except OcrError:
+            pass
+        return {"doc": doc, "page": page, "name": name, "labels": labels, "shapes": layouts.shapes(p), "saved": saved,
+                "suggestion": suggestion, "error": error, "as_read": as_read, "roles": list(payroll.LAYOUT_ROLES),
+                "units": list(payroll.LAYOUT_UNITS)}
+
+    @app.put("/api/layouts")
+    async def save_layout(request: Request):
+        """The user confirms what a card layout's columns mean ("columns"), or that today's reading is right and the
+        other columns are not used ("as_is"). Kept for every card with the same headings (payroll.layout_signature)."""
+        body = await settings_body(request)
+        if not isinstance(body.get("doc"), str) or not isinstance(body.get("page"), int):
+            raise OcrError("BAD_LAYOUT", "What the columns mean could not be understood. Open the card layout again.")
+        p, _ = layout_page(body["doc"], body["page"])
+        labels = p["column_labels"]
+        columns = payroll.map_as_read(labels, None) if body.get("as_is") is True \
+            else payroll.valid_layout_map(labels, body.get("columns"))
+        with auto_lock:
+            saved = plans.load_layouts()
+            saved[payroll.layout_signature(labels)] = {"columns": columns, "confirmed": date.today().isoformat()}
+            plans.save_layouts(saved)
+        return {"ok": True}
 
     async def settings_body(request: Request) -> dict:
         try:

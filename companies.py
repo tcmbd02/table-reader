@@ -133,16 +133,17 @@ _NOT_IN_MILLION = "is not in the Million employee list"       # payroll.month_ru
 
 def company_view(company: str, plan: dict, results: list[dict], company_of: list[str], million: list[dict] | None,
                  offers: dict[str, dict], held: dict[str, list[str]], file_items: list[dict],
-                 settings: dict | None = None) -> dict:
+                 settings: dict | None = None, layout_items: list[dict] | None = None) -> dict:
     """Everything the company screen shows for ``company`` ("" = employees with no company).
     ``company_of``: each employee's company, in the plan's order. ``held``: {employee id: reasons} for everyone the
     month file would hold back (payroll.month_run). An employee held back for a reason that no item names gets a
     "held" item with those reasons, so the screen never says Ready for someone the file would leave out.
     ``file_items``: the company's files that need the user ("unplaced", "month"), listed first. ``settings``: the
     company's settings as the screen shows them ({own, default_changed, ...}); own settings made before the month's
-    default was changed are an item ("settings"), first of all, until the user has looked at them."""
+    default was changed are an item ("settings"), first of all, until the user has looked at them. ``layout_items``:
+    the company's card layouts to confirm (unknown_layouts), listed with the files."""
     numbers = emp_no_items(plan, million, offers)
-    items, employees, million_new = list(file_items), [], []
+    items, employees, million_new = list(file_items) + list(layout_items or []), [], []
     if settings and settings.get("default_changed"):
         items.insert(0, {"kind": "settings", "company": company})
     for e, r, c in zip(plan["employees"], results, company_of):
@@ -186,6 +187,31 @@ def overview(views: list[dict], known: list[str]) -> dict:
     return {"companies": rows,
             "ready_companies": sum(1 for r in rows if r["status"] in ("ready", "million")),
             "ready_employees": sum(1 for v in views for e in v["employees"] if e["status"] == "ready")}
+
+
+LAYOUT_FIGURE_ROWS = 3          # a column the payroll does not read is asked about once this many rows hold figures
+
+
+def unknown_layouts(cards: list[dict], layouts: dict) -> list[dict]:
+    """"A card layout Table Reader does not know" items: one per layout (signature) of these cards ([{doc, name, page,
+    hours_column}]) that the user has not confirmed, when a column the calculation does not read holds numbers or clock
+    times in LAYOUT_FIGURE_ROWS rows or more (so a figure for Million may be being left out). Row numbers and codes
+    ("No.", "Emp. No.") do not count; month grids and the clock report are read by their own rules and never asked."""
+    out, seen = [], set()
+    for c in cards:
+        labels = c["page"]["column_labels"]
+        signature = payroll.layout_signature(labels)
+        if signature in seen or signature in layouts or payroll.built_in_layout(labels):
+            continue
+        read = payroll.columns_read(labels, c["hours_column"], layouts)
+        figures = [label for label in labels if label not in read and not payroll.is_row_number(label)
+                   and sum(payroll.is_figure_text(row["cells"][label]["value"]) for row in c["page"]["rows"])
+                   >= LAYOUT_FIGURE_ROWS]
+        if figures:
+            seen.add(signature)
+            out.append({"kind": "layout", "signature": signature, "doc": c["doc"], "page": c["page"]["page"],
+                        "name": c["name"], "columns": figures})
+    return out
 
 
 def unplaced(plan: dict, candidates: list[dict]) -> list[dict]:

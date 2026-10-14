@@ -72,10 +72,10 @@ def _prompt(page: dict) -> str:
             "heading exactly as written, once each.")
 
 
-def suggest(page: dict, ask: Callable[..., dict] = ocr.ask_text) -> dict:
+def suggest(page: dict, ask: Callable[..., dict] | None = None) -> dict:
     """Claude's suggested map for this page's layout, checked (payroll.valid_layout_map): {heading: {"role", "unit"}}.
     An answer that does not fit (a heading twice or missing, a role or unit not on the list) raises BAD_LAYOUT."""
-    answer = ask(_prompt(page), SUGGEST_SCHEMA)
+    answer = (ask or ocr.ask_text)(_prompt(page), SUGGEST_SCHEMA)
     bad = ocr.OcrError("BAD_LAYOUT", "What the columns mean could not be understood. Open the card layout again.")
     items = answer.get("columns") if isinstance(answer, dict) else None
     if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):

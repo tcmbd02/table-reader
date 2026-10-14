@@ -465,6 +465,7 @@ const MS = {
   "Copied": "Disalin",
   "Close": "Tutup",
   "Copying did not work. Select the numbers and copy them yourself.": "Salinan tidak berjaya. Pilih nombor-nombor itu dan salin sendiri.",
+  "That page of the card was not found.": "Halaman kad itu tidak dijumpai.",
   "Claude took too long to answer. Try again.": "Claude mengambil masa terlalu lama untuk menjawab. Cuba lagi.",
   "What the columns mean could not be understood. Open the card layout again.": "Maksud lajur-lajur itu tidak dapat difahami. Buka susun atur kad itu semula.",
 };

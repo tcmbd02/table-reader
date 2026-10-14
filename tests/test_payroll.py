@@ -1589,3 +1589,11 @@ def test_columns_read_matches_what_read_days_reads():
     assert payroll.columns_read(list(REPORT_LABELS), None, None) >= {"Date", "Shift Details / Actual", "OverTime / 1.5"}
     assert payroll.columns_read(list(MAPPED), None, REPORT_MAP) == set(MAPPED)
     assert payroll.columns_read(list(MAPPED) + ["STATUS"], None, REPORT_MAP) == {"DATE", "WHrs"}   # not this layout
+
+
+def test_map_as_read_keeps_todays_reading_and_ignores_the_rest():
+    m = payroll.map_as_read(["NO.", "DATE", "WHrs", "OT"], None)
+    assert m == {"NO.": {"role": "ignore", "unit": "none"}, "DATE": {"role": "date", "unit": "none"},
+                 "WHrs": {"role": "hours", "unit": "hours"}, "OT": {"role": "ignore", "unit": "none"}}
+    assert payroll.map_as_read(["Date", "IN", "OUT", "Sign"], None)["OUT"] == {"role": "out", "unit": "none"}
+    assert payroll.valid_layout_map(["NO.", "DATE", "WHrs", "OT"], m) == m

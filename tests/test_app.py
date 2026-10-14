@@ -1138,3 +1138,99 @@ def test_the_file_is_worked_out_again_when_it_is_made(tmp_path):
         run = c.post(f"/api/payroll/{month}/run").json()
         assert run["made"] is True and run["ready"] == 3 and run["held"] == 0
         assert (tmp_path / "payroll" / run["file"]).exists()
+
+
+# ------------------------------------------------------------------- a card layout Table Reader does not know
+LAYOUT_2 = ("NO.", "DATE", "WHrs", "OT", "LIn(Min)", "E/Out(Min)")
+
+
+def report_2_card(image):
+    return record([{"NO.": good(str(d)), "DATE": good(str(d)), "WHrs": good("8"), "OT": good("2"),
+                    "LIn(Min)": good("15"), "E/Out(Min)": good("0")} for d in range(1, 31)], labels=LAYOUT_2)
+
+
+def layout_month(c, store, tmp_path):
+    upload(c, tmp_path, name=f"MAJU JAYA ALI SEPT {YEAR}.png")
+    store.wait_idle()
+    set_company(c, "MAJU JAYA", "MAJU JAYA")
+    month = f"{YEAR}-09"
+    view = c.get(f"/api/payroll/{month}/company", params={"name": "MAJU JAYA"}).json()   # opening: the card joins
+    return month, view
+
+
+def report_2_map(**change):
+    roles = {"NO.": ("ignore", "none"), "DATE": ("date", "none"), "WHrs": ("hours", "hours"), "OT": ("ot_1_5", "hours"),
+             "LIn(Min)": ("lateness", "minutes"), "E/Out(Min)": ("early_departure", "minutes"), **change}
+    return {c: {"role": r, "unit": u} for c, (r, u) in roles.items()}
+
+
+def test_confirming_a_layout_changes_the_figures(tmp_path):
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        assert item["columns"] == ["OT", "LIn(Min)", "E/Out(Min)"] and view["employees"][0]["ot_1_5"] == 0
+        where = {"doc": item["doc"], "page": item["page"]}
+        assert c.put("/api/layouts", json={**where, "columns": report_2_map()}).json() == {"ok": True}
+        view = c.get(f"/api/payroll/{month}/company", params={"name": "MAJU JAYA"}).json()
+        assert not [i for i in view["items"] if i["kind"] == "layout"]
+        assert view["employees"][0]["ot_1_5"] == 60.0                         # the OT column: 2 hours on 30 days
+        got = c.get("/api/layouts", params={"doc": item["doc"], "page": item["page"]}).json()
+        assert got["saved"] == report_2_map() and got["labels"] == list(LAYOUT_2)
+
+
+def test_it_is_right_as_it_is_ignores_the_rest(tmp_path):
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        before = view["employees"]
+        where = {"doc": item["doc"], "page": item["page"]}
+        assert c.put("/api/layouts", json={**where, "as_is": True}).json() == {"ok": True}
+        view = c.get(f"/api/payroll/{month}/company", params={"name": "MAJU JAYA"}).json()
+        assert not [i for i in view["items"] if i["kind"] == "layout"] and view["employees"] == before
+
+
+def test_a_bad_map_is_refused_and_nothing_saved(tmp_path):
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        r = c.put("/api/layouts", json={"doc": item["doc"], "page": item["page"],
+                                        "columns": report_2_map(OT=("salary", "hours"))})
+        assert r.status_code == 400 and r.json()["code"] == "BAD_LAYOUT"
+        assert c.get("/api/layouts", params={"doc": item["doc"], "page": item["page"]}).json()["saved"] is None
+        assert c.put("/api/layouts", json={"doc": "nope", "page": 1, "as_is": True}).status_code == 404
+
+
+def test_opening_the_panel_does_not_ask_claude(tmp_path, monkeypatch):
+    asked = []
+
+    def fake_ask(prompt, schema, **kw):
+        asked.append(prompt)
+        return {"columns": [{"label": c, **v} for c, v in report_2_map().items()]}
+
+    monkeypatch.setattr(ocr, "ask_text", fake_ask)
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        got = c.get("/api/layouts", params={"doc": item["doc"], "page": item["page"]}).json()
+        assert asked == [] and got["suggestion"] is None
+        assert got["as_read"]["WHrs"] == {"role": "hours", "unit": "hours"}
+        assert len(got["shapes"]) == 5 and got["shapes"][0]["WHrs"] == "9"
+        got = c.get("/api/layouts", params={"doc": item["doc"], "page": item["page"], "ask": "true"}).json()
+        assert len(asked) == 1 and got["suggestion"] == report_2_map() and got["error"] is None
+
+
+def test_claude_failing_is_shown_not_a_crash(tmp_path, monkeypatch):
+    def failing(prompt, schema, **kw):
+        raise ocr.OcrError("CLAUDE_PLAN_LIMIT", "Your Claude plan has reached its usage limit for now.")
+
+    monkeypatch.setattr(ocr, "ask_text", failing)
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        got = c.get("/api/layouts", params={"doc": item["doc"], "page": item["page"], "ask": "true"}).json()
+        assert got["suggestion"] is None and "usage limit" in got["error"]

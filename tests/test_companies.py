@@ -256,3 +256,47 @@ def test_the_overview_marks_own_settings():
              {"company": "ACME", "status": "ready", "needs": 0, "waiting": 0, "employees": []}]
     rows = {r["company"]: r["own"] for r in companies.overview(views, [])["companies"]}
     assert rows == {"BINA": True, "ACME": False}
+
+
+# ------------------------------------------------------------------- a card layout Table Reader does not know
+import jobs as _jobs                                                           # noqa: E402
+import payroll as _payroll                                                     # noqa: E402
+from helpers import good, record                                              # noqa: E402
+
+REPORT_2 = ("NO.", "DATE", "WHrs", "OT", "LIn(Min)", "E/Out(Min)", "SIGNATURE")
+
+
+def card_page(labels=REPORT_2, rows=3, values=None):
+    values = values or {"NO.": "1", "DATE": "{d}", "WHrs": "8", "OT": "2", "LIn(Min)": "15", "E/Out(Min)": "0",
+                        "SIGNATURE": "ok"}
+    rec = record([{c: good(values.get(c, "").format(d=d)) for c in labels} for d in range(1, rows + 1)], labels=labels)
+    rec["page"] = 1
+    return _jobs.merged_pages({"pages": [rec]}, {"edits": []})[0]
+
+
+def layout_card(doc, page, name="card.jpg"):
+    return {"doc": doc, "name": name, "page": page, "hours_column": None}
+
+
+def test_an_unknown_layout_with_figures_is_an_item_once():
+    items = companies.unknown_layouts([layout_card("d1", card_page()), layout_card("d2", card_page())], {})
+    assert len(items) == 1
+    assert items[0] == {"kind": "layout", "signature": _payroll.layout_signature(list(REPORT_2)), "doc": "d1",
+                        "page": 1, "name": "card.jpg", "columns": ["OT", "LIn(Min)", "E/Out(Min)"]}
+
+
+def test_row_numbers_text_and_few_figures_are_not_an_item():
+    plain = card_page(labels=("No.", "Date", "Total", "Signature"), values={"No.": "{d}", "Date": "{d}", "Total": "8",
+                                                                           "Signature": "ALI"})
+    few = card_page(rows=2)                                                  # figures in fewer than 3 rows
+    assert companies.unknown_layouts([layout_card("d1", plain), layout_card("d2", few)], {}) == []
+
+
+def test_a_confirmed_layout_or_a_known_report_is_not_an_item():
+    page = card_page()
+    confirmed = {_payroll.layout_signature(list(REPORT_2)): {"columns": _payroll.map_as_read(list(REPORT_2), None)}}
+    assert companies.unknown_layouts([layout_card("d1", page)], confirmed) == []
+    labels = ("Date", "Shift Details / Normal", "Shift Details / Actual", "OverTime / 1.5")
+    report = card_page(labels=labels, values={"Date": "{d}", "Shift Details / Normal": "8",
+                                              "Shift Details / Actual": "9", "OverTime / 1.5": "1"})
+    assert companies.unknown_layouts([layout_card("d2", report)], {}) == []
