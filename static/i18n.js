@@ -349,6 +349,7 @@ const MS = {
   "Take this card off the employee? It goes back to the company's “Needs you” list as a card whose employee is not known.": "Keluarkan kad ini daripada pekerja? Ia kembali ke senarai “Perlukan anda” syarikat sebagai kad yang belum diketahui pekerjanya.",
   "Read with the saved card layout: the Hours column list does not apply to this card.": "Dibaca dengan susun atur kad yang disimpan: senarai Lajur jam tidak digunakan untuk kad ini.",
   "Any figures on it this month are cleared.": "Semua angka padanya bulan ini akan dikosongkan.",
+  "Pay preview": "Pratonton gaji",
   "Remove this employee from the payroll? Their documents are not deleted.": "Buang pekerja ini daripada senarai gaji? Dokumen mereka tidak dipadam.",
   "Employee No.": "No. Pekerja",
   "Name": "Nama",

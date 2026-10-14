@@ -83,7 +83,21 @@
   <section id="co-million" class="card" hidden></section>
   <section id="co-settings" class="card" hidden></section>
   <section class="card"><h3 data-t>Needs you</h3><div id="co-items"></div></section>
-  <section class="card"><h3 data-t>Employees</h3><div id="co-employees"></div></section>
+  <section class="card">
+    <div class="pw-tabs co-tabs" role="tablist">
+      <button id="co-tab-employees" type="button" role="tab" class="tab active" aria-selected="true" data-t>Employees</button>
+      <button id="co-tab-pay" type="button" role="tab" class="tab" aria-selected="false" data-t>Pay preview</button>
+    </div>
+    <div id="co-employees-tab">
+      <div id="co-employees"></div>
+      <button id="co-add" type="button" class="link" data-t>Add employee</button>
+    </div>
+    <div id="co-pay" hidden>
+      <p class="legend" data-t>What Million Payroll should pay each employee before EPF, SOCSO and tax, worked out with Million's own overtime tables. The pay basis and Basic Rate come from Million's employee list (import its “Payroll Information” report); type a rate to use another. This is a check for you: Million still does the real calculation.</p>
+      <div id="co-pay-table"></div>
+      <button id="co-pay-download" type="button" data-t>Download the pay table (CSV)</button>
+    </div>
+  </section>
 </main>
 
 <main id="look" hidden>
@@ -190,6 +204,7 @@
 <script src="payroll.js"></script>
 <script src="companies.js"></script>
 <script src="employee.js"></script>
+<script src="paytable.js"></script>
 <script src="settings.js"></script>
 <script src="look.js"></script>
 <script src="layout.js"></script>

@@ -158,6 +158,8 @@ async function showCompany(month, company) {
   $("co-million-open").hidden = true;                        // until this company's list is in (not the last one's)
   $("co-settings-open").hidden = !company;                  // files with no company have no settings of their own
   $("co-csv").hidden = !company;                             // the CSV without a company would hold every company
+  $("co-tab-pay").hidden = !company;                         // and so would the pay preview
+  showCompanyTab("employees");                               // always opens on Employees
   coError("");
   await loadCompany();
 }
@@ -166,6 +168,7 @@ async function loadCompany() {
   try {
     coView = await api("GET", `/api/payroll/${moMonth}/company?name=${encodeURIComponent(coCompany)}`);
     drawCompany();
+    if (!$("co-pay").hidden) loadPayTable();
   } catch (e) { coError(e.message); }
 }
 
