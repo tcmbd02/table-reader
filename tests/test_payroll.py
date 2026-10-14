@@ -1597,3 +1597,32 @@ def test_map_as_read_keeps_todays_reading_and_ignores_the_rest():
                  "WHrs": {"role": "hours", "unit": "hours"}, "OT": {"role": "ignore", "unit": "none"}}
     assert payroll.map_as_read(["Date", "IN", "OUT", "Sign"], None)["OUT"] == {"role": "out", "unit": "none"}
     assert payroll.valid_layout_map(["NO.", "DATE", "WHrs", "OT"], m) == m
+
+
+# --------------------------------------------- conversion: month-grid day columns headed with their weekday
+WEEKDAY_GRID = ["No.", "NAME"] + [f"{d} / {'TUE WED THU FRI SAT SUN MON'.split()[(d - 1) % 7]}" for d in range(1, 31)] + [
+    "TOTAL (NORMAL)"]
+
+
+def test_day_columns_headed_with_their_weekday_are_a_month_grid():
+    g = payroll.grid_columns(WEEKDAY_GRID)
+    assert g is not None and g["days"][1] == "1 / TUE" and g["days"][30] == "30 / WED" and len(g["days"]) == 30
+    assert g["name"] == "NAME" and g["total"] == "TOTAL (NORMAL)"
+    long = ["Day", "JOB"] + [f"{d} {'Tuesday Wednesday Thursday Friday Saturday Sunday Monday'.split()[(d - 1) % 7]}"
+                             for d in range(1, 31)]
+    assert payroll.grid_columns(long)["days"][2] == "2 Wednesday"
+    malay = ["Nama"] + [f"{d} {'Sel Rab Kha Jum Sab Ahd Isn'.split()[(d - 1) % 7]}" for d in range(1, 31)]
+    assert len(payroll.grid_columns(malay)["days"]) == 30
+
+
+def test_ordinal_or_other_words_are_still_not_day_columns():
+    assert payroll.grid_columns(["Things to Clean"] + [f"{d}th" for d in range(1, 32)]) is None
+    assert payroll.grid_columns(["Name"] + [f"{d} kg" for d in range(1, 32)]) is None
+
+
+def test_a_sheet_with_weekday_headings_is_never_read_as_a_time_card():
+    rows = [{"No.": good(str(n)), "NAME": good(f"W{n}"), **{c: good("✓") for c in WEEKDAY_GRID[2:-1]},
+             "TOTAL (NORMAL)": good("26")} for n in range(1, 5)]
+    r = payroll.calculate(plan_for(), [("sheet", merged(rows, labels=tuple(WEEKDAY_GRID)))], employee())
+    assert any("this sheet lists 4 workers" in i["text"] for i in r["issues"])
+    assert all(d["hours"] in (None, 0) for d in r["days"])                # no "No." column read as dates

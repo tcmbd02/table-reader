@@ -248,7 +248,9 @@ def worker_parts(pages: list[dict]) -> list[dict]:
 
 # Month grids: one row per worker and one column per day of the month ("Name | 1 | 2 | … | 31 | Remark"). A day cell
 # holds a mark, not hours. Only these marks are understood; anything else is reported, never guessed.
-_DAY_LABEL = re.compile(r"^\s*(\d{1,2})\s*$")
+# a month grid's day column: "5", or the day with its weekday ("5 / SAT", "5 Saturday", Malay "5 Sab")
+_DAY_LABEL = re.compile(r"^\s*(\d{1,2})(?:\s*/?\s*(?:mon|tue|wed|thu|fri|sat|sun|isn|sel|rab|kha|jum|sab|ahd)[a-z]*\.?)?\s*$",
+                        re.IGNORECASE)
 _GRID_TOTAL_LABEL = re.compile(r"total|jumlah|remark|catatan", re.IGNORECASE)
 GRID_MARKS = {
     "present": {"✓", "✔", "√", "/", "p", "1"},          # worked that day (a normal day, no overtime)
