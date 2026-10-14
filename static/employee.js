@@ -181,7 +181,7 @@ function emDrawCards() {
   $("em-cards").replaceChildren(
     el("h3", { text: t("Time cards of this employee") }),
     cards.length ? el("ol", { class: "needs" }, ...cards) : el("p", { class: "muted", text: t("This employee has no time card yet.") }),
-    emAddCardRow(e),
+    ...[emAddCardRow(e)].filter(Boolean),             // replaceChildren would write a missing one as "null"
     el("div", { class: "need-buttons" }, el("label", {}, t("Hours column"), colSel), remove));
   $("em-cards").hidden = false;
 }

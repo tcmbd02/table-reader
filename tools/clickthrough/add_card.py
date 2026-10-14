@@ -33,3 +33,9 @@ async def scenario(page, downloads):
     siti_view = await page.ev(f"fetch('/api/payroll/{M}/employee/{siti}').then((r) => r.json())")
     expect("SITI has no card now", siti_view["employee"]["jobs"], [])
     expect("figures redrawn", await page.ev("document.getElementById('em-error').hidden"), True)
+    # an employee whose company has no other card: no "Add a time card" line, and no stray text in its place
+    abm = ids[("A & B (M)", "SITI")]
+    await page.goto(f"{BASE}/#/payroll/{M}/e/{abm}")
+    await page.ev("T.until(() => T.text('#em-cards li strong').includes('A & B'), 'A & B SITI cards', 6000)")
+    expect("no add line", await page.ev("document.getElementById('em-add') === null"), True)
+    expect("no stray 'null'", "null" in await page.ev("document.getElementById('em-cards').textContent"), False)
