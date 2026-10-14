@@ -422,7 +422,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                 payroll.validate_plan(plan, known_refs(docs))
             except OcrError:
                 # A plan that cannot be saved as it is (old data, for example one card on two employees) is left
-                # alone: nothing joins it and nobody is numbered until the user has put it right on the old page.
+                # alone: nothing joins it and nobody is numbered until the user has put it right (employee view).
                 return plan, docs, gone, None, 0
             if gone:
                 plans.save(payroll.validate_plan(plan, known_refs(docs)))
@@ -451,7 +451,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         million = listed["employees"] if listed else None
         return {"plan": plan, "docs": docs, "results": results, "company_of": company_of, "million": million,
                 "offers": payroll.suggest_employee_nos(plan, million) if million else {}, "held": held,
-                "added": added, "numbered": numbered, "files": file_items(plan, docs, month),
+                "added": added, "numbered": numbered, **dict(zip(("files", "other"), file_items(plan, docs, month))),
                 "layouts": layout_items(plan, docs, company_of)}
 
     def layout_items(plan: dict, docs: list[dict], company_of: list[str]) -> dict[str, list[dict]]:
@@ -474,11 +474,16 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         saved = plans.load_layouts()
         return {company: companies.unknown_layouts(found, saved) for company, found in cards.items()}
 
-    def file_items(plan: dict, docs: list[dict], month: str) -> dict[str, list[dict]]:
+    def file_items(plan: dict, docs: list[dict], month: str) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
         """{company: items} for the finished files that need the user in ``month``: a card of the month that is on no
-        employee ("unplaced"), and a file with no month that is on no employee in any month ("month")."""
+        employee ("unplaced"), and a file with no month that is on no employee in any month ("month").
+        Also {company: other files}, on no employee in ``month``: set aside as "not a time card" ("month": "none"), or
+        read as another month and on no employee there. They do not need the user (not items); the company screen
+        lists them folded, so a mistaken "Not a time card" or a month read wrongly can be put right."""
         chosen, index = plans.load_file_months(), read_auto_index() or {}
         out: dict[str, list[dict]] = {}
+        other: dict[str, list[dict]] = {}
+        taken_in: dict[str, set[str]] = {}                          # month -> documents on its employees
         for d in docs:
             if not d["company"]:
                 continue                                            # first it needs a company (asked on its own)
@@ -488,6 +493,12 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                 cards = companies.unplaced(plan, candidates_of(d))
             except (OcrError, OSError, ValueError):
                 continue                                            # a reading that cannot be loaded is not an item
+            if chosen.get(d["id"]) == "none" or (found not in (None, month) and cards):
+                if found is not None and found not in taken_in:
+                    taken_in[found] = {payroll.split_part(r)[0] for e in plans.load(found)["employees"] for r in e["jobs"]}
+                if cards and (found is None or d["id"] not in taken_in[found]):
+                    other.setdefault(d["company"], []).append({"doc": d["id"], "name": d["name"], "month": found or "none"})
+                continue
             if found is None and index.get(d["id"]) not in (None, "before"):
                 continue                                            # ticked by hand for some month: answered already
             if found == month:
@@ -496,13 +507,14 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                      "readable": any(payroll.readable(p) for p in c["pages"] if p["rows"])} for c in cards)
             elif found is None and chosen.get(d["id"]) != "none" and cards:
                 out.setdefault(d["company"], []).append({"kind": "month", "doc": d["id"], "name": d["name"], "why": why})
-        return out
+        return out, other
 
     def view_of(state: dict, company: str) -> dict:
-        return companies.company_view(company, state["plan"], state["results"], state["company_of"], state["million"],
+        view = companies.company_view(company, state["plan"], state["results"], state["company_of"], state["million"],
                                       state["offers"], state["held"], state["files"].get(company, []),
                                       payroll.settings_view(state["plan"], company) if company else None,
                                       state["layouts"].get(company, []))
+        return {**view, "other_files": state["other"].get(company, [])}
 
     @app.get("/api/payroll/{month}/companies")
     def payroll_companies(month: str):
@@ -537,14 +549,16 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
     @app.post("/api/payroll/{month}/place")
     async def place_card(month: str, request: Request):
         """Put a card on an employee of the month, or on a new employee ("employee": null). "move": true takes it off
-        the employee who has it first; without it, a card that is on someone else is refused."""
+        the employee who has it first ("from": the employee the screen showed it on, see take_off_card); without it, a
+        card that is on someone else is refused."""
         try:
             body = await request.json()
         except ValueError:
             body = None
         if not isinstance(body, dict) or not isinstance(body.get("ref"), str) or "employee" not in body \
                 or not (body["employee"] is None or isinstance(body["employee"], str)) \
-                or not isinstance(body.get("move", False), bool):
+                or not isinstance(body.get("move", False), bool) \
+                or not (body.get("from") is None or isinstance(body["from"], str)):
             raise OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
         with auto_lock:
             plan, docs = plans.load(month), finished_documents()
@@ -558,7 +572,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                 raise OcrError("JOB_NOT_FOUND", "That card was not found. It may have been moved or deleted.")
             before = {e["id"] for e in plan["employees"]}
             if body.get("move"):                        # "Move to ..." in the employee view: off its employee first
-                payroll.take_off_card(plan, body["ref"])
+                payroll.take_off_card(plan, body["ref"], body.get("from"))
             employee = payroll.place_card(plan, candidate, body["employee"], lambda: "e" + uuid.uuid4().hex[:12],
                                           plans.load_directory())
             checked = payroll.validate_plan(plan, known_refs(docs))      # refuses a card that is on someone else
@@ -783,12 +797,16 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         changes = body.get("changes")
         if not isinstance(changes, dict):
             raise bad_body()
-        change_plan(month, lambda plan: payroll.change_employee(plan, employee_id, changes))
-        plan = plans.load(month)
-        if "emp_no" in changes or "name" in changes:                # Employee No. typed: kept for next month
-            directory = plans.load_directory()
-            if payroll.remember_employees(plan, directory):
-                plans.save_directory(directory)
+        with auto_lock:                                             # as change_plan, and the number remembered with it
+            plan, docs = plans.load(month), finished_documents()
+            drop_gone_documents(plan, known_refs(docs))
+            payroll.change_employee(plan, employee_id, changes)
+            plan = payroll.validate_plan(plan, known_refs(docs))
+            plans.save(plan)
+            if "emp_no" in changes or "name" in changes:            # Employee No. typed: kept for next month
+                directory = plans.load_directory()
+                if payroll.remember_employees(plan, directory):
+                    plans.save_directory(directory)
         return employee_view(month, plan, employee_id)
 
     @app.delete("/api/payroll/{month}/employee/{employee_id}")
@@ -818,24 +836,25 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
     async def take_off(month: str, request: Request):
         """Take a card off its employee: it is a "whose card is this?" item again."""
         body = await settings_body(request)
-        if not isinstance(body.get("ref"), str):
+        if not isinstance(body.get("ref"), str) or not (body.get("from") is None or isinstance(body["from"], str)):
             raise bad_body()
 
-        def change(plan: dict) -> None:
-            if payroll.take_off_card(plan, body["ref"]) is None:
+        def change(plan: dict) -> None:                             # "from": the employee the screen showed it on
+            if payroll.take_off_card(plan, body["ref"], body.get("from")) is None:
                 raise OcrError("BAD_PAYROLL", "That card is not on any employee any more. Reload the page.")
 
         return change_plan(month, change)
 
     @app.put("/api/payroll/{month}/lists")
     async def save_lists(month: str, request: Request):
-        """The allowance, deduction, benefit and leave lines (the same for every employee); a line removed takes its
-        figures off every employee (validate_plan)."""
+        """One allowance, deduction, benefit or leave line added ({"kind", "add": {"name", "type"}}) or removed
+        ({"kind", "remove": name}); the other lines stay as saved (payroll.change_list)."""
         body = await settings_body(request)
-        lists = body.get("lists")
-        if not isinstance(lists, dict):
+        add, remove = body.get("add"), body.get("remove")
+        if not isinstance(body.get("kind"), str) or (add is None) == (remove is None) \
+                or not (add is None or isinstance(add, dict)) or not (remove is None or isinstance(remove, str)):
             raise bad_body()
-        return change_plan(month, lambda plan: plan.update({"lists": lists}))
+        return change_plan(month, lambda plan: payroll.change_list(plan, body["kind"], add, remove))
 
     @app.get("/api/payroll/{month}/pay")
     def pay_table(month: str, company: str = ""):

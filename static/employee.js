@@ -36,12 +36,17 @@ async function showEmployee(month, id) {
   await emLoad();
 }
 
-async function emLoad() {
+// The server's view again, after the requests before it (so an older answer never draws over a newer save).
+function emLoad() {
   const month = emMonth, id = emId;
-  try {
-    const view = await api("GET", emEmployeeUrl());
-    if (month === emMonth && id === emId) { emView = view; emError(""); emDraw(); }
-  } catch (e) { if (month === emMonth && id === emId) emFail(e); }
+  emChain = emChain.then(async () => {
+    if (month !== emMonth || id !== emId) return;
+    try {
+      const view = await api("GET", emEmployeeUrl());
+      if (month === emMonth && id === emId) { emView = view; emError(""); emDraw(); }
+    } catch (e) { if (month === emMonth && id === emId) emFail(e); }
+  });
+  return emChain;
 }
 
 // An employee removed in another tab: say so and show nothing that could be changed.
@@ -69,7 +74,7 @@ function emSend(changes) {
       emDraw();
     } catch (e) {
       if (month !== emMonth || id !== emId) return;
-      for (const k of Object.keys(changes)) delete emPending[k];       // back to what the server has
+      for (const [k, v] of Object.entries(changes)) if (emPending[k] === v) delete emPending[k];   // back to the server's
       emState(t("Not saved")); emFail(e);
       if (emView) emDraw();
     }
@@ -103,12 +108,14 @@ function emKeepFocus(redraw) {
   const a = document.activeElement;
   const id = a && $("employee").contains(a) ? a.id : "";
   const typed = id && "value" in a && a.dataset.drawn !== undefined && a.value !== a.dataset.drawn ? a.value : null;
+  const spaced = id && a.type === "text" && a.value !== a.value.trim() ? a.value : null;   // the server trims names
   let sel = null;
   try { if (id && a.selectionStart !== null) sel = [a.selectionStart, a.selectionEnd]; } catch (_) { /* number boxes */ }
   redraw();
   const again = id && $(id);
   if (!again) return;
   if (typed !== null) again.value = typed;
+  else if (spaced !== null && again.value === spaced.trim()) again.value = spaced;
   again.focus();
   try { if (sel) again.setSelectionRange(sel[0], sel[1]); } catch (_) { /* number boxes */ }
 }
@@ -138,11 +145,11 @@ function emDrawCards() {
       el("option", { value: "", text: t("A new employee") }));
     const move = el("button", { type: "button", text: t("Move") });
     move.addEventListener("click", () => emAct(move, () => api("POST", emUrl("/place"),
-      { ref: card.ref, employee: target.value || null, move: true })));
+      { ref: card.ref, employee: target.value || null, move: true, from: emId })));
     const off = el("button", { type: "button", text: t("Take off") });
     off.addEventListener("click", () => {
       if (!confirm(t("Take this card off the employee? It goes back to the company's “Needs you” list as a card whose employee is not known."))) return;
-      emAct(off, () => api("POST", emUrl("/take-off"), { ref: card.ref }));
+      emAct(off, () => api("POST", emUrl("/take-off"), { ref: card.ref, from: emId }));
     });
     return el("li", { class: "need" }, el("strong", { text: card.name || card.doc }),
       card.mapped ? el("p", { class: "legend", text: t("Read with the saved card layout: the Hours column list does not apply to this card.") }) : null,
@@ -198,8 +205,9 @@ function emRow(key, label, unit, bold) {
     el("span", { class: "unit", text: unit || "" }), emReset(key));
 }
 
-// The allowance, deduction, benefit and leave lines are the same for every employee: saved as one list.
-function emSaveLists(lists, button) { return emAct(button, () => api("PUT", emUrl("/lists"), { lists })); }
+// The allowance, deduction, benefit and leave lines are the same for every employee: one line is added or removed at
+// a time, so a view opened before another tab added a line does not take it away.
+function emSaveLine(change, button) { return emAct(button, () => api("PUT", emUrl("/lists"), change)); }
 
 function emEntry(kind, name, n) {
   const v = ((emPerson().entries || {})[kind] || {})[name] || 0;
@@ -223,7 +231,7 @@ function emLines(kind) {
     const del = el("button", { type: "button", class: "del", text: "×", title: t("Remove “{name}” from the list", { name: l.name }), "aria-label": t("Remove {name}", { name: l.name }) });
     del.addEventListener("click", () => {
       if (!confirm(t("Remove “{name}” from the list for every employee?", { name: l.name }) + " " + t("Any figures on it this month are cleared."))) return;
-      emSaveLists({ ...emView.lists, [kind]: lines.filter((x) => x.name !== l.name) }, del);
+      emSaveLine({ kind, remove: l.name }, del);
     });
     return el("tr", {}, el("td", {}, el("label", { for: `ex-${kind}-${n}`, text: l.name })), el("td", { text: l.type }),
       el("td", { class: "n" }, emEntry(kind, l.name, n)),
@@ -241,7 +249,7 @@ function emLines(kind) {
     const n = name.value.trim();
     if (!n) { name.focus(); return; }
     if (lines.some((l) => l.name.toLowerCase() === n.toLowerCase())) { emError(t("“{n}” is already in the {title} list.", { n, title: heads.title })); return; }
-    emSaveLists({ ...emView.lists, [kind]: [...lines, { name: n, type: type.value.trim() }] }, add);
+    emSaveLine({ kind, add: { name: n, type: type.value.trim() } }, add);
   };
   add.addEventListener("click", addLine);
   name.addEventListener("keydown", (ev) => { if (ev.key === "Enter") addLine(); });

@@ -1286,16 +1286,89 @@ def test_add_employee_by_hand_gets_a_number(maju_jaya):
     assert c.post(f"/api/payroll/{month}/employee", json={"company": 5}).status_code == 400
 
 
-def test_a_removed_allowance_line_clears_its_figures(maju_jaya):
+def test_one_line_is_added_or_removed_at_a_time(maju_jaya):
+    """The lines are the same for every employee: a view opened before another tab added a line does not take it
+    away (nor the figures on it) when it adds or removes another one."""
     c, month, ali, siti, ref = maju_jaya
-    lists = c.get(f"/api/payroll/{month}/employee/{ali}").json()["lists"]
-    with_transport = {**lists, "allowance": lists["allowance"] + [{"name": "Transport", "type": "Fixed"}]}
-    assert c.put(f"/api/payroll/{month}/lists", json={"lists": with_transport}).json() == {"ok": True}
-    assert change(c, month, ali, entries={"allowance": {"Transport": 50}}).json()["employee"]["entries"]["allowance"] \
-        == {"Transport": 50}
-    c.put(f"/api/payroll/{month}/lists", json={"lists": lists})
-    assert c.get(f"/api/payroll/{month}/employee/{ali}").json()["employee"]["entries"]["allowance"] == {}
-    assert c.put(f"/api/payroll/{month}/lists", json={"lists": "x"}).status_code == 400
+    lines = lambda: c.get(f"/api/payroll/{month}/employee/{ali}").json()["lists"]["allowance"]   # noqa: E731
+    url = f"/api/payroll/{month}/lists"
+    assert c.put(url, json={"kind": "allowance", "add": {"name": "Transport", "type": "Fixed"}}).json() == {"ok": True}
+    change(c, month, siti, entries={"allowance": {"Transport": 50}})
+    assert c.put(url, json={"kind": "allowance", "add": {"name": "Meal", "type": ""}}).json() == {"ok": True}  # ALI's tab
+    names = [line["name"] for line in lines()]
+    assert "Transport" in names and "Meal" in names
+    assert c.get(f"/api/payroll/{month}/employee/{siti}").json()["employee"]["entries"]["allowance"] == {"Transport": 50}
+    r = c.put(url, json={"kind": "allowance", "add": {"name": "transport", "type": ""}})
+    assert r.status_code == 400 and "twice" in r.json()["message"]
+    assert c.put(url, json={"kind": "allowance", "remove": "Transport"}).json() == {"ok": True}
+    assert c.get(f"/api/payroll/{month}/employee/{siti}").json()["employee"]["entries"]["allowance"] == {}
+    assert c.put(url, json={"kind": "allowance", "remove": "Transport"}).json() == {"ok": True}   # gone already: nothing
+    for bad in ({"lists": {}}, {"kind": "nope", "remove": "Meal"}, {"kind": "allowance"}, {"kind": "allowance", "add": "x"},
+                {"kind": "allowance", "remove": 5}):
+        assert c.put(url, json=bad).status_code == 400, bad
+    assert "Meal" in [line["name"] for line in lines()]
+
+
+def test_a_stale_view_cannot_take_a_card_off_someone_else(maju_jaya):
+    """Tab A shows ALI's card; tab B moves it to SITI. Take off or Move in tab A then says so and changes nothing."""
+    c, month, ali, siti, ref = maju_jaya
+    place = f"/api/payroll/{month}/place"
+    assert c.post(place, json={"ref": ref, "employee": siti, "move": True, "from": ali}).json()["ok"] is True   # tab B
+    for r in (c.post(f"/api/payroll/{month}/take-off", json={"ref": ref, "from": ali}),
+              c.post(place, json={"ref": ref, "employee": None, "move": True, "from": ali})):
+        assert r.status_code == 400 and "no longer on this employee" in r.json()["message"]
+    assert ref in c.get(f"/api/payroll/{month}/employee/{siti}").json()["employee"]["jobs"]
+    assert len(c.get(f"/api/payroll/{month}/company", params={"name": "MAJU JAYA"}).json()["employees"]) == 2
+    assert c.post(f"/api/payroll/{month}/take-off", json={"ref": ref, "from": 5}).status_code == 400
+    assert c.post(f"/api/payroll/{month}/take-off", json={"ref": ref, "from": siti}).json() == {"ok": True}
+
+
+def test_moving_a_card_to_a_removed_employee_leaves_it_where_it_was(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    c.delete(f"/api/payroll/{month}/employee/{siti}")
+    r = c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": siti, "move": True, "from": ali})
+    assert r.json()["code"] == "EMPLOYEE_NOT_FOUND"
+    assert c.get(f"/api/payroll/{month}/employee/{ali}").json()["employee"]["jobs"] == [ref]
+
+
+def test_figures_that_are_not_figures_are_refused_not_a_crash(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    for changes in ({"overrides": "x"}, {"overrides": [1]}, {"entries": "x"}, {"entries": {"allowance": 5}}):
+        r = change(c, month, ali, **changes)
+        assert r.status_code == 400 and r.json()["code"] == "BAD_PAYROLL", changes
+
+
+def test_other_files_of_a_company_can_be_taken_into_the_month(tmp_path):
+    """A file set aside as "Not a time card", or read as another month and on nobody there, is listed (not as
+    something that needs the user) and can be taken into this month."""
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        for name in (f"BINA SITI SEPT {YEAR}.png", f"BINA ZUL AUG {YEAR}.png", "BINA NOTICE.png"):
+            upload(c, tmp_path, name=name)
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        notice = next(j["id"] for j in c.get("/api/jobs").json() if "NOTICE" in j["name"])
+        zul = next(j["id"] for j in c.get("/api/jobs").json() if "ZUL" in j["name"])
+        c.post("/api/payroll/file-month", json={"id": notice, "month": "none"})
+        view = c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).json()
+        assert view["items"] == [] and view["status"] != "needs"
+        assert sorted((f["doc"], f["month"]) for f in view["other_files"]) == sorted([(zul, f"{YEAR}-08"), (notice, "none")])
+        assert c.post("/api/payroll/file-month", json={"id": zul, "month": month}).json() == {"ok": True}
+        view = c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).json()
+        assert [f["doc"] for f in view["other_files"]] == [notice]
+        placed = [i["ref"] for i in view["items"] if i["kind"] == "unplaced"]
+        cards = [r for e in view["employees"] for r in c.get(f"/api/payroll/{month}/employee/{e['id']}").json()["employee"]["jobs"]]
+        assert zul in placed + cards
+        # a file of another month that is on an employee there is not offered
+        c.post("/api/payroll/file-month", json={"id": zul, "month": f"{YEAR}-08"})
+        c.get(f"/api/payroll/{YEAR}-08/company", params={"name": "BINA"})
+        august = c.get(f"/api/payroll/{YEAR}-08/company", params={"name": "BINA"}).json()
+        unplaced = [i for i in august["items"] if i["kind"] == "unplaced"]
+        if unplaced:
+            c.post(f"/api/payroll/{YEAR}-08/place", json={"ref": unplaced[0]["ref"], "employee": None})
+        view = c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).json()
+        assert [f["doc"] for f in view["other_files"]] == [notice]
 
 
 def test_the_pay_table_of_one_company(maju_jaya):

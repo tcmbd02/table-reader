@@ -569,13 +569,37 @@ def change_employee(plan: dict, employee_id: str, changes: dict) -> dict:
     return person
 
 
-def take_off_card(plan: dict, ref: str) -> str | None:
-    """Take the card ``ref`` off whichever employee has it; that employee's id, or None when nobody has it."""
+CARD_MOVED = "That card is no longer on this employee. Reload the page."
+
+
+def take_off_card(plan: dict, ref: str, from_id: str | None = None) -> str | None:
+    """Take the card ``ref`` off whichever employee has it; that employee's id, or None when nobody has it.
+    ``from_id``: the employee a screen showed the card on. The card is taken off that employee only, and when it is not
+    on them any more (another tab moved it) OcrError, so a stale screen never takes it off someone else."""
+    if from_id is not None:
+        person = _employee(plan, from_id)
+        if ref not in person["jobs"]:
+            raise OcrError("BAD_PAYROLL", CARD_MOVED)
+        person["jobs"].remove(ref)
+        return person["id"]
     for person in plan["employees"]:
         if ref in person["jobs"]:
             person["jobs"].remove(ref)
             return person["id"]
     return None
+
+
+def change_list(plan: dict, kind: str, add: dict | None = None, remove: str | None = None) -> None:
+    """Add one line to (or remove one from) a list that is the same for every employee, leaving the other lines as
+    saved: a screen opened before another tab added a line does not take it away. A line removed takes its figures
+    off every employee (validate_plan). Removing a line that is not there changes nothing."""
+    lines = (plan.get("lists") or default_lists()).get(kind)
+    if kind not in LISTS or not isinstance(lines, list):
+        raise OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+    if add is not None:
+        plan["lists"] = {**plan.get("lists", {}), kind: [*lines, add]}
+    else:
+        plan["lists"] = {**plan.get("lists", {}), kind: [line for line in lines if line.get("name") != remove]}
 
 
 def remove_employee(plan: dict, employee_id: str) -> None:
@@ -665,7 +689,7 @@ def validate_plan(plan, known_jobs: set[str]) -> dict:
             # rows, nor a whole page together with one of its rows
             if j in used_jobs or (page is None and base in in_parts) or (page is not None and base in whole) \
                     or (row is None and (base, page) in row_pages) or (row is not None and (base, page) in whole_pages):
-                raise OcrError("BAD_PAYROLL", "A document can belong to one employee only. Untick it from the other employee first.")
+                raise OcrError("BAD_PAYROLL", "A document can belong to one employee only. Take it off the other employee first.")
             used_jobs[j] = e["id"]
             (whole if page is None else in_parts).add(base)
             if page is not None:
@@ -674,6 +698,8 @@ def validate_plan(plan, known_jobs: set[str]) -> dict:
         if column is not None and (not isinstance(column, str) or len(column) > 200):
             raise bad
         overrides = {}
+        if not isinstance(e.get("overrides") or {}, dict):
+            raise bad
         for key, value in (e.get("overrides") or {}).items():
             if key not in FIELD_KEYS or isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or value > 100000:
                 raise OcrError("BAD_PAYROLL", "Figures must be numbers (0 or more).")

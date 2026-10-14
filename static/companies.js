@@ -329,7 +329,27 @@ function drawCompany() {
     ? el("table", { class: "daytable companies" }, el("tr", {}, ...EMPLOYEE_HEADS.map((h) => el("th", { text: t(h) }))), ...rows)
     : el("p", { class: "muted", text: t("No employees for this company in this month yet.") }));
   $("co-csv").disabled = !coView.employees.length;
+  drawOtherFiles();
   drawMillionNew();
+}
+
+// Files of the company on nobody in this month: set aside as "Not a time card", or read as another month and on nobody
+// there. Folded (they do not need the user); "It is for <month>" puts a mistake right.
+function drawOtherFiles() {
+  const files = coView.other_files || [];
+  const box = $("co-other");
+  box.hidden = !files.length;
+  if (!files.length) { box.replaceChildren(); return; }
+  const rows = files.map((f) => {
+    const here = el("button", { type: "button", text: t("It is for {month}", { month: monthTitle(moMonth) }) });
+    here.addEventListener("click", () => coAct(here, () => api("POST", "/api/payroll/file-month", { id: f.doc, month: moMonth })));
+    const why = f.month === "none" ? t("Set aside as not a time card.") : t("Read as a file of {month}.", { month: monthTitle(f.month) });
+    return el("li", { class: "need" }, el("strong", { text: f.name }), el("p", { class: "legend", text: why }),
+      el("div", { class: "need-buttons" }, here, openCardButton(f.doc)));
+  });
+  box.replaceChildren(el("summary", { text: tn(files.length, "{n} other file of this company", "{n} other files of this company") }),
+    el("p", { class: "legend", text: t("Files set aside as not a time card, or read as another month, that are on nobody this month. If one is a time card of this month, take it in.") }),
+    el("ol", { class: "needs" }, ...rows));
 }
 
 // "New in Million": the company's employees whose Employee No. is not in Million's imported list. They are held back

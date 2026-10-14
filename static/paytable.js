@@ -76,6 +76,11 @@ function fillPayTable(host) {
     if (!r) continue;
     tr.querySelector(".d-who").textContent = [r.emp_no, r.name].filter(Boolean).join(" ") || "—";
     tr.querySelector(".d-from").textContent = r.rate_source === "million" ? "Million" : r.rate_source === "typed" ? "Table Reader" : "";
+    const basis = tr.querySelector("select");
+    if (basis !== document.activeElement) {
+      basis.disabled = r.rate_source === "million";
+      basis.value = r.rate_source === "million" ? r.pay_basis : (r.typed_basis || "monthly");
+    }
     tr.querySelectorAll(".d-fig").forEach((td, k) => {
       const v = DAILY_COLUMNS[k][1](ptResult(r));
       td.textContent = v === null || v === undefined ? "" : fmt(v);
