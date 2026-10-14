@@ -2,7 +2,8 @@
 
 ## Session 24c - 2026-10-14 - Rest days every week in the settings
 Asked by the user: Sunday a rest day by default in the month settings. It already was (every new month starts with its
-Sundays as rest days); on the user's choice the settings now show it. Branch `weekly-rest` (from `pdf-text`).
+Sundays as rest days); on the user's choice the settings now show it. Branch `weekly-rest` (from `pdf-text`), **merged
+into `pdf-text` and the app rebuilt on the user's OK (not pushed; `download` branch not updated).**
 - Month settings and Company settings (one editor) have "Rest days every week: Mon … Sun", read from the calendar
   (Sunday ticked in a new month; half-ticked when only some of a weekday's days are rest days). Ticking makes all of
   that weekday's days rest days, unticking working days; public holidays are left alone. Saved as before (day by day).
