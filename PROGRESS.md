@@ -1,5 +1,27 @@
 # Progress log
 
+## Session 21 - 2026-10-14 - Company-first payroll, stage 4 planned; Part A: summary before the file, New in Million
+Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`. Stage 4 is split in two parts, each merged
+and shippable by itself: **Part A** (this session) and **Part B** (employee view, pay preview tab, Add employee, then
+the old page and the endpoints only it used are removed). Part A built on branch `million-summary` (from `pdf-text`),
+**local, not merged, app not rebuilt**. 465 tests pass; Malay checks pass.
+- **What the user sees:** "Make the month's Million file" first shows what the file would hold: per company the
+  employees going in, then who is held back with the reason. **Make the file** makes it (worked out again then, so
+  something fixed in between is in it); **Not now** closes the summary. A company with employees Million does not have
+  yet shows **New in Million: n employees**: a list of Employee No. and name with **Copy** per row and **Copy all**
+  (one line per employee, number and name separated by a tab, so it pastes into Excel as two columns), with how to
+  create them in Million and export its list again. **Download payroll CSV** is on the month overview (every company)
+  and on a company screen (that company).
+- **How:** `GET /api/payroll/{month}/run` works the file out without writing it (`month_file(month, make)` shared with
+  POST); each company in the answer lists `ready_people`. The held-back list is drawn by one function for both the
+  summary and the result (`heldNodes`, payroll.js; moves in Part B). Copy falls back to the older copy command when
+  the browser refuses the clipboard (the app's own browser pane refused it).
+- **Real September data (copy, counts only):** all 84 employees identical before and after (same fingerprint);
+  the summary's counts equal the made file's (8 in, 76 held back, 26 companies); the summary wrote no file.
+- **Clicked through** in the app's browser pane on made-up data: offers accepted, "Ready, 1 waiting for Million", the
+  New in Million panel, Copy all's text, summary / Not now / Make the file, both CSV addresses. Not looked at by eye
+  (screenshots time out while the app window is minimized); the real Windows clipboard was not written.
+
 ## Session 20 - 2026-10-12 - Company-first payroll, stage 3: month and company settings
 Built on branch `company-settings` (from `pdf-text`), then **merged into `pdf-text` (fast-forward, local, not
 pushed) and the app rebuilt** on the user's OK; the rebuilt app has Month settings and Company settings. 463 tests

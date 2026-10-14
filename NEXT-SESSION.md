@@ -5,21 +5,16 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 **To continue, paste this into the new session:**
 
-> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 20), then let's continue.
+> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 21), then let's continue.
 
-**To start stage 4 of the company-first payroll, paste this instead:**
+**To start stage 4 Part B of the company-first payroll, paste this instead:**
 
-> Continue the company-first payroll with stage 4. Read NEXT-SESSION.md (section 0), PROGRESS.md sessions 18 to 20,
-> and the spec `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md` (sections 3.3, 3.4, 7, 8 and 9.3);
-> the stage 1-3 plans in `docs/superpowers/plans/` show how earlier stages were planned. State: stages 1-3 are merged
-> into `pdf-text` (local, not pushed) and the app is rebuilt. Stage 4 = the "New in Million" list per company (spec 7),
-> the summary before making the month's Million file (spec 8), and removing the old payroll page at the end (spec
-> 3.4). Before the old page can go, what only it does must move: the employee detail view (every figure, overrides,
-> allowances and deductions, the message, Employee No. / name, the employee's cards with move / take off, the hours
-> column, remove employee), the pay preview, the payroll CSV and "Add employee". If that is too much for one plan,
-> propose how to split stage 4 first. Work as before: write the plan, make a new branch from `pdf-text`, build it here
-> with tests first, click it through in headless Edge on made-up data, compare the real September figures read-only
-> (counts only), then one fresh reviewer for the whole branch. Ask me before merging, pushing or rebuilding.
+> Continue the company-first payroll with stage 4 Part B. Read NEXT-SESSION.md (section 0), PROGRESS.md sessions 18
+> to 21, the plan `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md` (Part B = Tasks 4-10) and the
+> spec `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md`. Make branch `employee-view` from `pdf-text`
+> (Part A must be merged first), build it here with tests first, click it through on made-up data, compare the real
+> September figures read-only (counts only), then one fresh reviewer for the whole branch. Ask me before merging,
+> pushing or rebuilding.
 
 ---
 
@@ -78,8 +73,12 @@ workers are not in that month's payroll, so there was nothing to update. Details
 - **Session 20 (2026-10-12): stage 3, month and company settings**, merged into `pdf-text` (local, **not pushed**)
   and the app rebuilt on the user's OK: Month settings on the overview, Company settings on a
   company screen (own hours, break, calendar; "next month" carry-over), an item when the default changes after a
-  company's own settings. Reviewed, its one important finding fixed; 7 minor ones in PROGRESS.md 20. Next: stage 4
-  ("New in Million", the summary before the month file, removing the old page).
+  company's own settings. Reviewed, its one important finding fixed; 7 minor ones in PROGRESS.md 20.
+- **Session 21 (2026-10-14): stage 4 planned and Part A built** on branch `million-summary` (from `pdf-text`, local,
+  **not merged, app not rebuilt**). Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`, split in
+  Part A (summary before the month's Million file, "New in Million" list with Copy, payroll CSV on the new screens) and
+  Part B (employee view, pay preview tab, Add employee, then the old page and its endpoints removed). Next: the user's
+  OK to merge Part A, then Part B. Details: PROGRESS.md 21.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -103,7 +102,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | **Million import file (.xls)** for the office | **Done (session 7).** Button "Download Million file (.xls)"; the office checker says READY on invented figures. Real September file not made yet (needs Employee Nos.). |
 | Browser check | Never clicked through by Claude (Chrome extension was not connected). All checks were tests + API + real-data scripts. |
 
-Tests: **463 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 20. Sessions up to 20 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed).
+Tests: **465 pass** on `million-summary` (463 on `pdf-text`) (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 20. Sessions up to 20 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed); session 21 on `million-summary`.
 
 ## 2. Git / GitHub
 
