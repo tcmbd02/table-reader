@@ -108,8 +108,11 @@ pass. Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`
   item, the panel on today's reading, Ask Claude preselecting, one role changed, Save (OT 1.5 0 -> 60, item gone),
   "It is right as it is" on another layout. Not looked at by eye.
 - **Open for the user:**
-  - one real Claude call to check the suggestion on the clock report (it uses their plan; also proves the CLI accepts
-    `--tools ""`);
+  - ~~one real Claude call~~ **done on the user's OK (after they signed in to Claude again: three earlier tries failed
+    with "Failed to refresh OAuth token", a half-finished sign-in renewal):** Claude answered in 8 s, the answer passed
+    `valid_layout_map`, and WHrs = hours (hours), OT = overtime 1.5 (hours), LIn(Min) = lateness (minutes) and
+    E/Out(Min) = early departure (minutes) all matched; In / Out as IN / OUT, DATE as date, every other column "ignore".
+    Nothing saved. So the CLI accepts `--tools ""` with `--json-schema`;
   - with an OT column mapped, Sunday work no longer counts as "Rest day" days (the report's own OT is trusted, as
     with the Shift Details report): is that right for these reports?
   - roles for overtime on rest days and holidays as days;
