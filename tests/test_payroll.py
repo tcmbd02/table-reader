@@ -1428,3 +1428,24 @@ def test_a_new_month_file_starts_with_the_kept_settings(tmp_path):
     assert payroll.settings_for(september, "BINA")["day_types"]["5"] == "rest"
     assert payroll.settings_for(september, "MAJU JAYA")["day_types"]["5"] == "work"
     assert store.load("2026-08")["companies"]["BINA"]["day_types"]["1"] == "rest"     # a saved month is as it was
+
+
+# ------------------------------------------------------------------------- conversion: the daily hours column
+REPORT_2 = ("DATE", "DAYS/HOURS/MINUTES WORK / WDays", "DAYS/HOURS/MINUTES WORK / WHrs", "DAYS/HOURS/MINUTES WORK / OT",
+            "DAYS/HOURS/MINUTES WORK / LIn(Min)", "DAYS/HOURS/MINUTES WORK / E/Out(Min)", "STATUS")
+
+
+def test_minutes_columns_are_never_the_daily_hours():
+    assert payroll.pick_columns(list(REPORT_2), None) == ("DATE", "DAYS/HOURS/MINUTES WORK / WHrs")
+
+
+def test_a_money_column_is_never_the_daily_hours():
+    assert payroll.pick_columns(["NO.", "NAME", "DAY UNPAID", "TOTAL (RM)"], None)[1] is None
+
+
+def test_the_users_hours_column_still_wins():
+    assert payroll.pick_columns(["NO.", "NAME", "TOTAL (RM)"], "TOTAL (RM)")[1] == "TOTAL (RM)"
+
+
+def test_total_normal_is_still_the_hours():
+    assert payroll.pick_columns(["Date", "TOTAL (NORMAL)"], None) == ("Date", "TOTAL (NORMAL)")

@@ -129,6 +129,8 @@ _STAMP = re.compile(r"^(\d{1,2})\s*[:.,]\s*([0-5]\d)(?:\s*:\s*([0-5]\d))?\s*(?:(
 DEFAULT_BREAK = 1.0
 _DATE_LABEL = re.compile(r"date|tarikh|day|hari", re.IGNORECASE)
 _HOURS_LABEL = re.compile(r"total|jumlah|hours|jam|hrs", re.IGNORECASE)
+_NOT_HOURS_WORDS = {"rm", "amount", "$", "min", "mins", "minutes"}          # money or minutes: never the daily hours
+_HOURS_NAMES = {"hours", "hrs", "whrs", "total", "jumlah", "jam", "total hours", "jumlah jam"}
 
 
 # ----------------------------------------------------------------------------------------------------- the month
@@ -793,15 +795,25 @@ def parse_day(value: str | None, month_number: int) -> tuple[int | None, str | N
     return None, "the date could not be read"
 
 
+def _last_words(label: str) -> list[str]:
+    """The words of a label's last part ("DAYS/HOURS/MINUTES WORK / E/Out(Min)" -> ["e", "out", "min"])."""
+    return re.findall(r"[a-z]+|\$", _key(label).split(" / ")[-1])
+
+
 def pick_columns(labels: list[str], hours_column: str | None) -> tuple[str | None, str | None]:
+    """(date column, daily hours column). The column the user chose wins; else the clock report's Actual; else a column
+    named for hours or a total, preferring one named exactly so (WHrs, Total, Jumlah). A money column ("TOTAL (RM)")
+    or a minutes column ("E/Out(Min)") is never taken by itself: read as hours, its figures would be wrong."""
     date_col = next((c for c in labels if _DATE_LABEL.search(c)), labels[0] if labels else None)
     if hours_column and hours_column in labels:
         return date_col, hours_column
     actual = next((c for c in labels if _key(c) == REPORT_HOURS), None)
     if actual:                                                      # clock-system report: the hours actually worked
         return date_col, actual
-    candidates = [c for c in labels if _HOURS_LABEL.search(c) and c != date_col]
-    return date_col, (candidates[-1] if candidates else None)
+    candidates = [c for c in labels if _HOURS_LABEL.search(c) and c != date_col
+                  and not set(_last_words(c)) & _NOT_HOURS_WORDS]
+    exact = [c for c in candidates if " ".join(_last_words(c)) in _HOURS_NAMES]
+    return date_col, (exact or candidates or [None])[-1]
 
 
 def _key(label: str) -> str:
