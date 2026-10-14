@@ -5,17 +5,10 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 **To continue, paste this into the new session:**
 
-> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 21), then let's continue.
+> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 23), then let's continue.
 
-**To start stage 4 Part B (after Part C is merged), paste this instead:**
-
-> Continue the company-first payroll with stage 4 Part B. Read NEXT-SESSION.md (section 0), PROGRESS.md sessions 18
-> to 22, the plan `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md` (Part B = Tasks 4-10) and the
-> spec `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md`. Make branch `employee-view` from
-> `pdf-text`, build it here with tests first, click it through on made-up data, compare the real September figures
-> read-only (counts only), then one fresh reviewer for the whole branch. The employee view must also show the layout
-> map's day notes (afternoon OUT) and, for a card with a confirmed layout, say that the Hours column list does not
-> apply. Ask me before merging, pushing or rebuilding.
+Stage 4 is complete on branches: Part B (session 23) is on `employee-view`, **not merged yet**. To merge it, rebuild
+the app and update the `download` branch, say so in the new session (each step needs your OK).
 
 ---
 
@@ -64,7 +57,8 @@ workers are not in that month's payroll, so there was nothing to update. Details
   (390d7b0), app rebuilt, `download` branch (700dd47) and PR #2 description updated. None of the session's page changes
   were clicked through in a browser. Next, on the user's go-ahead: Phase C. Details: PROGRESS.md 17.
 - **Session 18 (2026-10-12): company-first payroll, stage 1:** Payroll opens on a month overview (one row per
-  company), each company has a "Needs you" list; the old page is behind "Old payroll page". **Merged into `pdf-text`
+  company), each company has a "Needs you" list; the old page was behind "Old payroll page" (removed in session 23).
+  **Merged into `pdf-text`
   and the app rebuilt** (by the user, after the session). Details: PROGRESS.md 18.
 - **Session 19 (2026-10-12): stage 2, the one-look panel**, merged into `pdf-text` (local, **not pushed**) and the
   app rebuilt on the user's OK: a Look button on an employee's "cells to check" item opens all their
@@ -96,6 +90,17 @@ workers are not in that month's payroll, so there was nothing to update. Details
   Real September data: 6 employees changed, each for an expected reason; 78 identical. Reviewed: 2 critical and 5
   important findings fixed. Waiting for the user: merge / rebuild, one real Claude check, and the questions in
   PROGRESS.md 22. Next after merging: Part B.
+- **Session 23 (2026-10-14): Part B built on branch `employee-view` (from `pdf-text`), not merged, not pushed, app
+  not rebuilt:**
+  - the employee view (`#/payroll/<month>/e/<id>`, "Open employee"): the Edit Payroll window, the employee's cards
+    (move to another employee, take off), the Hours column, Remove; each change saved as its own key;
+  - the company screen's Pay preview tab and Add employee, and a folded list of the company's files set aside or read
+    as another month ("It is for <month>");
+  - the old payroll page and its endpoints are gone (an old address opens the overview or the employee view);
+  - guides updated (not the PDF).
+
+  Real September data: all 84 employees identical, 8 ready / 76 held as before. Reviewed: 3 important and 7 minor
+  findings fixed. Waiting for the user: merge / rebuild / push / `download` branch / PDF guide. Details: PROGRESS.md 23.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -116,10 +121,11 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | "Add employees from files" | Done. One employee per worker, cards ticked; Employee No. remembered per worker in `payroll\employees.json` for next months. Dry run on Sept A–D: 34 employees, 34 files left out (can't be calculated yet). |
 | Payroll from **IN/OUT time cards** | **Done (session 9).** OUT − IN − break (1 h, box next to Normal hours); several pairs added up, no break. 4 points to confirm with the user: PROGRESS.md session 9. |
 | Payroll from **month grids** ("Name \| 1 … 31", many workers per sheet) | **Done (session 7).** Each worker's row is offered separately; unclear marks are reported. |
-| **Million import file (.xls)** for the office | **Done (session 7).** Button "Download Million file (.xls)"; the office checker says READY on invented figures. Real September file not made yet (needs Employee Nos.). |
-| Browser check | Never clicked through by Claude (Chrome extension was not connected). All checks were tests + API + real-data scripts. |
+| **Million import file (.xls)** for the office | **Done (session 7).** Since session 11 one file for the whole month ("Make the month's Million file", summary first since session 21); the per-company "Download Million file (.xls)" went with the old page (session 23). |
+| Company-first payroll (sessions 18-23) | Month overview → company screen (Needs you, employees, Pay preview, New in Million) → employee view. The old payroll page (section 2 "tick the files", "Add employees from files", Results with First/Next) is removed on `employee-view` (session 23). |
+| Browser check | Click-throughs in headless Edge on made-up data since session 19 (scripted, scratch only). Nobody has looked at the new screens with their eyes on a real card yet. |
 
-Tests: **530 pass** on `conversion` (465 on `pdf-text`) (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 22 (14 Oct). Sessions up to 22 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed). The `download` branch still has the build of 12 Oct.
+Tests: **549 pass** on `employee-view` (530 on `pdf-text`) (`.venv\Scripts\python -m pytest -q`; a worktree without its own `.venv` can use the main folder's). Package rebuilt in session 22 (14 Oct, without Part B). Sessions up to 22 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed); session 23 on `employee-view`. The `download` branch still has the build of 12 Oct.
 
 ## 2. Git / GitHub
 
@@ -174,7 +180,7 @@ Open data points:
    as afternoon (one real card writes 8.00 / 5.00 with no PM: 20 days are reported instead of guessed); night shifts.
    Possible next shapes: several stamps in one cell ("Times | Time"), day-per-column job sheets.
 4. Month grids and the Million .xls: **done in session 7** (see PROGRESS.md). **User:** fill the September payroll
-   (Add employees from files, Employee Nos., mark PH) → "Download Million file (.xls)" → drag it onto
+   (each company's Needs you, Employee Nos., mark PH in Month settings) → "Make the month's Million file" → drag it onto
    `Documents\learn-million\million-import-tools\Check Office File.bat` (its `employees.txt` must list the codes).
 5. **Claude:** re-export CSVs (+ Company column); commit + update PR #1; later read letters E–Z with
    `tools\run_batch.py` (≈40 s/page of the user's Claude plan — tell the user the page count and time first).

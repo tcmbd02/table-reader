@@ -1,5 +1,69 @@
 # Progress log
 
+## Session 23 - 2026-10-14 - Stage 4 Part B: the employee view, the pay preview tab, Add employee; the old page removed
+Built on branch `employee-view` (from `pdf-text` after Part C), Tasks 4-10 of
+`docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`. **Not merged, not pushed, app not rebuilt**
+(waiting for the user's OK). 549 tests pass (530 on `pdf-text`); Malay checks pass.
+- **How it started:** an earlier session had begun Part B in the main folder (`Documents\table-reader`): Task 4
+  committed, Task 5 half-done and not saved. On the user's word ("do it here") the unsaved work was moved into this
+  worktree (identical apart from one joined line, fixed), and the main folder was put back on `pdf-text`, clean.
+- **Server (Tasks 4-5):** `GET / PUT / DELETE /api/payroll/{month}/employee/{id}` (one change at a time:
+  `{"changes": {key: value}}`, only the keys sent are changed), `POST /employee` (Add employee; in a company it gets a
+  new number), `POST /take-off`, `PUT /lists`, `GET /pay?company=`, and `"move": true` on `/place`. An employee removed
+  in another tab: every call says "This employee is no longer in the payroll of this month…" (also `/place`, which said
+  `BAD_PAYROLL` before). A card read with a confirmed layout map is marked `mapped`.
+- **The employee view (Task 6)**, `#/payroll/<month>/e/<id>`, opened in a new tab by "Open employee":
+  - the Edit Payroll window ported from the old page (labels English), without First/Previous/Next/Last;
+  - the employee's cards: Open the card, **Move to** another employee of the company or a new one, **Take off**; the
+    Hours column; Remove employee;
+  - a card with a confirmed layout says "the Hours column list does not apply to this card"; a day's note shows both
+    the mapped / report figures and how its IN/OUT times were read (also "OUT … read as afternoon");
+  - saving: text boxes after 500 ms without typing, number boxes and selects when changed, one request after the
+    other; a box being typed in keeps its text when another save redraws the window; Back sends what is waiting.
+  - shared helpers moved from `payroll.js` to `static/paycommon.js`.
+- **Company screen (Task 7):** tabs **Employees / Pay preview** (always opens on Employees; no Pay preview for files with
+  no company, where it would list every company), the pay table with total row and its CSV, and **Add employee**
+  (opens the new employee's view in a new tab).
+- **The old page is gone (Tasks 8-9):** `static/payroll.js`, its screen, the "Old payroll page" link, its styles, and
+  the endpoints only it used (`GET` / `PUT /api/payroll/{month}`, `/auto`, `/xls`). An old address still open or
+  bookmarked opens a real screen (`.../old` = the month overview, `.../old/e/<id>` = the employee view). The tests that
+  used those endpoints were ported to the new ones (25), 3 were deleted with their reason in the commit message.
+- **Found and fixed on the way:** a card layout address opened in a fresh tab (or reloaded) showed the start page: the
+  first route ran in `look.js`, before `layout.js` was loaded. It now runs in the last script.
+- **Lost with the old page (minor, for the user to know):** the note "N time-card files chosen before are no longer in
+  Recent files, so they were taken off this employee" (the card is still taken off; the note is not shown anywhere);
+  the per-company Million file with its "make it anyway" questions (the month file holds back such employees and says
+  why; there is no "anyway" for an INCOMPLETE employee any more); "Give … employees a new number" and "Use all …
+  suggested" in one click (numbers are given when the month is opened, offers are one click each on the company screen).
+- **Real September data (copy, counts only, deleted afterwards):** all 84 employees' figures, problems and pay are
+  identical between `pdf-text` and `employee-view`; the employee view equals the company screen's figures for all 84;
+  the month file still has 8 ready and 76 held.
+- **Clicked through** in headless Edge on made-up data (MAJU JAYA: ALI, SITI, ZUL on a confirmed layout, AMIN's August
+  card): the view, the pay tab and Add employee, the old addresses and every screen, and after the review the other
+  files list, a stale tab's Take off and adding one line; no script error.
+- **Guides:** `GUIDE - Table Reader to Million.html` and `PANDUAN - Table Reader ke Million.html`, sections B and C, now
+  describe the month, a company and its Needs you, the employee view, New in Million and the month's file with its
+  summary first. The PDF guide was not regenerated.
+- **Whole-branch review (fresh reviewer): "ready with fixes", no critical, 3 important, 7 minor.** Fixed, each important
+  one with a test that failed first; 549 tests pass; the real September check repeated after the fixes (identical):
+  1. a stale tab's Take off / Move could take a card off whoever had it by then (another tab had moved it): the view
+     now says which employee the card was on, and the server refuses "That card is no longer on this employee";
+  2. the line lists were saved whole, so a tab opened before another tab added "Transport" took the line (and every
+     employee's figures on it) away when it added "Meal": now one line is added or removed at a time;
+  3. a file set aside by mistake as "Not a time card", or a card whose month was read wrongly, could no longer be put
+     right (only the old page's tick list could): the company screen now lists such files of the company, folded under
+     Needs you, with "It is for <month>". They are not items, so no status or count changes (real month: 1 file);
+  - smaller: the view's reloads now wait for its saves; a failed save keeps newer typing; a name box keeps a trailing
+    space while typing; overrides that are not figures gave a crash (now refused); remembered Employee Nos. are updated
+    under the lock; the Pay preview's Monthly/Daily follows where the rate comes from; "Untick it from the other
+    employee first" now says "Take it off"; the PDF guide's source paragraph (`packaging/guide/guide.html`) describes the
+    new screens (the PDF itself is not regenerated).
+  - Left: no automated test for the routes (`#/payroll/<m>/old`, `/old/e/<id>`, `/e/<id>`); the click-throughs check
+    them. Malay entries of removed texts are left in `i18n.js` (harmless).
+- **Open for the user:** merge `employee-view` into `pdf-text`, rebuild the app, push, update the `download` branch and
+  regenerate the PDF guide (each needs your OK); the questions still open from session 22 (rest-day work with an OT
+  column mapped, overtime on rest days / holidays as days, should the CSV buttons ask about "Needs checking").
+
 ## Session 22 - 2026-10-14 - Stage 4 Part C: conversion (what Claude reads correctly now reaches Million's fields)
 Built on branch `conversion` (from `pdf-text`), then **merged into `pdf-text` (fast-forward, local, not pushed) and the app rebuilt** on the user's OK; the rebuilt app shows 5 card-layout items on the real month (the 4 counted + the door export). 530 tests pass; Malay checks
 pass. Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`, Tasks 11-17.
