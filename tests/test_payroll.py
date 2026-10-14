@@ -1478,3 +1478,23 @@ def test_the_afternoon_rule_leaves_other_cases_unclear(tin, tout):
 def test_digits_with_pm_are_a_clock_time():
     assert payroll.parse_clock("530 pm") == 1050 and payroll.parse_clock("1130 am") == 690
     assert payroll.parse_clock("530") is None
+
+
+# ---------------------------------------------------------- conversion: SA / SU in a month grid (the user's rule)
+def test_sa_on_a_saturday_and_su_on_a_sunday_are_not_worked():
+    r = payroll.calculate(plan_for(), [("sheet", grid(grid_row("ALI", {5: "SA", 6: "SU"}, remark="")))], employee())
+    by_day = {d["day"]: d for d in r["days"]}                         # September 2026: the 5th is a Saturday
+    assert (by_day[5]["code"], by_day[5]["status"], by_day[5]["hours"]) == ("SA", "ok", 0.0)       # read as off
+    assert (by_day[6]["code"], by_day[6]["status"], by_day[6]["hours"]) == ("SU", "ok", 0.0)
+    assert not [i for i in r["issues"] if i["kind"] == "unclear"]
+    assert values(r)["days_worked"] == 24                            # 25 ticks in SEPT_MARKS, the 5th now SA
+
+
+def test_sa_on_a_weekday_stays_unclear():
+    r = payroll.calculate(plan_for(), [("sheet", grid(grid_row("ALI", {7: "SA"}, remark="")))], employee())
+    assert any("day 7: 'SA' is not a mark Table Reader knows" in i["text"] for i in r["issues"])
+
+
+def test_hours_on_a_sunday_still_count_as_rest_day_work():
+    r = payroll.calculate(plan_for(), [("sheet", grid(grid_row("ALI", {6: "8"}, remark="")))], employee())
+    assert values(r)["ot_rest_day"] == 1

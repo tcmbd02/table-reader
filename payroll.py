@@ -947,8 +947,9 @@ def _number_or_none(text: str) -> float | None:
 
 
 def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int, hours_column: str | None,
-              break_hours: float = DEFAULT_BREAK):
-    """Daily hours from an employee's documents. ``docs`` is [(document name, merged pages)].
+              break_hours: float = DEFAULT_BREAK, year: int | None = None):
+    """Daily hours from an employee's documents. ``docs`` is [(document name, merged pages)]. ``year``: the month's
+    year, for the weekday of a day (a month grid's "SA" / "SU" mean not worked only on that weekday).
     Returns (days, issues): days maps day -> {"hours": float | None, "status": "ok" | "unclear" | "conflict",
     "source": text, "printed": {field: hours} | None (clock-system report figures for that day),
     "mark": None | "present" | "hours" | "absent" | "holiday" | "off" | "leave" (month grids), "code": what was written,
@@ -965,7 +966,8 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
             where = f"{name}" + (f", page {page['page']}" if len(pages) > 1 else "")
             grid = grid_columns(page["column_labels"])
             if grid:                                                # month grid: rows = workers, columns = days
-                _read_grid(page, grid, where, name, n_days, days, issues, k)
+                _read_grid(page, grid, where, name, n_days, days, issues, k,
+                           (lambda d: date(year, month_number, d).weekday()) if year else None)
                 continue
             date_col, hours_col = pick_columns(page["column_labels"], hours_column)
             report = {c: REPORT_COLUMNS[_key(c)] for c in page["column_labels"] if _key(c) in REPORT_COLUMNS}
@@ -1075,9 +1077,16 @@ def _put_day(days: dict, day: int, entry: dict, name: str, issues: list[dict]) -
                                                f"{entry['source']}). It was left out until you fix it.", "job": name})
 
 
-def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: dict, issues: list[dict], k: int) -> None:
+# A month grid's cell holding only the day's name on that weekday (the user's rule): nothing was worked that day.
+# Sunday is every worker's rest day; hours written on it count as rest-day work through the calendar, as any hours do.
+_WEEKEND_NAMES = {5: {"sa", "sat"}, 6: {"su", "sun"}}                  # date.weekday(): 5 = Saturday, 6 = Sunday
+
+
+def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: dict, issues: list[dict], k: int,
+               weekday: Callable[[int], int] | None = None) -> None:
     """One worker's row of a month grid: each day column holds a mark (see GRID_MARKS) or hours. ``k``: the document's
-    position in the employee's documents (for "at", see read_days)."""
+    position in the employee's documents (for "at", see read_days). ``weekday``: day -> date.weekday(), to read "SA" /
+    "SU" written on their own weekday as not worked (_WEEKEND_NAMES); without it they stay unknown marks."""
     if len(page["rows"]) != 1:
         issues.append({"kind": "column", "job": name, "text": f"{where}: this sheet lists {len(page['rows'])} workers. "
                                                               "Tick each worker's own row instead of the whole file."})
@@ -1106,6 +1115,8 @@ def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: di
         if not text:
             continue                                                # no entry: counted (and reported) as missing
         mark, hours = grid_mark(text)
+        if mark is None and weekday and text.casefold() in _WEEKEND_NAMES.get(weekday(day), ()):
+            mark, hours = "off", 0.0
         if mark is None:
             unclear = True
             issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: '{text}' is not a mark Table "
@@ -1132,7 +1143,7 @@ def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict, mi
     _, month_number = parse_month(plan["month"])
     normal = plan["normal_hours"]
     days, issues = read_days(docs, n_days, month_number, employee.get("hours_column"),
-                             plan.get("break_hours", DEFAULT_BREAK))
+                             plan.get("break_hours", DEFAULT_BREAK), year=parse_month(plan["month"])[0])
     values = {k: 0.0 for k in FIELD_KEYS}
     rows = []
     missing, ph_on_workday, leave = [], [], []
