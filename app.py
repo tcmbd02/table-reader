@@ -300,11 +300,6 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                     for page in cache[job_id][1]:
                         labels += [c for c in page["column_labels"] if c not in labels]
             r["columns"] = labels
-        suggestions = payroll.suggest_employee_nos(plan, million["employees"]) if million else {}
-        new = new_numbers(plan, docs)
-        for r in results:
-            r["suggest"] = suggestions.get(r["id"])                 # Million's Employee No. for this name, to offer
-            r["assign"] = new.get(r["id"])                          # else a new one (company letters + number), to offer
         return {"plan": plan, "documents": docs, "results": results, "million": million,
                 "fields": [{"key": k, "label": label, "unit": unit} for k, label, unit in payroll.FIELDS],
                 "list_heads": {kind: {"title": title, "type": type_head} for kind, (title, type_head, _) in payroll.LISTS.items()}}
@@ -438,14 +433,6 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             if numbered:
                 plans.save(payroll.validate_plan(plan, known_refs(docs)))
         return plan, docs, gone, added, numbered
-
-    @app.get("/api/payroll/{month}")
-    def get_payroll(month: str):
-        plan, docs, gone, added, numbered = open_month(month)
-        view = payroll_view(plan, docs, gone)
-        view["added_by_themselves"] = added
-        view["numbered"] = numbered
-        return view
 
     # ------------------------------------------------------------------------------------- payroll by company
     def month_state(month: str) -> dict:
@@ -866,53 +853,6 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                           "days_worked": r["values"]["days_worked"]["value"], "complete": r["complete"]}
                          for e, r in zip(plan["employees"], results)]}
 
-    @app.put("/api/payroll/{month}")
-    async def save_payroll(month: str, request: Request):
-        try:
-            body = await request.json()
-        except ValueError:
-            body = None
-        gone, docs = {}, finished_documents()
-        if isinstance(body, dict):
-            body["month"] = month
-            gone = drop_gone_documents(body, known_refs(docs))
-        with auto_lock:
-            if isinstance(body, dict):
-                # the old page never edits company settings, and a tab of it opened before they were changed holds
-                # old ones: they are always taken from what is saved (Company settings on the company screen)
-                body["companies"] = plans.load(month).get("companies") or {}
-            plan = payroll.validate_plan(body, known_refs(docs))
-            plans.save(plan)
-        directory = plans.load_directory()
-        if payroll.remember_employees(plan, directory):              # Employee No. typed: kept for next month
-            plans.save_directory(directory)
-        return payroll_view(plan, docs, gone)
-
-    @app.post("/api/payroll/{month}/auto")
-    async def auto_add_employees(month: str, request: Request):
-        """One employee per worker found in the finished documents of a company ("" = every company)."""
-        try:
-            body = await request.json()
-        except ValueError:
-            body = None
-        company = body.get("company") if isinstance(body, dict) else None
-        if not isinstance(company, str):
-            raise OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
-        plan, docs = plans.load(month), finished_documents()
-        drop_gone_documents(plan, known_refs(docs))
-        candidates = [c for d in docs if not company or d["company"] == company for c in candidates_of(d)]
-        before = {e["id"] for e in plan["employees"]}
-        added, skipped, unnamed = payroll.auto_employees(plan, candidates, plans.load_directory(),
-                                                         lambda: "e" + uuid.uuid4().hex[:12],
-                                                         million=(plans.load_million() or {}).get("employees"))
-        new_numbers_made = number_new_employees(plan, docs, before)
-        plan = payroll.validate_plan(plan, known_refs(docs))
-        plans.save(plan)
-        view = payroll_view(plan, docs)
-        view["auto"] = {"added": added, "skipped": skipped, "unnamed": unnamed, "new_numbers": new_numbers_made,
-                        "from_million": sum(1 for e in plan["employees"] if e["id"] not in before and e.get("emp_no_million"))}
-        return view
-
     def payroll_of(month: str, company: str) -> tuple[dict, list[dict]]:
         """The month's plan and results; with ``company`` only that company's employees (chosen at the top of the page)."""
         docs = finished_documents()
@@ -955,23 +895,6 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         path = save_payroll_file(f"Basic pay {month} {safe_name(company)}.csv" if company else f"Basic pay {month}.csv",
                                  text.encode("utf-8-sig"))
         return FileResponse(path, media_type="text/csv; charset=utf-8", filename=path.name)
-
-    @app.get("/api/payroll/{month}/xls")
-    def payroll_xls(month: str, company: str = "", allow_incomplete: bool = False, allow_unknown: bool = False,
-                    allow_names: bool = False):
-        """The Million import file for the office (.xls, the office File Format Setting's columns). Refused, with every
-        problem listed, when it would import wrong. Asked about first (``allow_…``): Employee Nos. that are not in
-        Million's employee list (the imported one, else employees.txt), employees whose name is another one in
-        Million, and INCOMPLETE employees."""
-        plan, results = payroll_of(month, company)
-        listed = plans.load_million()
-        names = {e["emp_no"].casefold(): e["name"] for e in listed["employees"]} if listed else None
-        data = payroll.build_xls(plan, results, allow_incomplete=allow_incomplete, allow_unknown=allow_unknown,
-                                 known=set(names) if names else payroll.load_million_employees(),
-                                 names=names, allow_names=allow_names)
-        name = f"Payroll {month} {safe_name(company)} (Million).xls" if company else f"Payroll {month} (Million).xls"
-        path = save_payroll_file(name, data)
-        return FileResponse(path, media_type="application/vnd.ms-excel", filename=path.name)
 
     def month_file(month: str, make: bool) -> dict:
         """One Million file for the whole month (every company), with everyone who can go in; the others are listed
