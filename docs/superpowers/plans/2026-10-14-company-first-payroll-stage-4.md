@@ -4,11 +4,17 @@
 
 **Goal:** Finish the company-first payroll. Each company gets a "New in Million" list. The month's Million file is
 shown as a summary before it is made. Everything only the old payroll page could do moves to the new screens, and the
-old page is removed.
+old page is removed. Added on 2026-10-14 at the user's request: **Part C**, so that what Claude reads correctly also
+reaches Million's fields (the conversion from a card's columns to days and Million figures).
 
-**Architecture:** Stage 4 is split in two parts. Each part is merged and can be shipped by itself, and there is a stop
-for the user's OK between them.
-- **Part A** (`million-summary`, Tasks 1-3) is small and changes only the overview and the company screen.
+**Architecture:** Stage 4 is split in three parts. Each part is merged and can be shipped by itself, and there is a stop
+for the user's OK after each. They run in this order (the user chose conversion before Part B):
+- **Part A** (`million-summary`, Tasks 1-3) changes only the overview and the company screen. **Done, merged into
+  `pdf-text` and the app rebuilt on 2026-10-14.**
+- **Part C** (`conversion`, Tasks 11-17) fixes how a card's columns become days and Million figures. The hours column
+  is never a money or minutes column. Written formats the user has ruled on are read. **Layout maps**: for a card
+  layout Table Reader does not know, Claude suggests what each column means, the user confirms it once, and the
+  calculation uses it. The arithmetic stays in code.
 - **Part B** (`employee-view`, Tasks 4-10) adds the employee view, the pay preview tab and "Add employee", then removes
   the old page.
 
@@ -20,7 +26,8 @@ over newer work (review findings of stages 1 and 3).
 
 **Spec:** `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md`: sections 3.3 (employee detail view, pay
 preview, Add employee), 3.4 (what is removed or moved), 7 (New in Million), 8 (the month file), 9.3 stage 4 and 11.
-The plans for stages 1-3 are in the same folder.
+The plans for stages 1-3 are in the same folder. Part C has no spec section. Its requirements are the user's
+decisions of 2026-10-14 (below) and the findings on the real September data (PROGRESS.md session 21b).
 
 **Decided here (not in the spec):**
 - **Two parts, two merges** (see Architecture). The user approves the merge of Part A before Part B starts.
@@ -46,10 +53,50 @@ The plans for stages 1-3 are in the same folder.
 - An old address that is bookmarked or still open goes to a real screen: `#/payroll/<m>/old` opens the month overview,
   and `#/payroll/<m>/old/e/<id>` opens the employee view.
 
+**Part C: decided by the user (2026-10-14):**
+- Order: conversion first, then Part B.
+- **OUT earlier than IN, with no am/pm**, on an IN/OUT card (IN 8, OUT 5.00): OUT is read as afternoon (+12 h). This
+  holds only when IN is before 12:00 and OUT is 11:59 or earlier. The day says how it was read.
+- **SA / SU** in a month-grid cell: SA is Saturday and SU is Sunday. A cell holding only the day's name, on that same
+  weekday, means nothing was worked that day (read as "off"). The user said Sunday is every worker's rest day and hours
+  worked on it are overtime. The calendar already gives that: Sundays start as rest days, and hours on a rest day go to
+  "Work on Rest Day". Anywhere else, SA and SU stay unclear.
+- **Layouts Table Reader does not know:** Claude suggests what each column means, the user confirms it once per layout,
+  and it is remembered (the old "Phase C"). Claude never calculates.
+
+**Part C: decided here:**
+- A **layout** is a page's column headings, lower case with spaces collapsed, joined by " | " (its signature). A
+  confirmed **layout map** applies to every company and month that has the same headings. It is kept in
+  `Documents\Table Reader\payroll\layouts.json`: `{signature: {"columns": {heading: {"role", "unit"}}, "confirmed":
+  "yyyy-mm-dd"}}`.
+- **Roles** a column can have:
+  - `date`;
+  - `hours` (the day's hours);
+  - `in` and `out`, and `stamps` (several clock times in one cell);
+  - the Million figures `lateness`, `early_departure`, `ot_1`, `ot_1_5`, `ot_2` and `ot_3`;
+  - `ignore`.
+
+  Units: `hours` (8.5 or 8:30), `minutes` (divided by 60) or `none`. A mapped figure column works like the clock
+  report's printed figures: added up as written, and on those days the normal-hours overtime rule is not applied.
+- **`stamps`**: the clock times in the cell are taken in order as IN, OUT, IN, OUT. An odd number of times is reported,
+  never completed.
+- **Claude sees text only:** the headings, plus up to 5 rows where each value is reduced to its shape (digits as 9,
+  letters as A, except words of 4 letters or fewer, such as PH or OFF). It runs once per layout, through the user's
+  own Claude Code with the same model as the reading. Its answer is a suggestion and is used only after the user has
+  confirmed it.
+- **When the user is asked:** a "Needs you" item, "A card layout Table Reader does not know: check what its columns
+  mean", appears once per unconfirmed layout. It appears only when a column the calculation does not read holds
+  numbers or clock times in at least 3 rows, and that column is not a row number ("No.", "Bil", "#"). One click, **It
+  is right as it is**, confirms the layout with every unread column set to `ignore`.
+- **Built-in readings keep priority**, except for a confirmed map: a month grid, a Total / Jumlah column, IN/OUT pairs
+  and the Shift Details report are read as today unless the user has confirmed a map for that layout.
+
 ## Global Constraints
 
-- **The calculation does not change.** No figure, problem kind or problem text changes. Task 3 and Task 10 prove this
-  on the real September data (all 84 employees identical).
+- **The calculation does not change** in Parts A and B. No figure, problem kind or problem text changes. Task 3 and
+  Task 10 prove this on the real September data (all 84 employees identical). **Part C does change figures on
+  purpose.** Task 17 lists, by count, every employee whose figures change and why, and every other employee must stay
+  identical.
 - **Never guess.** Nothing is filled in by itself that is not filled in today. Claude's reading (`result.json`) is
   never written.
 - **Personal data.** The repo is public. Tests, comments, commit messages and chat use made-up names only (MAJU JAYA,
@@ -62,8 +109,10 @@ The plans for stages 1-3 are in the same folder.
   - `.venv\Scripts\python tools\check_i18n.py` shows `missing Malay: 0`, and its file lists include every new script.
   - `.venv\Scripts\python tools\check_patterns.py` shows `0 not translated`.
   - The real-name scan of the diff is clean.
-- **Commits are local**, on `million-summary` (Part A) and then `employee-view` (Part B), each made from `pdf-text`.
-  Merging, pushing, rebuilding the app and updating the `download` branch all need the user's OK.
+- **Commits are local**, on `million-summary` (Part A), `conversion` (Part C) and `employee-view` (Part B), each made
+  from `pdf-text`. Merging, pushing, rebuilding the app and updating the `download` branch all need the user's OK.
+- **Click-throughs** run on made-up data, in headless Edge or in the app's browser pane: a scratchpad server with
+  `TABLE_READER_HOME`, scripted clicks.
 - Follow the surrounding style: 120-column lines, docstrings that say what and why, and comment density as in the
   code around.
 
@@ -79,6 +128,20 @@ The plans for stages 1-3 are in the same folder.
    "no time card yet" item. Nothing is refused as "on two employees". Pinned in Task 5.
 5. **An old-page address.** A tab or bookmark at `#/payroll/<m>/old…` opens the overview or the employee view, never a
    blank screen. Pinned in Task 8 (route and click-through).
+
+**Part C:**
+
+6. **The afternoon rule touches nothing else.** An OUT with an explicit "am", an IN after noon (night shift), an OUT
+   of 12 or later, and an OUT equal to IN all stay unclear, as today. Pinned in Task 12.
+7. **A map is confirmed for one layout only.** A card whose headings differ by one column is not read with another
+   layout's map; it gets its own item. Pinned in Task 14 (`test_a_map_is_used_only_for_its_own_headings`).
+8. **Claude's answer is never trusted as it comes.** A heading that is not on the page, a role or unit not on the list,
+   a second `date`, or a bad answer leaves nothing saved: the panel shows the plain headings with nothing chosen.
+   Pinned in Task 15.
+9. **A minutes column with an h:mm value** ("1:30" under a `minutes` role) is read as 90 minutes, not as 1.30
+   minutes. A value that is not a number of minutes is reported. Pinned in Task 14.
+10. **Fixing the hours column changes only the layouts it should.** On the real September data, exactly the employees
+    on the "E/Out(Min)" report and on the "TOTAL (RM)" list change; everyone else stays identical. Pinned in Task 17.
 
 ---
 
@@ -96,10 +159,14 @@ The plans for stages 1-3 are in the same folder.
 | `static/index.html`, `static/app.js`, `static/app.css`, `static/i18n.js`, `tools/check_i18n.py` (modify) | Screens, routes, styles, Malay, script lists. |
 | `tests/test_payroll.py`, `tests/test_app.py` (modify) | Tests. |
 | `GUIDE - Table Reader to Million.html`, `PANDUAN - Table Reader ke Million.html`, `PROGRESS.md`, `NEXT-SESSION.md` (modify, Tasks 3 and 10) | Guides and notes. |
+| `payroll.py` (modify, Part C) | `pick_columns` never takes money / minutes columns (Task 11); the afternoon rule and "530 pm" (Task 12); SA / SU (Task 13); layout signatures, roles and maps in `read_days`, `PayrollStore.load_layouts` / `save_layouts` (Task 14). |
+| `layouts.py` (new, Task 15) | What Claude is shown about a layout (shapes only), the prompt and schema, checking its answer. Pure, apart from the one CLI call through `ocr`. |
+| `ocr.py` (modify, Task 15) | `ask_text(prompt, schema, timeout)`: a text-only CLI call (no image, no tools), same environment, errors and model as the reading. |
+| `app.py`, `companies.py`, `static/companies.js`, `static/layout.js` (new), `static/index.html`, `static/i18n.js`, `tools/check_i18n.py` (modify, Task 16) | The "card layout" item, its endpoints, and the panel to confirm a layout map. |
 
 ---
 
-## Part A: branch `million-summary` (from `pdf-text`)
+## Part A: branch `million-summary` (from `pdf-text`): done, merged and rebuilt 2026-10-14
 
 ### Task 1: The month file worked out without being made
 
@@ -113,7 +180,7 @@ The plans for stages 1-3 are in the same folder.
   - With `make=False`, nothing is written and `"file"` is `None`.
 - Produces: `GET /api/payroll/{month}/run` = `month_file(month, False)`. `POST` = `month_file(month, True)`.
 
-- [ ] **Step 1: Write the failing tests** (through `company_client`, `import_million`, `month_card`):
+- [x] **Step 1: Write the failing tests** (through `company_client`, `import_million`, `month_card`):
   - `test_the_summary_lists_who_goes_in_and_writes_no_file`:
     - Set up MAJU JAYA (ALI known to Million) and BINA (SITI known, ZUL not).
     - `GET /run`: `made is False`, `file is None`, `ready == 2`, `held == 1`.
@@ -122,13 +189,13 @@ The plans for stages 1-3 are in the same folder.
     - No `.xls` file is in the payroll folder.
   - `test_the_file_is_worked_out_again_when_it_is_made`: `GET /run` holds ZUL back. Then `import_million` again with
     ZUL added. `POST /run` gives `made is True` and `ready == 3`, and the `.xls` exists.
-- [ ] **Step 2: Run them and see them fail.** Run `.venv\Scripts\python -m pytest tests/test_app.py -q -k "summary_lists or worked_out_again"`.
+- [x] **Step 2: Run them and see them fail.** Run `.venv\Scripts\python -m pytest tests/test_app.py -q -k "summary_lists or worked_out_again"`.
   Expected: FAIL (405 on GET, then a KeyError on `made`).
-- [ ] **Step 3: Write `month_file`.** Move the body of `payroll_month_run` into it, collect `ready_people` beside the
+- [x] **Step 3: Write `month_file`.** Move the body of `payroll_month_run` into it, collect `ready_people` beside the
   `ready` count, and write the file only when `make` is true.
-- [ ] **Step 4: Check the whole suite.** `.venv\Scripts\python -m pytest -q` passes (the existing
+- [x] **Step 4: Check the whole suite.** `.venv\Scripts\python -m pytest -q` passes (the existing
   `test_the_month_run_makes_one_file_and_lists_who_is_held_back` still passes).
-- [ ] **Step 5: Commit** "Payroll: the month's Million file can be worked out without being made".
+- [x] **Step 5: Commit** "Payroll: the month's Million file can be worked out without being made".
 
 ### Task 2: Summary, New in Million and the payroll CSV on screen
 
@@ -161,31 +228,265 @@ What each control does:
 - **`mo-csv` and `co-csv`** set `location.href` to `/api/payroll/{month}/csv`, with `?company=` on the company screen.
 
 Steps:
-- [ ] **Step 1: Extend the page test and see it fail.**
-- [ ] **Step 2: Build the screens.**
-- [ ] **Step 3: Check.** The suite, `check_i18n` and `check_patterns` pass.
-- [ ] **Step 4: Click it through** in headless Edge on made-up data (scratchpad server with `TABLE_READER_HOME`,
+- [x] **Step 1: Extend the page test and see it fail.**
+- [x] **Step 2: Build the screens.**
+- [x] **Step 3: Check.** The suite, `check_i18n` and `check_patterns` pass.
+- [x] **Step 4: Click it through** in headless Edge on made-up data (scratchpad server with `TABLE_READER_HOME`,
   script injected, as in stages 2-3). Check that:
   - the summary shows a held ZUL and the ready SITI, and Not now hides it;
   - Make the file reports the file;
   - "New in Million: 1 employee" opens the list and Copy all puts `"<no>\tZUL"` on the clipboard (read it back in the
     script);
   - both CSV buttons download.
-- [ ] **Step 5: Commit** "Payroll: summary before the month's Million file; New in Million list; payroll CSV on the
+- [x] **Step 5: Commit** "Payroll: summary before the month's Million file; New in Million list; payroll CSV on the
   new screens".
 
 ### Task 3: Part A proof, notes, stop
 
-- [ ] **Step 1: Check the real September data.** On a copy, in memory, counts only: `GET /run`'s ready and held
+- [x] **Step 1: Check the real September data.** On a copy, in memory, counts only: `GET /run`'s ready and held
   counts equal `POST /run`'s, and every employee's figures are identical to `pdf-text`'s.
-- [ ] **Step 2: Write the notes.** PROGRESS.md gets session 21 (Part A) and NEXT-SESSION.md section 0 is updated.
+- [x] **Step 2: Write the notes.** PROGRESS.md gets session 21 (Part A) and NEXT-SESSION.md section 0 is updated.
   Commit "Notes: stage 4 part A".
-- [ ] **Step 3: Review and stop.** One fresh reviewer reviews the branch, and the important findings are fixed.
+- [x] **Step 3: Review and stop.** One fresh reviewer reviews the branch, and the important findings are fixed.
   **Stop:** ask the user before merging into `pdf-text` and before rebuilding.
 
 ---
 
-## Part B: branch `employee-view` (from `pdf-text` after Part A is merged)
+## Part C: branch `conversion` (from `pdf-text` after Part A is merged), done before Part B
+
+Why (real September data, a copy, counts only; PROGRESS.md session 21b): with every Employee No. known to Million, 37
+of 84 employees would go into the file and 42 would be held back as INCOMPLETE. These conversion failures come from
+cards Claude read correctly:
+- two layouts where the wrong column is taken as the daily hours:
+  - a second clock-report layout (`… | WDays | WHrs | E/Ot | OT | LIn(Min) | … | E/Out(Min) | …`) where the early-out
+    minutes are taken instead of WHrs;
+  - a salary-deduction list where `TOTAL (RM)` is taken as hours.
+- formats refused although they are readable: OUT earlier than IN with no am/pm (20 days), SA / SU on weekend grid
+  cells (16), "530 pm" (1);
+- layouts no rule fits: the clock report's OT and minute columns never reach Million, and a door-system export has
+  several stamps in one cell (4 pages).
+
+### Task 11: The hours column is never a money or minutes column
+
+**Files:** Modify `payroll.py` (`pick_columns`). Test: `tests/test_payroll.py`.
+
+**Interfaces (Produces):** `pick_columns(labels, hours_column)` as today, with these rules:
+- A label whose last part (after the last " / ") holds a money mark (`rm`, `(rm)`, `amount`, `$`) or a minutes mark
+  (`min`, `(min)`, `mins`, `minutes`) is never an automatic hours column. A column the user chose by hand still wins.
+- Among the rest, the first preference is a label whose last part is exactly an hours word: `hours`, `hrs`, `whrs`,
+  `total`, `jumlah`, `jam`, `total hours`, `jumlah jam`. After that comes today's rule (the last matching label).
+
+- [ ] **Step 1: Write the failing tests.**
+  - `test_minutes_columns_are_never_the_daily_hours`: the second report's labels (`"DAYS/HOURS/MINUTES WORK / WHrs"`,
+    `"… / OT"`, `"… / LIn(Min)"`, `"… / E/Out(Min)"`, plus `"DATE"`) pick `"DAYS/HOURS/MINUTES WORK / WHrs"`.
+  - `test_a_money_column_is_never_the_daily_hours`: `("NO.", "NAME", "DAY UNPAID", "TOTAL (RM)")` gives `None`, so the
+    calculation's "no column with the daily hours" problem appears.
+  - `test_the_users_hours_column_still_wins`: `hours_column="TOTAL (RM)"` returns it.
+  - `test_total_normal_is_still_the_hours`: `("Date", "TOTAL (NORMAL)")` picks `"TOTAL (NORMAL)"` (a September layout;
+    "NORMAL" is not "RM").
+- [ ] **Step 2: Run them and see them fail.** `.venv\Scripts\python -m pytest tests/test_payroll.py -q -k "never_the_daily or users_hours or total_normal"`.
+  Expected: the first two FAIL.
+- [ ] **Step 3: Change `pick_columns`.** Mark matching works on whole words of the last part, so "NORMAL" never
+  matches "rm".
+- [ ] **Step 4: Check that the whole suite passes.**
+- [ ] **Step 5: Commit** "Payroll: the daily hours are never taken from a money or minutes column".
+
+### Task 12: An afternoon OUT written without pm; "530 pm"
+
+**Files:** Modify `payroll.py` (`_clock_day`, `parse_clock` / `_STAMP`). Test: `tests/test_payroll.py`.
+
+**Interfaces (Produces):** In `_clock_day`, when `end <= start`, OUT has no am/pm, IN is before 12:00 (`start < 720`)
+and OUT is before 12:00 (`end < 720`), OUT is read as `end + 720`, and the day's `clock` gains `"afternoon"`: the
+OUTs read so (`["5.00"]`). The page's Day by day shows "OUT {out} read as afternoon" from it (with a Malay entry).
+`parse_clock` also reads 3-4 digits followed by am/pm ("530 pm" -> 17:30, "1130 am" -> 11:30). Without am/pm, digits
+alone stay not a clock time.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `test_an_out_earlier_than_in_without_pm_is_afternoon`: IN "8", OUT "5.00", break 1 gives 8.0 hours, status
+    "ok", `clock["afternoon"] == ["5.00"]`.
+  - `test_the_afternoon_rule_leaves_other_cases_unclear`: these all stay "unclear" with today's sentence:
+    - OUT "5.00 am" with IN "8";
+    - IN "9:00 pm", OUT "5.00" (a night shift);
+    - IN "13:00", OUT "12.30";
+    - IN "8", OUT "8".
+  - `test_digits_with_pm_are_a_clock_time`: `parse_clock("530 pm") == 1050` and `parse_clock("1130 am") == 690`.
+    `parse_clock("530") is None`.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Write the rule.** It covers both a single pair and the "one IN, one later OUT" span.
+- [ ] **Step 4: Check.** The suite passes. Add the day note to the old page's Day by day (`clockText`, `payroll.js`)
+  with its Malay entry; Part B's employee view ports it. `check_i18n` passes.
+- [ ] **Step 5: Commit** "Payroll: an OUT written without pm and earlier than IN is read as afternoon (user's rule)".
+
+### Task 13: SA and SU in month grids
+
+**Files:** Modify `payroll.py` (`_read_grid`). Test: `tests/test_payroll.py`.
+
+**Interfaces (Produces):** In `_read_grid`, a cell whose text is `SA` / `SAT` on a Saturday of the month, or `SU` /
+`SUN` on a Sunday, is mark `"off"` (hours 0, `code` = the text). On any other day it stays "not a mark Table Reader
+knows". This is not added to `GRID_MARKS`, because it depends on the weekday.
+
+- [ ] **Step 1: Write the failing tests** (September 2026: the 5th is a Saturday, the 6th a Sunday, the 7th a
+  Monday).
+  - `test_sa_on_a_saturday_and_su_on_a_sunday_are_not_worked`: a grid row with day 5 = "SA", day 6 = "SU" and the
+    other days ticked gives both days `mark == "off"`, no unclear problem, and they are not counted as worked.
+  - `test_sa_on_a_weekday_stays_unclear`: day 7 = "SA" gives the "not a mark Table Reader knows" problem.
+  - `test_hours_on_a_sunday_still_count_as_rest_day_work`: day 6 = "8" gives the rest-day figure exactly as today.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Write the rule.**
+- [ ] **Step 4: Check that the whole suite passes.**
+- [ ] **Step 5: Commit** "Payroll: SA / SU on their own weekday in a month grid mean not worked (user's rule)".
+
+### Task 14: Layout maps in the calculation
+
+**Files:** Modify `payroll.py`. Test: `tests/test_payroll.py`.
+
+**Interfaces (Produces):**
+- `LAYOUT_ROLES = ("date", "hours", "in", "out", "stamps", "lateness", "early_departure", "ot_1", "ot_1_5", "ot_2",
+  "ot_3", "ignore")` and `LAYOUT_UNITS = ("hours", "minutes", "none")`.
+- `layout_signature(labels: list[str]) -> str`: `" | ".join(_key(label) for label in labels)`.
+- `valid_layout_map(labels: list[str], columns: dict) -> dict`: a clean `{label: {"role", "unit"}}`, or
+  `OcrError("BAD_LAYOUT", "What the columns mean could not be understood. Open the card layout again.")`. Its rules:
+  - every label of the page is present, and no label from another page;
+  - roles and units come from the lists;
+  - at most one `date`;
+  - `in` and `out` columns alternate in page order;
+  - a figure role has unit `hours` or `minutes`;
+  - `date`, `in`, `out`, `stamps` and `ignore` have unit `none`.
+- `read_days(..., layouts: dict[str, dict] | None = None)`: when the page's signature is in `layouts`, the map decides
+  everything about that page, before the grid check:
+  - `date` gives the date column; `hours` the hours column (`minutes` divided by 60; a minutes value written h:mm, such
+    as "1:30", is 90 minutes);
+  - `in` / `out` columns pair up in page order;
+  - `stamps`: the clock times in the cell are pairs in order. An odd count is an "unclear" problem with `at`:
+    "'…' holds an odd number of clock times, so IN and OUT cannot be paired. Correct it in the document.";
+  - the figure roles are read like the clock report's `report` columns (printed figures, added up, unit converted;
+    the normal-hours overtime rule is not applied on those days);
+  - `ignore` is not read.
+  `calculate(..., layouts=None)` and `compute_all(..., layouts=None)` pass it through.
+- `PayrollStore.load_layouts() -> dict` and `save_layouts(layouts: dict) -> None` use `layouts.json` in the payroll
+  folder. A missing or damaged file gives `{}`.
+- `columns_read(labels: list[str], hours_column: str | None, layouts: dict | None) -> set[str]`: the columns
+  `read_days` reads on a page with these headings: the map's non-`ignore` columns; or the grid's day and name columns;
+  or date, hours, the IN/OUT pairs and the report columns. It shares the same helpers, so the two cannot drift. Task 16
+  uses it. Test: `test_columns_read_matches_what_read_days_reads`, for a Total card, an IN/OUT card, a grid, the Shift
+  Details report and a mapped page.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `test_a_mapped_report_gives_hours_and_million_figures`: labels `("DATE", "WHrs", "OT", "LIn(Min)",
+    "E/Out(Min)")`. The map gives `hours`, `ot_1_5` (hours), `lateness` (minutes) and `early_departure` (minutes). Rows
+    for days 1-2 give:
+    - hours 8 and 8;
+    - `printed == {"ot_1_5": 2.0, "lateness": 0.25, "early_departure": 0.0}` on day 1 (OT "2", LIn "15", E/Out "0");
+    - `ot_1_5` from the normal-hours rule not added on top.
+  - `test_a_map_is_used_only_for_its_own_headings`: the same map and a page with one extra column gives today's
+    reading (built-in rules), not the map's.
+  - `test_stamps_in_one_cell_are_paired_in_order`: `"07:58 12:01 13:02 17:05"` gives 8.1 hours with no break (two
+    pairs). `"07:58 12:01 13:02"` gives an unclear problem.
+  - `test_a_minutes_figure_written_as_hmm_is_minutes`: LIn(Min) "1:30" gives lateness 1.5.
+  - `test_valid_layout_map_refuses_bad_answers` (parametrized): a missing label, a label not on the page, role
+    "salary", unit "days", two `date`, `hours` with unit `none`, and `out` before `in` all give code `BAD_LAYOUT`.
+  - `test_layouts_are_stored_and_a_damaged_file_is_empty`.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Write the maps into `read_days`.** Reuse the `report` path. A mapped page sets `report`, `hours_col`,
+  `date_col` and `pairs` from the map, then runs the existing row loop.
+- [ ] **Step 4: Check.** The suite passes, and every existing test is unchanged (no map = today's reading).
+- [ ] **Step 5: Commit** "Payroll: a confirmed layout map says what each column of a card means".
+
+### Task 15: Claude's suggestion for a layout
+
+**Files:** Create `layouts.py`. Modify `ocr.py`. Tests: `tests/test_layouts.py` (new), `tests/test_ocr.py`.
+
+**Interfaces (Produces):**
+- `ocr.ask_text(prompt: str, schema: dict, *, timeout: int = 120) -> dict`: runs the signed-in CLI with the prompt on
+  stdin, `--output-format json --json-schema <schema>`, no image and no tools, with the reading's `MODEL` and `EFFORT`,
+  the billing variables removed and the same plain-language `OcrError`s. Returns the structured answer.
+- `layouts.shapes(page: dict, rows: int = 5) -> list[dict]`: up to `rows` rows `{label: shape}`. In a shape, digits
+  become 9 and letters become A, except whole words of 4 letters or fewer, kept as written ("PH", "OFF"). An empty
+  cell is "". Yellow cells are shaped from what Claude saw.
+- `layouts.SUGGEST_SCHEMA`: `{"columns": [{"label", "role" (enum LAYOUT_ROLES), "unit" (enum LAYOUT_UNITS)}]}`.
+  `layouts.suggest(page: dict, ask=ocr.ask_text) -> dict`: builds the prompt (the role list with one line each, "choose
+  ignore when unsure; never guess"), asks, and returns `payroll.valid_layout_map(...)` of the answer. A bad answer
+  raises `BAD_LAYOUT` (Review Focus 8).
+
+- [ ] **Step 1: Write the failing tests.** No real CLI: `ask` is a fake that records the prompt.
+  - `test_shapes_hide_names_and_numbers`: a row `{"NAME": "ALI BIN ABU", "IN": "07:58", "MARK": "PH"}` gives
+    `{"NAME": "AAA AAA AAA", "IN": "99:99", "MARK": "PH"}`. Check that the made-up name does not appear anywhere in
+    the prompt.
+  - `test_suggest_returns_a_checked_map`, and `test_suggest_refuses_an_answer_with_an_unknown_role`.
+  - `test_ask_text_runs_without_tools_or_image` (in `test_ocr.py`, fake `subprocess.run` as the existing tests do):
+    the command has `--json-schema` and no `--tools Read`, and the billing variables are removed.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Write `layouts.py` and `ocr.ask_text`.**
+- [ ] **Step 4: Check that the whole suite passes.**
+- [ ] **Step 5: Commit** "Layouts: Claude suggests what a card layout's columns mean (text only)".
+
+### Task 16: The card layout item and its panel
+
+**Files:**
+- Modify `app.py` (load the layouts and pass them to `compute_all` everywhere the plan is worked out).
+- Modify `companies.py` (the `layout` item).
+- Create `static/layout.js`.
+- Modify `static/companies.js`, `static/index.html` (`<main id="layout" hidden>`, script tag), `static/app.js`
+  (route `#/payroll/<m>/layout/<doc>/<page>`), `static/app.css`, `static/i18n.js` and `tools/check_i18n.py`.
+- Tests: `tests/test_companies.py`, `tests/test_app.py`.
+
+**Interfaces (Produces):**
+- `companies.unknown_layouts(pages_by_doc: dict[str, list[dict]], layouts: dict, used: dict[str, set[str]]) ->
+  list[dict]`: one `{"kind": "layout", "signature", "doc", "page", "columns": [unread figure columns]}` per unconfirmed
+  signature, under the rule in "Part C: decided here" (`used` = `payroll.columns_read` for each page). The company
+  screen lists it among its items.
+- `GET /api/payroll/layout?doc=&page=`: `{"labels", "shapes", "saved": map | null, "suggestion": map | null, "error":
+  text | null}`. The suggestion is asked only when nothing is saved and `?ask=1` is given, so opening the panel never
+  calls Claude by itself; the panel has an **Ask Claude** button.
+- `PUT /api/payroll/layout`, body `{"doc", "page", "columns"}`: runs `valid_layout_map`, saves it under the page's
+  signature with today's date, and returns `{"ok": true}`. `{"doc", "page", "as_is": true}` saves the layout with every
+  column the calculation does not read set to `ignore` ("It is right as it is").
+
+Behaviour of the panel:
+- One row per column: heading, the shapes of its first rows, and a select of the roles (shown in plain words such as
+  "Hours worked that day" and "Lateness") with a unit select.
+- Claude's suggestion is preselected and marked "Claude's suggestion: check it".
+- **Save** confirms the map. **Back** returns to the company screen, where the item is gone and the figures are worked
+  out again.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `test_an_unknown_layout_with_figures_is_an_item_once`: two cards of the same unknown layout give one item. A
+    layout whose unread columns are only "No." and a signature column gives none.
+  - `test_confirming_a_layout_changes_the_figures`, through `company_client`: a made-up card with the second report's
+    headings. Before confirming: the item, and OT 1.5 = 0. After `PUT` with the map: no item, and OT 1.5 equals the
+    sum of the OT column.
+  - `test_it_is_right_as_it_is_ignores_the_rest`, and `test_a_bad_map_is_refused_and_nothing_saved`.
+  - `test_opening_the_panel_does_not_ask_claude`: the fake `ask` is not called without `ask=1`.
+- [ ] **Step 2: Run them and see them fail.**
+- [ ] **Step 3: Build the server side.**
+- [ ] **Step 4: Build the page.** The suite, `check_i18n` and `check_patterns` pass.
+- [ ] **Step 5: Click it through** on made-up data with the second report's headings, with Claude's answer replaced
+  by a fixed one in the scratchpad server. Check that:
+  - the item opens the panel, and Ask Claude preselects the roles;
+  - changing one role and pressing Save updates the figures on the company screen;
+  - "It is right as it is" clears the item of another layout.
+- [ ] **Step 6: Commit** "Payroll: a new card layout is confirmed once, with Claude's suggestion".
+
+### Task 17: Part C proof, notes, review, stop
+
+- [ ] **Step 1: Check the real September data** (a copy, counts only, before = `pdf-text`, after = `conversion`, no
+  layout confirmed):
+  - the employees whose figures changed, by cause (hours column; afternoon rule; SA/SU);
+  - every other employee identical;
+  - the number of unclear lines before and after;
+  - the number of "card layout" items, and which layouts they are (headings shown to Claude only, never in chat).
+- [ ] **Step 2: Real Claude, once, with the user's OK** (it uses their plan): ask for the second clock report's
+  layout and print only whether each column's suggestion matches the expected role (WHrs hours, OT ot_1_5,
+  LIn(Min) lateness minutes, E/Out(Min) early_departure minutes). Save nothing.
+- [ ] **Step 3: Write the notes.** PROGRESS.md gets session 22 (Part C) and NEXT-SESSION.md section 0 is updated.
+  Commit "Notes: stage 4 part C".
+- [ ] **Step 4: Review and stop.** One fresh reviewer reviews the branch, and the important findings are fixed.
+  **Stop:** ask the user before merging and rebuilding. Before relying on the new rules, the user also confirms the
+  September layouts in the app.
+
+---
+
+## Part B: branch `employee-view` (from `pdf-text` after Part C is merged)
 
 ### Task 4: Plan actions for one employee
 

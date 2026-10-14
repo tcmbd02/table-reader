@@ -1,5 +1,37 @@
 # Progress log
 
+## Session 21b - 2026-10-14 - Why read cards do not reach Million; Part C (conversion) added to the plan
+The user: Claude reads the tables well, but some data is not converted into the file Million imports. Measured on a copy
+of the real September data (counts only, scripts in the session scratchpad, copies deleted afterwards):
+- **Only 8 of 84 employees reach the month's Million file.** 67 are stopped first by "Employee No. not in Million's
+  list": the list imported on this laptop is the test Million (7 employees), and most numbers were made by Table Reader.
+  Also 4 numbers that Million has under another name, 4 shared numbers and 1 empty number. The month file names only
+  the first reason, so this hides the next one.
+- **If every Employee No. were known, 37 would go in and 42 would stay INCOMPLETE.** Among the incomplete employees:
+  - 312 lines with yellow cells (179 IN/OUT times, 60 grid marks): to be accepted, with the one-look panel;
+  - 20 employees with days missing (mostly a half-month card not there);
+  - 22 days on two cards with different hours;
+  - 8 employees with no card.
+- **Conversion failures on cards read correctly:**
+  - **wrong hours column, which can give wrong figures without warning**: on a second clock-report layout (`WDays |
+    WHrs | E/Ot | OT | LIn(Min) | … | E/Out(Min)`) the early-out minutes column was taken as the daily hours (that
+    worker: 0 days worked), and on a salary-deduction list `TOTAL (RM)` was taken as hours;
+  - OUT written without pm and earlier than IN (IN 8, OUT 5.00): 20 days;
+  - "SA" / "SU" in month-grid cells, always on Saturdays and Sundays: 16;
+  - "530 pm" and other formats: about 15 cells;
+  - the clock report's OT and minute columns never reach Million;
+  - 5 files no rule fits (a door-system export with several stamps in one cell; a grid headed "1 Tuesday…"; one whose
+    headings were not read). The rest of those 5 are not time cards (a leave form, a lorry log, a cleaning list).
+- No figure was lost to the office's File Format Setting (no "no column for it" refusal).
+- **The user's decisions:**
+  - conversion before Part B;
+  - an OUT with no am/pm that is earlier than IN is afternoon;
+  - SA is Saturday and SU is Sunday: on their own weekday they mean not worked, and Sunday work is overtime (rest-day
+    work, already so);
+  - unknown layouts: Claude suggests what the columns mean, the user confirms once (Phase C).
+- **The plan gained Part C** (`docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`, Tasks 11-17,
+  branch `conversion`), to run before Part B. Not built yet.
+
 ## Session 21 - 2026-10-14 - Company-first payroll, stage 4 planned; Part A: summary before the file, New in Million
 Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`. Stage 4 is split in two parts, each merged
 and shippable by itself: **Part A** (this session) and **Part B** (employee view, pay preview tab, Add employee, then

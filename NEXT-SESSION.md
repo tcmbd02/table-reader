@@ -7,14 +7,14 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 > Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 21), then let's continue.
 
-**To start stage 4 Part B of the company-first payroll, paste this instead:**
+**To start stage 4 Part C (conversion, done before Part B), paste this instead:**
 
-> Continue the company-first payroll with stage 4 Part B. Read NEXT-SESSION.md (section 0), PROGRESS.md sessions 18
-> to 21, the plan `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md` (Part B = Tasks 4-10) and the
-> spec `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md`. Make branch `employee-view` from `pdf-text`
-> (Part A must be merged first), build it here with tests first, click it through on made-up data, compare the real
-> September figures read-only (counts only), then one fresh reviewer for the whole branch. Ask me before merging,
-> pushing or rebuilding.
+> Continue the company-first payroll with stage 4 Part C (conversion). Read NEXT-SESSION.md (section 0), PROGRESS.md
+> sessions 18 to 21b, and the plan `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md` ("Part C:
+> decided by the user", "Part C: decided here", Tasks 11-17). Use branch `conversion` (made from `pdf-text`, it holds
+> the updated plan). Build it here with tests first, click it through on made-up data, compare the real September
+> figures read-only (counts only), then one fresh reviewer for the whole branch. Ask me before merging, pushing,
+> rebuilding, or calling Claude on real data. After Part C comes Part B (Tasks 4-10, branch `employee-view`).
 
 ---
 
@@ -77,8 +77,15 @@ workers are not in that month's payroll, so there was nothing to update. Details
 - **Session 21 (2026-10-14): stage 4 planned and Part A built**, merged into `pdf-text` (fast-forward, local,
   **not pushed**) and the app rebuilt on the user's OK. Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`, split in
   Part A (summary before the month's Million file, "New in Million" list with Copy, payroll CSV on the new screens) and
-  Part B (employee view, pay preview tab, Add employee, then the old page and its endpoints removed). Next: Part B;
-  first the user decides whether the CSV buttons should ask about "Needs checking" employees. Details: PROGRESS.md 21.
+  Part B (employee view, pay preview tab, Add employee, then the old page and its endpoints removed). Details:
+  PROGRESS.md 21.
+- **Session 21b (2026-10-14): why read cards do not reach Million.** On the real September month: 8 of 84 employees go
+  into the file. 67 are stopped first by Employee Nos. this laptop's test Million does not have. With every number
+  known, 37 would go in. The conversion failures found: a wrong hours column on two layouts (can give wrong figures
+  without warning), OUT without pm, SA / SU, a clock report whose OT and minutes never reach Million, and a door-system
+  export. The user ruled on each, and the plan gained **Part C (conversion), Tasks 11-17, to do before Part B**, on
+  branch `conversion` (plan only, nothing built). Still to answer: should the CSV buttons ask about "Needs checking"
+  employees (the old page did)? Details: PROGRESS.md 21b.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
