@@ -2,8 +2,8 @@
 
 ## Session 23 - 2026-10-14 - Stage 4 Part B: the employee view, the pay preview tab, Add employee; the old page removed
 Built on branch `employee-view` (from `pdf-text` after Part C), Tasks 4-10 of
-`docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`. **Not merged, not pushed, app not rebuilt**
-(waiting for the user's OK). 549 tests pass (530 on `pdf-text`); Malay checks pass.
+`docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`. **Merged into `pdf-text` and the app rebuilt on the
+user's OK (local, not pushed; `download` branch and PDF guide not updated).** 549 tests pass (530 on `pdf-text`); Malay checks pass.
 - **How it started:** an earlier session had begun Part B in the main folder (`Documents\table-reader`): Task 4
   committed, Task 5 half-done and not saved. On the user's word ("do it here") the unsaved work was moved into this
   worktree (identical apart from one joined line, fixed), and the main folder was put back on `pdf-text`, clean.
