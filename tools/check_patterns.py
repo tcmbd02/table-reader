@@ -105,7 +105,7 @@ io_rows = [{"Date": good("1"), "IN": good("07:55"), "OUT": cell(None, raw="1?:0?
            {"Date": good("2"), "IN": good("07:55"), "OUT": good("")},
            {"Date": good("3"), "IN": good("-"), "OUT": good("17:00")},
            {"Date": good("4"), "IN": good("7.55 AM ✓"), "OUT": good("17:00")},
-           {"Date": good("7"), "IN": good("8.00"), "OUT": good("5.00")}]
+           {"Date": good("7"), "IN": good("8.00"), "OUT": good("5.00 am")}]
 io_rec = record(io_rows, labels=("Date", "IN", "OUT")); io_rec["page"] = 1
 msgs += [i["text"] for i in payroll.calculate(p, [("in-out.jpg", jobs.merged_pages({"pages": [io_rec]}, {"edits": []}))],
                                               emp)["issues"]]
@@ -114,6 +114,18 @@ st_rec = record([{"Date": good("1"), "Start": good("08:00"), "Finish": good("17:
                 labels=("Date", "Start", "Finish", "Jumlah Total")); st_rec["page"] = 1
 msgs += [i["text"] for i in payroll.calculate(p, [("card.jpg", jobs.merged_pages({"pages": [st_rec]}, {"edits": []}))],
                                               emp)["issues"]]
+
+# a card read with a layout map: several stamps in one cell that do not pair up, and a map without a date column
+st_labels = ("Date", "Times")
+lay = {payroll.layout_signature(list(st_labels)): {"columns": {"Date": {"role": "date", "unit": "none"},
+                                                              "Times": {"role": "stamps", "unit": "none"}}}}
+lay_nodate = {payroll.layout_signature(list(st_labels)): {"columns": {"Date": {"role": "ignore", "unit": "none"},
+                                                                     "Times": {"role": "stamps", "unit": "none"}}}}
+door = record([{"Date": good("1"), "Times": good("07:58 12:01 13:02")}, {"Date": good("2"), "Times": good("07:58 x")}],
+              labels=st_labels); door["page"] = 1
+door_pages = jobs.merged_pages({"pages": [door]}, {"edits": []})
+msgs += [i["text"] for i in payroll.calculate(p, [("door.pdf", door_pages)], emp, layouts=lay)["issues"]]
+msgs += [i["text"] for i in payroll.calculate(p, [("door.pdf", door_pages)], emp, layouts=lay_nodate)["issues"]]
 
 # Million file refusals, built by the real code
 mapping = payroll.load_office_mapping(ROOT / "million" / "office-mapping.csv")

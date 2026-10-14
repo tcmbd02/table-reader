@@ -129,6 +129,8 @@ _STAMP = re.compile(r"^(\d{1,2})\s*[:.,]\s*([0-5]\d)(?:\s*:\s*([0-5]\d))?\s*(?:(
 # "530 pm": the digits run together, which only reads as a time with am / pm after it ("530" alone could be anything)
 _STAMP_RUN = re.compile(r"^(\d{1,2})([0-5]\d)()\s*([ap])\.?\s*m\.?$", re.IGNORECASE)
 _AM_PM = re.compile(r"[ap]\.?\s*m\.?\s*$", re.IGNORECASE)
+# the clock times inside a "stamps" cell (layout maps): "07:58 12:01", "7.58 AM, 5.02 PM"
+_STAMP_IN_TEXT = re.compile(r"\d{1,2}\s*[:.]\s*[0-5]\d(?:\s*:\s*[0-5]\d)?(?:\s*[ap]\.?\s*m\.?)?", re.IGNORECASE)
 DEFAULT_BREAK = 1.0
 _DATE_LABEL = re.compile(r"date|tarikh|day|hari", re.IGNORECASE)
 _HOURS_LABEL = re.compile(r"total|jumlah|hours|jam|hrs", re.IGNORECASE)
@@ -823,6 +825,125 @@ def _key(label: str) -> str:
     return " ".join((label or "").split()).casefold()
 
 
+# ------------------------------------------------------------------------------------------------- layout maps
+# A card layout Table Reader has no rule for is read with a map the user confirmed (Claude may suggest it, see
+# layouts.py): what each column means. The map belongs to the layout's headings (layout_signature), so it is used for
+# every company and month with the same headings and for no other layout. Figure roles are read like the clock
+# report's printed figures: added up as written, and the normal-hours overtime rule is not applied on those days.
+LAYOUT_ROLES = ("date", "hours", "in", "out", "stamps", "lateness", "early_departure", "ot_1", "ot_1_5", "ot_2",
+                "ot_3", "ignore")
+LAYOUT_UNITS = ("hours", "minutes", "none")
+_FIGURE_ROLES = ("lateness", "early_departure", "ot_1", "ot_1_5", "ot_2", "ot_3")
+_COUNTED_ROLES = ("hours", *_FIGURE_ROLES)                  # read as a number of hours or minutes
+_ROW_NUMBER = re.compile(r"^(?:no\.?|bil\.?|#|s/?no\.?)$")
+
+
+def layout_signature(labels: list[str]) -> str:
+    """A card layout: its column headings, lower case with spaces collapsed, in order."""
+    return " | ".join(_key(label) for label in labels)
+
+
+def valid_layout_map(labels: list[str], columns) -> dict:
+    """A clean {heading: {"role", "unit"}} for a page with ``labels``, or OcrError BAD_LAYOUT: every heading of the
+    page and no other, known roles and units, one date at most, IN and OUT in turn, a unit of hours or minutes on a
+    figure and none on the rest. Used for the user's map and for Claude's suggestion alike (never trusted as it
+    comes)."""
+    bad = OcrError("BAD_LAYOUT", "What the columns mean could not be understood. Open the card layout again.")
+    if not isinstance(columns, dict) or set(columns) != set(labels):
+        raise bad
+    clean, sides = {}, []
+    for label in labels:
+        c = columns[label]
+        if not isinstance(c, dict) or c.get("role") not in LAYOUT_ROLES or c.get("unit") not in LAYOUT_UNITS:
+            raise bad
+        if (c["role"] in _COUNTED_ROLES) != (c["unit"] != "none"):
+            raise bad
+        if c["role"] in ("in", "out"):
+            sides.append(c["role"])
+        clean[label] = {"role": c["role"], "unit": c["unit"]}
+    if sum(1 for c in clean.values() if c["role"] == "date") > 1 or sides != ["in", "out"] * (len(sides) // 2):
+        raise bad
+    return clean
+
+
+def _minutes(text: str | None) -> float | None:
+    """Minutes written for a day (15, 1:30 = 90) -> hours; 0 for a dash or blank; None if it is not a number of
+    minutes."""
+    value = (text or "").strip()
+    if _NOT_WORKED.match(value):
+        return 0.0
+    m = _CLOCK.match(value)
+    if m:
+        return (int(m.group(1)) * 60 + int(m.group(2))) / 60
+    return int(value) / 60 if re.fullmatch(r"\d{1,4}", value) else None
+
+
+def _counted(text: str | None, unit: str) -> float | None:
+    return _minutes(text) if unit == "minutes" else parse_hours(text)
+
+
+def _layout_columns(labels: list[str], hours_column: str | None, layouts: dict | None) -> dict:
+    """How read_days reads a page with these headings: {"map", "date", "hours", "units", "report", "pairs", "stamps",
+    "grid"}. A confirmed map decides everything; else the built-in rules (month grid, hours column, IN/OUT pairs,
+    the clock report)."""
+    layout = (layouts or {}).get(layout_signature(labels))
+    if layout:
+        roles = layout["columns"]
+        of = lambda role: [c for c in labels if roles[c]["role"] == role]       # noqa: E731
+        return {"map": True, "grid": None, "date": next(iter(of("date")), None), "hours": next(iter(of("hours")), None),
+                "units": {c: roles[c]["unit"] for c in labels},
+                "report": {c: roles[c]["role"] for c in labels if roles[c]["role"] in _FIGURE_ROLES},
+                "pairs": list(zip(of("in"), of("out"))), "stamps": of("stamps")}
+    grid = grid_columns(labels)
+    if grid:
+        return {"map": False, "grid": grid}
+    date_col, hours_col = pick_columns(labels, hours_column)
+    report = {c: REPORT_COLUMNS[_key(c)] for c in labels if _key(c) in REPORT_COLUMNS}
+    # IN/OUT time card; on a card that also has a Total column, the times count on days the Total is left empty
+    pairs = [] if report and hours_col else clock_pairs(labels)
+    return {"map": False, "grid": None, "date": date_col, "hours": hours_col, "units": {}, "report": report,
+            "pairs": pairs, "stamps": []}
+
+
+def columns_read(labels: list[str], hours_column: str | None, layouts: dict | None) -> set[str]:
+    """The columns read_days reads on a page with these headings (from the same rules, so the two cannot drift): the
+    map's columns that are not ignored; a grid's days, name and total; else the date, hours, IN/OUT, report columns
+    (and the report's Flat column, which is checked)."""
+    how = _layout_columns(labels, hours_column, layouts)
+    if how["grid"]:
+        g = how["grid"]
+        return set(g["days"].values()) | {c for c in (g["name"], g["total"]) if c}
+    read = {how["date"], how["hours"], *how["report"], *how["stamps"], *(c for pair in how["pairs"] for c in pair)}
+    if how["report"] and not how["map"]:
+        read |= {c for c in labels if _key(c) in (REPORT_FLAT, REPORT_HOURS)}
+    return read - {None}
+
+
+def _stamp_cells(cells: dict, stamp_cols: list[str]) -> tuple[dict, list[tuple[str, str]], str | None]:
+    """A "stamps" cell (several clock times in one cell, a door-system export) as IN/OUT pairs in order:
+    (cells, pairs, problem). An odd number of times, or anything in the cell that is not a clock time, is a problem;
+    nothing is completed."""
+    out, pairs = {}, []
+    for col in stamp_cols:
+        cell = cells[col]
+        text = (cell["value"] or "").strip()
+        times = _STAMP_IN_TEXT.findall(text)
+        if cell["needs_review"]:
+            times = times or [""]                       # yellow: _clock_day reports it as still unclear
+        elif _STAMP_IN_TEXT.sub(" ", text).strip(" ,;/-\n\t"):
+            return {}, [], f"'{text}' is not a clock time (such as 07:55 or 5.30 PM). Correct it in the document."
+        elif len(times) % 2:
+            return {}, [], (f"'{text}' holds an odd number of clock times, so IN and OUT cannot be paired. Correct it "
+                            "in the document.")
+        for n in range(0, len(times), 2):
+            pin, pout = f"{col}\0{n}", f"{col}\0{n + 1}"
+            pair = times[n:n + 2] + [""] * (2 - len(times[n:n + 2]))
+            out[pin] = {**cell, "value": pair[0]}
+            out[pout] = {**cell, "value": pair[1]}
+            pairs.append((pin, pout))
+    return out, pairs, None
+
+
 def clock_pairs(labels: list[str]) -> list[tuple[str, str]]:
     """The (IN column, OUT column) pairs of an IN/OUT time card, in the card's order: "IN | OUT", "Time In | … | Time
     Out", or one pair per group ("MORNING / IN | MORNING / OUT | AFTERNOON / IN | AFTERNOON / OUT"). The word may be
@@ -947,9 +1068,10 @@ def _number_or_none(text: str) -> float | None:
 
 
 def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int, hours_column: str | None,
-              break_hours: float = DEFAULT_BREAK, year: int | None = None):
+              break_hours: float = DEFAULT_BREAK, year: int | None = None, layouts: dict | None = None):
     """Daily hours from an employee's documents. ``docs`` is [(document name, merged pages)]. ``year``: the month's
-    year, for the weekday of a day (a month grid's "SA" / "SU" mean not worked only on that weekday).
+    year, for the weekday of a day (a month grid's "SA" / "SU" mean not worked only on that weekday). ``layouts``: the
+    user's confirmed layout maps by signature; a page whose headings have one is read with it (_layout_columns).
     Returns (days, issues): days maps day -> {"hours": float | None, "status": "ok" | "unclear" | "conflict",
     "source": text, "printed": {field: hours} | None (clock-system report figures for that day),
     "mark": None | "present" | "hours" | "absent" | "holiday" | "off" | "leave" (month grids), "code": what was written,
@@ -964,34 +1086,36 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
     for k, (name, pages) in enumerate(docs):
         for page in pages:
             where = f"{name}" + (f", page {page['page']}" if len(pages) > 1 else "")
-            grid = grid_columns(page["column_labels"])
-            if grid:                                                # month grid: rows = workers, columns = days
-                _read_grid(page, grid, where, name, n_days, days, issues, k,
+            how = _layout_columns(page["column_labels"], hours_column, layouts)
+            if how["grid"]:                                         # month grid: rows = workers, columns = days
+                _read_grid(page, how["grid"], where, name, n_days, days, issues, k,
                            (lambda d: date(year, month_number, d).weekday()) if year else None)
                 continue
-            date_col, hours_col = pick_columns(page["column_labels"], hours_column)
-            report = {c: REPORT_COLUMNS[_key(c)] for c in page["column_labels"] if _key(c) in REPORT_COLUMNS}
-            # IN/OUT time card; on a card that also has a Total column, the times count on days the Total is left empty
-            pairs = [] if report and hours_col else clock_pairs(page["column_labels"])
-            if hours_col is None and not pairs:
+            date_col, hours_col, report, pairs = how["date"], how["hours"], how["report"], how["pairs"]
+            units, stamp_cols = how["units"], how["stamps"]
+            if how["map"] and date_col is None:
+                issues.append({"kind": "column", "job": name, "text": f"{where}: the card layout has no date column. "
+                               "Open the card layout and say which column holds the date."})
+                continue
+            if hours_col is None and not pairs and not stamp_cols:
                 issues.append({"kind": "column", "text": f"{where}: no column with the daily hours was found. "
                                                          "Choose it in the 'Hours column' list.", "job": name})
                 continue
             others = [c for c in page["column_labels"] if c not in (date_col, hours_col)] if hours_col and not pairs \
-                and not report else []
-            if report:
+                and not report and not how["map"] else []
+            if report and not how["map"]:
                 _check_report_totals(page, where, name, issues)
                 flat = next((c for c in page["column_labels"] if _key(c) == REPORT_FLAT), None)
                 if flat and any(parse_hours(row["cells"][flat]["value"]) or row["cells"][flat]["needs_review"]
                                 for row in page["rows"]):
                     issues.append({"kind": "flat", "job": name, "text": f"{where}: the report has Flat overtime. "
                                    "Table Reader does not add it: type it in the right Million Payroll field yourself."})
-            timed_cols = ([hours_col] if hours_col else []) + [c for pair in pairs for c in pair]
+            timed_cols = ([hours_col] if hours_col else []) + [c for pair in pairs for c in pair] + stamp_cols
             for r, row in enumerate(page["rows"], start=1):
                 cells = row["cells"]
                 dcell = cells[date_col]
                 hcell = cells[hours_col] if hours_col else None
-                stamps = [cells[c] for pair in pairs for c in pair]
+                stamps = [cells[c] for pair in pairs for c in pair] + [cells[c] for c in stamp_cols]
                 timed = ([hcell] if hcell else []) + stamps
 
                 def at(day: int | None, read: list[str]) -> dict:
@@ -1013,9 +1137,16 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                                        + ", so its hours were left out.", "job": name, "at": at(None, timed_cols)})
                     continue
                 written = hcell is not None and (hcell["needs_review"] or bool((hcell["value"] or "").strip()))
-                if pairs and not written:                       # no Total written that day: the IN/OUT times
-                    _put_day(days, day, _clock_day(cells, pairs, break_hours, where, day, name, issues,
-                                                   at(day, timed_cols)), name, issues)
+                if (pairs or stamp_cols) and not written:       # no Total written that day: the IN/OUT times
+                    stamped, more, problem = _stamp_cells(cells, stamp_cols)
+                    if problem:
+                        issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: {problem}",
+                                       "at": at(day, timed_cols)})
+                        _put_day(days, day, {"hours": None, "status": "unclear", "source": where, "printed": None},
+                                 name, issues)
+                        continue
+                    _put_day(days, day, _clock_day({**cells, **stamped}, pairs + more, break_hours, where, day, name,
+                                                   issues, at(day, timed_cols)), name, issues)
                     continue
                 read = [hours_col, *report]                     # what the lines below read
                 if not written and any(cells[c]["needs_review"] or parse_clock(cells[c]["value"]) is not None
@@ -1031,7 +1162,7 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                 if hcell["needs_review"]:
                     entry = {"hours": None, "status": "unclear", "source": where}
                 else:
-                    hours = parse_hours(hcell["value"])
+                    hours = _counted(hcell["value"], units.get(hours_col, "hours"))
                     entry = {"hours": hours, "status": "ok" if hours is not None else "unclear", "source": where}
                     if hours is None:
                         issues.append({"kind": "unclear", "text": f"{where}, day {day}: '{hcell['value']}' is not a number "
@@ -1046,7 +1177,7 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                     printed = {}
                     for col, field in report.items():
                         c = cells[col]
-                        value = None if c["needs_review"] else parse_hours(c["value"])
+                        value = None if c["needs_review"] else _counted(c["value"], units.get(col, "hours"))
                         if value is None:
                             entry["status"] = "unclear"
                             issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: the {col} "
@@ -1137,13 +1268,16 @@ def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: di
 
 
 # --------------------------------------------------------------------------------------------------- calculation
-def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict, million: dict | None = None) -> dict:
-    """The month-end figures for one employee, the per-day working, and everything that needs the user's attention."""
+def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict, million: dict | None = None,
+              layouts: dict | None = None) -> dict:
+    """The month-end figures for one employee, the per-day working, and everything that needs the user's attention.
+    ``layouts``: the user's confirmed layout maps (read_days)."""
     n_days = days_in(plan["month"])
     _, month_number = parse_month(plan["month"])
     normal = plan["normal_hours"]
     days, issues = read_days(docs, n_days, month_number, employee.get("hours_column"),
-                             plan.get("break_hours", DEFAULT_BREAK), year=parse_month(plan["month"])[0])
+                             plan.get("break_hours", DEFAULT_BREAK), year=parse_month(plan["month"])[0],
+                             layouts=layouts)
     values = {k: 0.0 for k in FIELD_KEYS}
     rows = []
     missing, ph_on_workday, leave = [], [], []
@@ -1308,7 +1442,8 @@ def _ranges(days: list[int]) -> str:
 
 
 def compute_all(plan: dict, load_pages: Callable[[str], tuple[str, list[dict]]],
-                million: dict[str, dict] | None = None, companies: list[str] | None = None) -> list[dict]:
+                million: dict[str, dict] | None = None, companies: list[str] | None = None,
+                layouts: dict | None = None) -> list[dict]:
     """``million``: the employees of Million's imported list by Employee No. in lower case (their Pay Basis and Basic
     Rate are used while none is typed). ``companies``: each employee's company, in the plan's order; an employee is
     then worked out with that company's settings (with_settings). Without it, everyone gets the month's default."""
@@ -1322,7 +1457,7 @@ def compute_all(plan: dict, load_pages: Callable[[str], tuple[str, list[dict]]],
             except OcrError as exc:
                 lost.append({"kind": "missing", "text": exc.message, "job": job_id})
         settings = with_settings(plan, companies[n]) if companies else plan
-        result = calculate(settings, docs, e, (million or {}).get(e["emp_no"].strip().casefold()))
+        result = calculate(settings, docs, e, (million or {}).get(e["emp_no"].strip().casefold()), layouts)
         for issue in result["issues"]:
             if "at" in issue:                                   # the document's id instead of its position
                 issue["at"] = {**issue["at"], "doc": split_ref(refs[issue["at"]["doc"]])[0]}
@@ -1871,6 +2006,17 @@ class PayrollStore:
 
     def save_directory(self, directory: dict) -> None:
         self._write(self.root / "employees.json", directory)
+
+    # the user's confirmed layout maps, by layout signature (see layout_signature): every company, every month
+    def load_layouts(self) -> dict:
+        try:
+            data = json.loads((self.root / "layouts.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def save_layouts(self, layouts: dict) -> None:
+        self._write(self.root / "layouts.json", layouts)
 
     # the month the user chose for a file that prints none ("none" = not a time card), by document id
     def load_file_months(self) -> dict[str, str]:

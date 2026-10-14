@@ -465,6 +465,7 @@ const MS = {
   "Copied": "Disalin",
   "Close": "Tutup",
   "Copying did not work. Select the numbers and copy them yourself.": "Salinan tidak berjaya. Pilih nombor-nombor itu dan salin sendiri.",
+  "What the columns mean could not be understood. Open the card layout again.": "Maksud lajur-lajur itu tidak dapat difahami. Buka susun atur kad itu semula.",
 };
 
 // "card.pdf, page 2" -> "card.pdf, halaman 2" (where a payroll message says which document it is about)
@@ -504,6 +505,8 @@ const MS_PATTERNS = [
   [/^(.+), day (\d+): the (.+) figure is unclear or not a number of hours\. Check it in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: angka ${m[3]} tidak jelas atau bukan bilangan jam. Semaknya dalam dokumen.`],
   [/^(.+), day (\d+): the (.+) column is empty but other columns of the row have times or yellow cells\. Type the hours in the (.+) column of the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: lajur ${m[3]} kosong tetapi lajur lain dalam baris itu ada masa atau sel kuning. Taip jam dalam lajur ${m[4]} dalam dokumen.`],
   [/^No entry found for day (.+) in the chosen documents\. These days were counted as not worked: add the other card if there is one\.$/, "Tiada catatan dijumpai untuk hari $1 dalam dokumen yang dipilih. Hari-hari ini dikira sebagai tidak bekerja: tambah kad yang satu lagi jika ada."],
+  [/^(.+): the card layout has no date column\. Open the card layout and say which column holds the date\.$/, (m) => `${msWhere(m[1])}: susun atur kad ini tiada lajur tarikh. Buka susun atur kad dan nyatakan lajur yang memegang tarikh.`],
+  [/^(.+), day (\d+): '([\s\S]*)' holds an odd number of clock times, so IN and OUT cannot be paired\. Correct it in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: '${m[3]}' mempunyai bilangan masa jam yang ganjil, jadi IN dan OUT tidak dapat dipasangkan. Betulkannya dalam dokumen.`],
   [/^(.+): no column with the daily hours was found\. Choose it in the 'Hours column' list\.$/, (m) => `${msWhere(m[1])}: tiada lajur dengan jam harian dijumpai. Pilihnya dalam senarai 'Lajur jam'.`],
   // IN/OUT time cards
   [/^(.+), day (\d+): an IN or OUT time is still unclear\. Check the yellow cell in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: masa IN atau OUT masih tidak jelas. Semak sel kuning dalam dokumen.`],

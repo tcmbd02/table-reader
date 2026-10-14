@@ -1498,3 +1498,94 @@ def test_sa_on_a_weekday_stays_unclear():
 def test_hours_on_a_sunday_still_count_as_rest_day_work():
     r = payroll.calculate(plan_for(), [("sheet", grid(grid_row("ALI", {6: "8"}, remark="")))], employee())
     assert values(r)["ot_rest_day"] == 1
+
+
+# ------------------------------------------------------------------- conversion: layout maps (confirmed by the user)
+MAPPED = ("DATE", "WHrs", "OT", "LIn(Min)", "E/Out(Min)")
+
+
+def layout_map(labels, roles):
+    """{signature: map} for a page with ``labels``; ``roles`` = {label: (role, unit)}, the rest ignored."""
+    return {payroll.layout_signature(list(labels)): {"columns": {
+        c: {"role": roles.get(c, ("ignore", "none"))[0], "unit": roles.get(c, ("ignore", "none"))[1]} for c in labels}}}
+
+
+REPORT_MAP = layout_map(MAPPED, {"DATE": ("date", "none"), "WHrs": ("hours", "hours"), "OT": ("ot_1_5", "hours"),
+                                 "LIn(Min)": ("lateness", "minutes"), "E/Out(Min)": ("early_departure", "minutes")})
+
+
+def mapped_rows(*rows, labels=MAPPED):
+    return merged([{c: good(v) for c, v in zip(labels, r)} for r in rows], labels=labels)
+
+
+def test_a_mapped_report_gives_hours_and_million_figures():
+    page = mapped_rows(("1", "10", "2", "15", "0"), ("2", "8", "0", "0", "30"))
+    days, issues = payroll.read_days([("report", page)], 30, 9, None, layouts=REPORT_MAP)
+    assert not issues
+    assert days[1]["hours"] == 10.0 and days[2]["hours"] == 8.0
+    assert days[1]["printed"] == {"ot_1_5": 2.0, "lateness": 0.25, "early_departure": 0.0}
+    v = values(payroll.calculate(plan_for(), [("report", page)], employee(), layouts=REPORT_MAP))
+    assert v["ot_1_5"] == 2.0 and v["lateness"] == 0.25 and v["early_departure"] == 0.5     # no 10 - 8 rule on top
+    assert v["days_worked"] == 2
+
+
+def test_a_map_is_used_only_for_its_own_headings():
+    labels = MAPPED + ("STATUS",)
+    page = mapped_rows(("1", "10", "2", "15", "0", "OK"), labels=labels)
+    days, _ = payroll.read_days([("report", page)], 30, 9, None, layouts=REPORT_MAP)
+    assert days[1]["printed"] is None and days[1]["hours"] == 10.0          # today's reading: WHrs is the hours
+
+
+def test_stamps_in_one_cell_are_paired_in_order():
+    stamps = layout_map(("Date", "Times"), {"Date": ("date", "none"), "Times": ("stamps", "none")})
+    page = mapped_rows(("1", "07:58 12:01 13:02 17:05"), ("2", "07:58 12:01 13:02"), labels=("Date", "Times"))
+    days, issues = payroll.read_days([("door", page)], 30, 9, None, layouts=stamps)
+    assert days[1]["hours"] == 8.1 and days[1]["clock"]["pairs"] == 2                   # two pairs: no break
+    assert days[2]["status"] == "unclear"
+    assert any("day 2: '07:58 12:01 13:02' holds an odd number of clock times" in i["text"] for i in issues)
+
+
+def test_a_minutes_figure_written_as_hmm_is_minutes():
+    page = mapped_rows(("1", "8", "0", "1:30", "0"))
+    days, _ = payroll.read_days([("report", page)], 30, 9, None, layouts=REPORT_MAP)
+    assert days[1]["printed"]["lateness"] == 1.5
+
+
+@pytest.mark.parametrize("change", [
+    lambda m: m.pop("WHrs"),                                                     # a heading of the page left out
+    lambda m: m.update({"OTHER": {"role": "ignore", "unit": "none"}}),          # a heading not on the page
+    lambda m: m.update({"OT": {"role": "salary", "unit": "hours"}}),            # a role not on the list
+    lambda m: m.update({"OT": {"role": "ot_1_5", "unit": "days"}}),             # a unit not on the list
+    lambda m: m.update({"WHrs": {"role": "date", "unit": "none"}}),             # two dates
+    lambda m: m.update({"WHrs": {"role": "hours", "unit": "none"}}),            # hours without a unit
+    lambda m: m.update({"OT": {"role": "out", "unit": "none"}, "LIn(Min)": {"role": "in", "unit": "none"}}),  # OUT 1st
+])
+def test_valid_layout_map_refuses_bad_answers(change):
+    columns = {c: dict(v) for c, v in next(iter(REPORT_MAP.values()))["columns"].items()}
+    change(columns)
+    with pytest.raises(ocr.OcrError) as e:
+        payroll.valid_layout_map(list(MAPPED), columns)
+    assert e.value.code == "BAD_LAYOUT"
+
+
+def test_a_valid_layout_map_is_returned_clean():
+    columns = next(iter(REPORT_MAP.values()))["columns"]
+    assert payroll.valid_layout_map(list(MAPPED), columns) == columns
+
+
+def test_layouts_are_stored_and_a_damaged_file_is_empty(tmp_path):
+    store = payroll.PayrollStore(tmp_path)
+    assert store.load_layouts() == {}
+    store.save_layouts(REPORT_MAP)
+    assert store.load_layouts() == REPORT_MAP
+    (tmp_path / "layouts.json").write_text("{not json", encoding="utf-8")
+    assert store.load_layouts() == {}
+
+
+def test_columns_read_matches_what_read_days_reads():
+    assert payroll.columns_read(["Date", "Total", "Sign"], None, None) == {"Date", "Total"}
+    assert payroll.columns_read(["DATE", "IN", "OUT", "SIGN"], None, None) == {"DATE", "IN", "OUT"}
+    assert payroll.columns_read(list(GRID_LABELS), None, None) == set(GRID_LABELS)          # days, name, Remark
+    assert payroll.columns_read(list(REPORT_LABELS), None, None) >= {"Date", "Shift Details / Actual", "OverTime / 1.5"}
+    assert payroll.columns_read(list(MAPPED), None, REPORT_MAP) == set(MAPPED)
+    assert payroll.columns_read(list(MAPPED) + ["STATUS"], None, REPORT_MAP) == {"DATE", "WHrs"}   # not this layout
