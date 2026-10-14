@@ -71,7 +71,8 @@ function emSend(changes) {
       const view = await api("PUT", emEmployeeUrl(), { changes });
       if (month !== emMonth || id !== emId) return;
       for (const [k, v] of Object.entries(changes)) if (emPending[k] === v) delete emPending[k];
-      emView = view; emError("");
+      emView = { ...view, addable: view.addable || (emView && emView.addable) };   // a change answers without the list
+      emError("");
       emState(Object.keys(emTimers).length ? t("Saving…") : t("Saved"));
       emDraw();
       ppRefreshSoon();
@@ -180,8 +181,39 @@ function emDrawCards() {
   $("em-cards").replaceChildren(
     el("h3", { text: t("Time cards of this employee") }),
     cards.length ? el("ol", { class: "needs" }, ...cards) : el("p", { class: "muted", text: t("This employee has no time card yet.") }),
+    emAddCardRow(e),
     el("div", { class: "need-buttons" }, el("label", {}, t("Hours column"), colSel), remove));
   $("em-cards").hidden = false;
+}
+
+// "Add a time card": any card of the employee's company that is not theirs (GET /employee/<id> lists them). One on
+// another employee is moved here after a question; one of another month, set aside or with no month is first said to
+// be for this month (as "It is for <month>" in step 2), so the other month does not count it too.
+function emAddCardRow(e) {
+  const addable = emView.addable || [];
+  if (!addable.length) return null;
+  const label = (k) => {
+    const notes = [k.month === "none" ? t("set aside") : k.month === null ? t("no month")
+      : k.month !== emMonth ? t("read as {month}", { month: monthTitle(k.month) }) : "",
+    k.on ? t("now on {name}", { name: k.on.name || t("An employee") }) : ""].filter(Boolean);
+    return notes.length ? `${k.name} (${notes.join(", ")})` : k.name;
+  };
+  const group = (title, list) => (list.length
+    ? el("optgroup", { label: title }, ...list.map((k) => el("option", { value: k.ref, text: label(k) }))) : null);
+  const pick = el("select", { id: "em-add", "aria-label": t("Add a time card") },
+    group(t("on nobody"), addable.filter((k) => !k.on)), group(t("on another employee"), addable.filter((k) => k.on)));
+  const add = el("button", { type: "button", text: t("Add") });
+  add.addEventListener("click", () => {
+    const card = addable.find((k) => k.ref === pick.value);
+    if (!card) return;
+    if (card.on && !confirm(t("Move this card from {from} to {to}?",
+      { from: card.on.name || t("An employee"), to: e.name || t("this employee") }))) return;
+    emAct(add, async () => {
+      if (card.month !== emMonth) await api("POST", "/api/payroll/file-month", { id: card.doc, month: emMonth });
+      await api("POST", emUrl("/place"), { ref: card.ref, employee: emId, ...(card.on ? { move: true, from: card.on.id } : {}) });
+    });
+  });
+  return el("div", { class: "need-buttons" }, el("label", {}, t("Add a time card"), pick), add);
 }
 
 // ------------------------------------------------------------------------------------------------ the window

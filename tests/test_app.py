@@ -1,4 +1,5 @@
 import pytest
+import time
 import json
 import xlrd
 from fastapi.testclient import TestClient
@@ -1497,3 +1498,32 @@ def test_step_2_tells_what_joined_by_itself_when_it_opens_the_month_first(tmp_pa
         assert files["added_by_themselves"]["new_numbers"] == 1 and files["numbered"] == 0   # ALI got a new number
         again = c.get(f"/api/payroll/{month}/files").json()
         assert again["added_by_themselves"] is None and again["numbered"] == 0     # once only
+
+
+def test_the_employee_view_offers_the_companys_other_cards(maju_jaya, tmp_path):
+    """"Add a time card": every card of the employee's company that is not on them - on nobody (with the month it is
+    for) or on another employee (who) - and none of another company."""
+    c, month, ali, siti, ref = maju_jaya
+    for name in (f"MAJU JAYA ZUL OCT {YEAR}.png", f"BINA AMIN SEPT {YEAR}.png"):
+        upload(c, tmp_path, name=name)
+    ids = {}
+    for _ in range(200):                                           # read by the fixture's store
+        ids = {j["name"]: j for j in c.get("/api/jobs").json()}
+        if all(j["status"] == "done" for j in ids.values()):
+            break
+        time.sleep(0.05)
+    set_company(c, "MAJU JAYA", "MAJU JAYA")
+    set_company(c, "BINA", "BINA")
+    view = c.get(f"/api/payroll/{month}/employee/{ali}").json()
+    offered = {k["name"]: k for k in view["addable"]}
+    zul, siti_card = ids[f"MAJU JAYA ZUL OCT {YEAR}.png"]["id"], ids[f"MAJU JAYA SITI SEPT {YEAR}.png"]["id"]
+    assert set(offered) == {f"MAJU JAYA ZUL OCT {YEAR}.png", f"MAJU JAYA SITI SEPT {YEAR}.png"}   # not ALI's, not BINA's
+    assert offered[f"MAJU JAYA ZUL OCT {YEAR}.png"] == {"ref": zul, "doc": zul, "name": f"MAJU JAYA ZUL OCT {YEAR}.png",
+                                                       "month": f"{YEAR}-10", "on": None}
+    assert offered[f"MAJU JAYA SITI SEPT {YEAR}.png"]["on"] == {"id": siti, "name": "SITI"}
+    assert offered[f"MAJU JAYA SITI SEPT {YEAR}.png"]["month"] == month and siti_card
+    # what the page then does: the October card is said to be for this month, and placed on ALI
+    assert c.post("/api/payroll/file-month", json={"id": zul, "month": month}).json() == {"ok": True}
+    assert c.post(f"/api/payroll/{month}/place", json={"ref": zul, "employee": ali}).json()["employee"] == ali
+    view = c.get(f"/api/payroll/{month}/employee/{ali}").json()
+    assert zul in [k["ref"] for k in view["cards"]] and zul not in [k["ref"] for k in view["addable"]]

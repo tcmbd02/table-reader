@@ -797,13 +797,53 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                                for kind, (title, type_head, _) in payroll.LISTS.items()},
                 "million": [{"emp_no": e["emp_no"], "name": e["name"]} for e in million["employees"]] if million else None}
 
+    def addable_cards(plan: dict, person: dict, company: str) -> list[dict]:
+        """What "Add a time card" offers on an employee: every card (a file, or its page / grid row when it shows several
+        workers) of the finished files of the employee's company that is not on this employee, with the month it is
+        for ("none" = set aside as not a time card, None = no month) and who has it now in this month (None = nobody).
+        A whole file counts as someone's when one of its parts is, and a part when its file or its page is (as
+        companies.unplaced counts them)."""
+        chosen = plans.load_file_months()
+
+        def holder(ref: str) -> dict | None:
+            base, page, row = payroll.split_part(ref)
+            for e in plan["employees"]:
+                for job in e["jobs"]:
+                    j_base, j_page, j_row = payroll.split_part(job)
+                    if job == ref or (j_base == base and (ref == base or job == base
+                                                          or (row is not None and j_page == page and j_row is None))):
+                        return e
+            return None
+
+        out = []
+        for d in finished_documents():
+            if d["company"] != company:
+                continue
+            try:
+                pages = merged_pages(store.load_result(d["id"]), store.load_edits(d["id"]))
+                found, _ = month_of(d, pages, chosen)
+                cards = candidates_of(d)
+            except (OcrError, OSError, ValueError):
+                continue                                            # a reading that cannot be opened is not offered
+            for c in cards:
+                who = holder(c["ref"])
+                if who is person:
+                    continue
+                out.append({"ref": c["ref"], "doc": d["id"], "name": c["name"],
+                            "month": "none" if chosen.get(d["id"]) == "none" else found,
+                            "on": {"id": who["id"], "name": who["name"]} if who else None})
+        return out
+
     def bad_body() -> OcrError:
         return OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
 
     @app.get("/api/payroll/{month}/employee/{employee_id}")
     def get_employee(month: str, employee_id: str):
-        """The employee view. Reads the plan as saved; changes nothing (the month was opened by step 3)."""
-        return employee_view(month, plans.load(month), employee_id)
+        """The employee view. Reads the plan as saved; changes nothing (the month was opened by step 3). Also what
+        "Add a time card" offers (only here: the changes below answer without it, the page keeps the last list)."""
+        plan = plans.load(month)
+        view = employee_view(month, plan, employee_id)
+        return {**view, "addable": addable_cards(plan, view["employee"], view["company"])}
 
     @app.put("/api/payroll/{month}/employee/{employee_id}")
     async def change_employee(month: str, employee_id: str, request: Request):

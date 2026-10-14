@@ -1,5 +1,15 @@
 # Progress log
 
+## Session 24b - 2026-10-14 - "Add a time card" on an employee
+Asked by the user: under "Time cards of this employee", a choice of any time card of the same company. Branch `add-card`
+(from `pdf-text`).
+- `GET /employee/<id>` gives `addable`: every card (file, or page / grid row) of the employee's company's finished files
+  that is not theirs, with the month it is for and who has it now. The page groups them "on nobody" / "on another
+  employee" (with "read as October", "set aside", "no month", "now on SITI").
+- Add: a card on another employee is moved after "Move this card from SITI to ALI?"; a card of another month, set
+  aside or with no month is first said to be for this month (as "It is for …" in step 2), then placed.
+- Test `test_the_employee_view_offers_the_companys_other_cards`, click-through `add_card`; guides got one line.
+
 ## Session 24 - 2026-10-14 - Three steps: Upload, Check reading, Payroll
 The user asked for one workflow of three pages with buttons between them. Spec
 `docs/superpowers/specs/2026-10-14-three-step-workflow-design.md`, plan `docs/superpowers/plans/2026-10-14-three-step-workflow.md`
