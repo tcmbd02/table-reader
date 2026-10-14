@@ -108,6 +108,9 @@ workers are not in that month's payroll, so there was nothing to update. Details
   top, same tab. New requests `/people` and `/files`; the company screen's two requests are gone. Real September data:
   87 employees identical, 9 ready / 78 held, same file problems. Click-throughs in `tools/clickthrough/`. Details:
   PROGRESS.md 24.
+- **Session 24b (2026-10-14): "Add a time card"** on the employee view (any card of the employee's company; one on
+  another employee is moved after a question). Merged into `pdf-text` and the app rebuilt; **not pushed, `download`
+  branch not updated** (it still has the three steps without this). Details: PROGRESS.md 24b.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -132,7 +135,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | Three steps (session 24, branch `three-steps`) | 1 Upload → 2 Check reading (files, and each file's problems for the payroll) → 3 Payroll (companies and employees in one list; employee or company on the right). Replaces the month overview, company screen and the separate Look / Layout pages of sessions 18-23. |
 | Browser check | Click-throughs in headless Edge on made-up data, in the repo since session 24 (`tools/clickthrough/`, `sh tools/clickthrough/run.sh <scenario>`). Nobody has looked at the new screens with their eyes on a real card yet. |
 
-Tests: **555 pass** on `pdf-text` (`.venv\Scripts\python -m pytest -q`; a worktree without its own `.venv` can use the main folder's). Package rebuilt in session 24 (14 Oct, with the three steps). Sessions up to 22 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed); session 23 merged into `pdf-text` too; session 24 merged into `pdf-text` too. The `download` branch has the build of 14 Oct (three steps); its PDF guide is still the old one.
+Tests: **556 pass** on `pdf-text` (`.venv\Scripts\python -m pytest -q`; a worktree without its own `.venv` can use the main folder's). Package rebuilt in session 24 (14 Oct, with the three steps). Sessions up to 22 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed); session 23 merged into `pdf-text` too; session 24 merged into `pdf-text` too. The `download` branch has the build of 14 Oct (three steps); its PDF guide is still the old one.
 
 ## 2. Git / GitHub
 
