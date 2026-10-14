@@ -1,5 +1,15 @@
 # Progress log
 
+## Session 24c - 2026-10-14 - Rest days every week in the settings
+Asked by the user: Sunday a rest day by default in the month settings. It already was (every new month starts with its
+Sundays as rest days); on the user's choice the settings now show it. Branch `weekly-rest` (from `pdf-text`).
+- Month settings and Company settings (one editor) have "Rest days every week: Mon … Sun", read from the calendar
+  (Sunday ticked in a new month; half-ticked when only some of a weekday's days are rest days). Ticking makes all of
+  that weekday's days rest days, unticking working days; public holidays are left alone. Saved as before (day by day).
+- Found on the way: "Add a time card" (24b) wrote "null" under the cards of an employee whose company has no other
+  card; fixed (the line is left out).
+- Click-throughs `rest_days` (new) and `add_card` (one more check); guides got one line.
+
 ## Session 24b - 2026-10-14 - "Add a time card" on an employee
 Asked by the user: under "Time cards of this employee", a choice of any time card of the same company. Branch `add-card`
 (from `pdf-text`), **merged into `pdf-text`, the app rebuilt, pushed and the `download` branch updated, on the user's

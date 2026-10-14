@@ -231,3 +231,5 @@ label.check { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
 .side-head { flex-direction: column; align-items: flex-start; gap: 0; margin-top: 6px; }
 .pp-company + .pp-company { border-top: 1px solid var(--line); }
 .foot { justify-content: flex-end; margin: 16px 0; }
+.weekly { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.weekly label { display: inline-flex; align-items: center; gap: 4px; }

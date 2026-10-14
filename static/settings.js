@@ -23,20 +23,45 @@ function settingsEditor(month, start) {
     btn.title = t("{d}: {w} (click to change)", { d, w: DAY_WORDS[type] });
     btn.setAttribute("aria-label", t("Day {d}, {w}. Click to change.", { d, w: DAY_WORDS[type] }));
   };
+  // Rest days every week: one tick per weekday, read from the calendar (ticked: every one of its days that is not a
+  // public holiday is a rest day; half-ticked: some are). Ticking makes them all rest days, unticking all working days;
+  // public holidays are left as they are.
+  const daysOf = (weekday) => Object.keys(types)
+    .filter((d) => new Date(y, m - 1, Number(d)).getDay() === weekday && types[d] !== "holiday");
+  const weekly = [1, 2, 3, 4, 5, 6, 0].map((weekday) => {
+    const box = el("input", { type: "checkbox", "data-weekday": String(weekday) });
+    box.addEventListener("change", () => {
+      for (const d of daysOf(weekday)) types[d] = box.checked ? "rest" : "work";
+      paintAll();
+    });
+    return { weekday, box };
+  });
+  const paintWeekly = () => weekly.forEach(({ weekday, box }) => {
+    const days = daysOf(weekday);
+    const resting = days.filter((d) => types[d] === "rest").length;
+    box.checked = days.length > 0 && resting === days.length;
+    box.indeterminate = resting > 0 && resting < days.length;
+  });
   const grid = el("div", { class: "days" });
+  const buttons = [];
+  const paintAll = () => { buttons.forEach((btn, i) => paint(btn, i + 1)); paintSummary(); paintWeekly(); };
   for (let d = 1; d <= Object.keys(types).length; d++) {
     const btn = el("button", { type: "button" });
     btn.addEventListener("click", () => {
       types[String(d)] = DAY_ORDER[(DAY_ORDER.indexOf(types[String(d)]) + 1) % DAY_ORDER.length];
-      paint(btn, d); paintSummary();
+      paint(btn, d); paintSummary(); paintWeekly();
     });
     paint(btn, d);
+    buttons.push(btn);
     grid.append(btn);
   }
   paintSummary();
+  paintWeekly();
   const node = el("div", { class: "settings-editor" },
     el("div", { class: "row" }, el("label", {}, t("Normal hours in a working day (overtime starts after this)"), hours),
       el("label", {}, t("Break taken off IN/OUT time cards (hours)"), rest)),
+    el("div", { class: "weekly" }, el("span", { text: t("Rest days every week:") }),
+      ...weekly.map(({ weekday, box }) => el("label", {}, box, t(WEEKDAYS[weekday])))),
     el("p", { class: "legend", text: t("Click a day to change it: working day → rest day → public holiday.") }),
     el("p", { class: "legend day-key" }, t("Colours:"),
       ...DAY_ORDER.map((k) => el("span", {}, el("span", { class: `swatch day ${k}`, "aria-hidden": "true" }),

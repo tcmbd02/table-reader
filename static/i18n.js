@@ -65,6 +65,7 @@ const MS = {
   "now on {name}": "kini pada {name}",
   "Move this card from {from} to {to}?": "Pindahkan kad ini daripada {from} kepada {to}?",
   "this employee": "pekerja ini",
+  "Rest days every week:": "Hari rehat setiap minggu:",
   "Take this card off the employee? It goes back to step 2 as a card whose employee is not known.": "Tanggalkan kad ini daripada pekerja? Ia kembali ke langkah 2 sebagai kad yang pekerjanya tidak diketahui.",
   "Payroll": "Gaji",
   "Quit Table Reader": "Tutup Table Reader",
