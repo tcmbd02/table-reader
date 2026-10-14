@@ -768,10 +768,10 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         path = save_payroll_file(name, data)
         return FileResponse(path, media_type="application/vnd.ms-excel", filename=path.name)
 
-    @app.post("/api/payroll/{month}/run")
-    def payroll_month_run(month: str):
+    def month_file(month: str, make: bool) -> dict:
         """One Million file for the whole month (every company), with everyone who can go in; the others are listed
-        by company with the reason. See payroll.month_run."""
+        by company with the reason (payroll.month_run). ``make`` False = the summary shown first: worked out the same
+        way, nothing written ("file" None). Making it works everything out again; it never relies on a summary."""
         docs = finished_documents()
         view = payroll_view(plans.load(month), docs)
         plan, results = view["plan"], view["results"]
@@ -784,19 +784,30 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         run = payroll.month_run(plan, results, companies, names=names,
                                 known=set(names) if names else payroll.load_million_employees())
         name = None
-        if run["file"] is not None:
+        if make and run["file"] is not None:
             name = save_payroll_file(f"Payroll {month} (Million).xls", run["file"]).name
         by_company: dict[str, dict] = {}
         for kind in ("ready", "held"):
             for who in run[kind]:
-                entry = by_company.setdefault(who["company"], {"company": who["company"], "ready": 0, "held": []})
+                entry = by_company.setdefault(who["company"], {"company": who["company"], "ready": 0,
+                                                               "ready_people": [], "held": []})
                 if kind == "ready":
                     entry["ready"] += 1
+                    entry["ready_people"].append({"emp_no": who["emp_no"], "name": who["name"]})
                 else:
                     entry["held"].append({"emp_no": who["emp_no"], "name": who["name"], "reasons": who["reasons"]})
-        return {"file": name, "folder": str(plans.root), "ready": len(run["ready"]), "held": len(run["held"]),
-                "checked_with_million": bool(listed),
+        return {"file": name, "made": make, "folder": str(plans.root), "ready": len(run["ready"]),
+                "held": len(run["held"]), "checked_with_million": bool(listed),
                 "companies": sorted(by_company.values(), key=lambda c: (c["company"] == "", c["company"].casefold()))}
+
+    @app.get("/api/payroll/{month}/run")
+    def payroll_month_summary(month: str):
+        """What the month's Million file would hold, shown before it is made."""
+        return month_file(month, make=False)
+
+    @app.post("/api/payroll/{month}/run")
+    def payroll_month_run(month: str):
+        return month_file(month, make=True)
 
     # ------------------------------------------------------------------------------- the Inbox and Tables folders
     watcher = Inbox(store)

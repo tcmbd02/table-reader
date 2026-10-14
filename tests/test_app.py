@@ -1094,3 +1094,45 @@ def test_bad_settings_are_refused(tmp_path):
         assert r.json()["code"] == "BAD_PAYROLL"
         r = c.put(f"/api/payroll/{month}/settings", json=["not", "settings"])
         assert r.json()["code"] == "BAD_PAYROLL"
+
+
+# ------------------------------------------------------------------------------------ the month's Million file
+def three_workers(c, store, tmp_path):
+    """MAJU JAYA: ALI; BINA: SITI and ZUL. Million knows ALI and SITI; ZUL gets a new number Million does not have."""
+    import_million(c, ("MJ1", "ALI"), ("BN1", "SITI"))
+    for name in (f"MAJU JAYA ALI SEPT {YEAR}.png", f"BINA SITI SEPT {YEAR}.png", f"BINA ZUL SEPT {YEAR}.png"):
+        upload(c, tmp_path, name=name)
+    store.wait_idle()
+    set_company(c, "MAJU JAYA", "MAJU JAYA")
+    set_company(c, "BINA", "BINA")
+    month = f"{YEAR}-09"
+    c.get(f"/api/payroll/{month}/companies")                        # opening the month: the files join by themselves
+    accept_offers(c, month, "MAJU JAYA")
+    accept_offers(c, month, "BINA")
+    return month
+
+
+def test_the_summary_lists_who_goes_in_and_writes_no_file(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        month = three_workers(c, store, tmp_path)
+        run = c.get(f"/api/payroll/{month}/run").json()
+        assert run["made"] is False and run["file"] is None and run["ready"] == 2 and run["held"] == 1
+        bina = next(comp for comp in run["companies"] if comp["company"] == "BINA")
+        assert bina["ready_people"] == [{"emp_no": "BN1", "name": "SITI"}]           # only ZUL is held back
+        assert len(bina["held"]) == 1 and bina["held"][0]["name"] == "ZUL"
+        assert "is not in the Million employee list" in " ".join(bina["held"][0]["reasons"])
+        assert list((tmp_path / "payroll").glob("*.xls")) == []
+
+
+def test_the_file_is_worked_out_again_when_it_is_made(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        month = three_workers(c, store, tmp_path)
+        assert c.get(f"/api/payroll/{month}/run").json()["held"] == 1
+        zul = next(e for e in c.get(f"/api/payroll/{month}/company", params={"name": "BINA"}).json()["employees"]
+                   if e["name"] == "ZUL")
+        import_million(c, ("MJ1", "ALI"), ("BN1", "SITI"), (zul["emp_no"], "ZUL"))     # created in Million since
+        run = c.post(f"/api/payroll/{month}/run").json()
+        assert run["made"] is True and run["ready"] == 3 and run["held"] == 0
+        assert (tmp_path / "payroll" / run["file"]).exists()
