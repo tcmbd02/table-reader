@@ -189,6 +189,57 @@ def overview(views: list[dict], known: list[str]) -> dict:
             "ready_employees": sum(1 for v in views for e in v["employees"] if e["status"] == "ready")}
 
 
+def file_problems(files: dict[str, list[dict]], layouts: dict[str, list[dict]], other: dict[str, list[dict]],
+                  loose: list[dict]) -> dict[str, list[dict]]:
+    """Step 2's "This file needs you": {file id: items}, each item with its ``company``. ``files``: {company: the
+    "unplaced" and "month" items of its files}; ``layouts``: {company: "layout" items}; ``other``: {company: files set
+    aside or read as another month and on nobody there, [{doc, name, month}]}, as "other" items; ``loose``: finished
+    files with no company, [{id, name}], as "company" items. In one file: unplaced / month, layouts, other, company."""
+    out: dict[str, list[dict]] = {}
+    for source in (files, layouts):
+        for company, items in source.items():
+            for item in items:
+                out.setdefault(item["doc"], []).append({**item, "company": company})
+    for company, rows in other.items():
+        for f in rows:
+            out.setdefault(f["doc"], []).append({"kind": "other", "doc": f["doc"], "name": f["name"],
+                                                 "month": f["month"], "company": company})
+    for d in loose:
+        out.setdefault(d["id"], []).append({"kind": "company", "doc": d["id"], "name": d["name"], "company": ""})
+    return out
+
+
+def needs_you(items: list[dict]) -> bool:
+    """A file needs the user unless all it has is "set aside / another month" (shown so a mistake can be put right)."""
+    return any(i["kind"] != "other" for i in items)
+
+
+def people_view(views: list[dict], known: list[str], problems: dict[str, list[dict]]) -> dict:
+    """Step 3's list. ``views``: company_view of each company made WITHOUT file and layout items (so a company's
+    status and count are only its own and its employees'); ``known``: companies listed even with nothing this month
+    (as overview); ``problems``: file_problems. Rows sorted as overview sorts them, each with its company items
+    (those about no one employee), its employees each with their own items, million_new, settings, and
+    ``files_needing`` (its files that need the user in step 2; files with no company count under "")."""
+    over = overview(views, known)
+    by_company = {v["company"]: v for v in views}
+    counts: dict[str, int] = {}
+    for items in problems.values():
+        if needs_you(items):
+            company = next(i["company"] for i in items if i["kind"] != "other")
+            counts[company] = counts.get(company, 0) + 1
+    rows = []
+    for row in over["companies"]:
+        v = by_company.get(row["company"], {"items": [], "employees": [], "million_new": []})
+        rows.append({**row,
+                     "items": [i for i in v["items"] if "employee" not in i],
+                     "employees": [{**e, "items": [i for i in v["items"] if i.get("employee") == e["id"]]}
+                                   for e in v["employees"]],
+                     "million_new": v["million_new"], "settings": v.get("settings"),
+                     "files_needing": counts.get(row["company"], 0)})
+    return {"companies": rows, "ready_companies": over["ready_companies"], "ready_employees": over["ready_employees"],
+            "employees": sum(len(r["employees"]) for r in rows), "files_needing": sum(counts.values())}
+
+
 LAYOUT_FIGURE_ROWS = 3          # a column the payroll does not read is asked about once this many rows hold figures
 
 

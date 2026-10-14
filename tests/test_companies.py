@@ -321,3 +321,41 @@ def test_a_confirmed_layout_that_reads_nothing_comes_back():
 def test_the_item_carries_the_cards_hours_column():
     [item] = companies.unknown_layouts([{**layout_card("d1", card_page()), "hours_column": "WHrs"}], {})
     assert item["hours_column"] == "WHrs"
+
+
+def test_file_problems_are_grouped_by_file_with_their_company():
+    out = companies.file_problems(
+        {"BINA": [{"kind": "month", "doc": "d1", "name": "BINA ZUL.png", "why": "No month."}]},
+        {"MAJU JAYA": [{"kind": "layout", "signature": "s", "doc": "d1", "page": 1, "name": "BINA ZUL.png",
+                        "columns": ["Rate"], "confirmed": False, "hours_column": None}]},
+        {"BINA": [{"doc": "d2", "name": "BINA NOTICE.png", "month": "none"}]},
+        [{"id": "d3", "name": "LOOSE.png"}])
+    assert [(i["kind"], i["company"]) for i in out["d1"]] == [("month", "BINA"), ("layout", "MAJU JAYA")]
+    assert out["d2"] == [{"kind": "other", "doc": "d2", "name": "BINA NOTICE.png", "month": "none", "company": "BINA"}]
+    assert out["d3"] == [{"kind": "company", "doc": "d3", "name": "LOOSE.png", "company": ""}]
+    assert companies.needs_you(out["d1"]) and companies.needs_you(out["d3"])
+    assert not companies.needs_you(out["d2"])            # set aside: shown on the file, asks nothing
+
+
+def test_people_view_gives_each_employee_their_own_items_and_counts_files():
+    views = [{"company": "MAJU JAYA", "status": "needs", "needs": 2, "waiting": 0,
+              "items": [{"kind": "settings", "company": "MAJU JAYA"},
+                        {"kind": "empno", "employee": "e1", "why": "empty"}],
+              "employees": [{"id": "e1", "name": "ALI", "emp_no": "", "status": "needs"},
+                            {"id": "e2", "name": "SITI", "emp_no": "MJ2", "status": "ready"}],
+              "million_new": [], "settings": {"own": True}},
+             {"company": "", "status": "none", "needs": 0, "waiting": 0, "items": [], "employees": [],
+              "million_new": []}]
+    problems = companies.file_problems(
+        {"MAJU JAYA": [{"kind": "unplaced", "ref": "d1", "doc": "d1", "name": "A.png", "readable": True}]}, {},
+        {"MAJU JAYA": [{"doc": "d2", "name": "B.png", "month": "none"}]}, [{"id": "d3", "name": "LOOSE.png"}])
+    out = companies.people_view(views, ["BINA"], problems)
+    assert [r["company"] for r in out["companies"]] == ["MAJU JAYA", "BINA", ""]     # sorted as the overview was
+    rows = {r["company"]: r for r in out["companies"]}
+    assert rows["MAJU JAYA"]["items"] == [{"kind": "settings", "company": "MAJU JAYA"}]
+    ali, siti = rows["MAJU JAYA"]["employees"]
+    assert [i["kind"] for i in ali["items"]] == ["empno"] and siti["items"] == []
+    assert rows["MAJU JAYA"]["files_needing"] == 1        # d2 is only set aside
+    assert rows[""]["files_needing"] == 1 and rows["BINA"]["files_needing"] == 0 and rows["BINA"]["employees"] == []
+    assert rows["MAJU JAYA"]["settings"] == {"own": True} and rows["MAJU JAYA"]["needs"] == 2
+    assert (out["files_needing"], out["employees"], out["ready_employees"]) == (2, 2, 1)
