@@ -707,7 +707,8 @@ def test_in_out_columns_are_paired_in_the_cards_order():
 @pytest.mark.parametrize("text,minutes", [
     ("07:55", 475), ("7.55", 475), ("17:02:30", 1022.5), ("5.30 PM", 1050), ("5:30pm", 1050), ("5,30 p.m.", 1050),
     ("12.00 AM", 0), ("12:15 PM", 735), ("8.00 AM.", 480), ("0:00", 0),
-    ("7.5", None), ("7.75", None), ("24:00", None), ("13.00 PM", None), ("530 PM", None), ("8", None), ("8.00 AM ✓", None),
+    ("530 PM", 1050), ("1130 am", 690), ("7.5", None), ("7.75", None), ("24:00", None), ("13.00 PM", None),
+    ("530", None), ("1330 pm", None), ("8", None), ("8.00 AM ✓", None),
     ("", None), ("abc", None)])
 def test_clock_times_as_written_on_cards(text, minutes):
     assert payroll.parse_clock(text) == minutes
@@ -752,15 +753,15 @@ def test_in_out_days_that_cannot_be_worked_out_are_reported_and_never_guessed():
             {"DATE": good("2"), "IN": good("07:55"), "OUT": good("")},
             {"DATE": good("3"), "IN": good("-"), "OUT": good("17:00")},
             {"DATE": good("4"), "IN": good("7.55 AM ✓"), "OUT": good("17:00")},
-            {"DATE": good("7"), "IN": good("8.00"), "OUT": good("5.00")},        # afternoon, or a night shift?
-            {"DATE": good("8"), "IN": good("20:00"), "OUT": good("05:00")}]
+            {"DATE": good("7"), "IN": good("8.00"), "OUT": good("5.00 am")},     # said am: not taken as afternoon
+            {"DATE": good("8"), "IN": good("20:00"), "OUT": good("05:00")}]     # a night shift
     r = payroll.calculate(plan_for(), [("card", merged(rows, labels=("DATE", "IN", "OUT")))], employee())
     texts = [i["text"] for i in r["issues"] if i["kind"] == "unclear"]
     assert texts[0] == "card, day 1: an IN or OUT time is still unclear. Check the yellow cell in the document."
     assert "day 2: there is an IN time (07:55) but no OUT time" in texts[1]
     assert "day 3: there is an OUT time (17:00) but no IN time" in texts[2]
     assert "day 4: '7.55 AM ✓' is not a clock time" in texts[3]
-    assert "day 7: OUT 5.00 is not later than IN 8.00" in texts[4] and "day 8: OUT 05:00" in texts[5]
+    assert "day 7: OUT 5.00 am is not later than IN 8.00" in texts[4] and "day 8: OUT 05:00" in texts[5]
     assert all(d["hours"] is None and d["status"] == "unclear" for d in r["days"] if d["day"] in (1, 2, 3, 4, 7, 8))
     assert values(r)["days_worked"] == 0 and not r["complete"]
 
@@ -1449,3 +1450,31 @@ def test_the_users_hours_column_still_wins():
 
 def test_total_normal_is_still_the_hours():
     assert payroll.pick_columns(["Date", "TOTAL (NORMAL)"], None) == ("Date", "TOTAL (NORMAL)")
+
+
+# ------------------------------------------------------------- conversion: an afternoon OUT written without pm
+def test_an_out_earlier_than_in_without_pm_is_afternoon():
+    r = payroll.calculate(plan_for(), [("card", in_out([(1, {"IN": "8.00", "OUT": "5.00"})]))], employee())
+    day = r["days"][0]
+    assert day["status"] == "ok" and day["hours"] == 8.0                      # 08:00 to 17:00, less the 1 hour break
+    assert day["clock"]["afternoon"] == ["5.00"]
+    assert not [i for i in r["issues"] if i["kind"] == "unclear"]
+
+
+def test_the_afternoon_rule_also_joins_a_morning_in_and_an_overtime_out():
+    labels = ("DATE", "MORNING / IN", "MORNING / OUT", "OVERTIME / IN", "OVERTIME / OUT")
+    r = payroll.calculate(plan_for(), [("card", in_out([(1, {labels[1]: "8.00", labels[4]: "7.00"})], labels=labels))],
+                          employee())
+    assert r["days"][0]["hours"] == 10.0 and r["days"][0]["clock"]["afternoon"] == ["7.00"]     # 08:00-19:00, less 1
+
+
+@pytest.mark.parametrize("tin,tout", [("8.00", "5.00 am"), ("9:00 pm", "5.00"), ("13:00", "12.30"), ("8.00", "8.00")])
+def test_the_afternoon_rule_leaves_other_cases_unclear(tin, tout):
+    r = payroll.calculate(plan_for(), [("card", in_out([(1, {"IN": tin, "OUT": tout})]))], employee())
+    assert r["days"][0]["status"] == "unclear"
+    assert any(f"OUT {tout} is not later than IN {tin}" in i["text"] for i in r["issues"])
+
+
+def test_digits_with_pm_are_a_clock_time():
+    assert payroll.parse_clock("530 pm") == 1050 and payroll.parse_clock("1130 am") == 690
+    assert payroll.parse_clock("530") is None

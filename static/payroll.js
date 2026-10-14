@@ -559,9 +559,11 @@ function printedText(p) {
 // How a day's hours were worked out from the IN and OUT times of a time card
 function clockText(c) {
   if (!c) return "";
-  if (c.pairs > 1) return t("{h} hours: the IN/OUT pairs added up, no break taken off", { h: fmt(c.hours) });
-  return c.break ? t("{h} hours: OUT minus IN, less {b} for the break", { h: fmt(c.hours), b: fmt(c.break) })
-    : t("{h} hours: OUT minus IN, no break taken off", { h: fmt(c.hours) });
+  // an OUT written without pm and earlier than IN was read as afternoon (the user's rule): say so
+  const pm = (c.afternoon || []).map((out) => " " + t("(OUT {out} read as afternoon)", { out })).join("");
+  if (c.pairs > 1) return t("{h} hours: the IN/OUT pairs added up, no break taken off", { h: fmt(c.hours) }) + pm;
+  return (c.break ? t("{h} hours: OUT minus IN, less {b} for the break", { h: fmt(c.hours), b: fmt(c.break) })
+    : t("{h} hours: OUT minus IN, no break taken off", { h: fmt(c.hours) })) + pm;
 }
 
 function renderResults() {

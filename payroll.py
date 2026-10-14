@@ -126,6 +126,9 @@ _IN_LABEL = re.compile(rf"^{_IN_WORD}(?:\s+{_IN_WORD})?$")
 _OUT_LABEL = re.compile(rf"^{_OUT_WORD}(?:\s+{_OUT_WORD})?$")
 _NO_STAMP = re.compile(r"^[\s\-–—_./x]*$", re.IGNORECASE)
 _STAMP = re.compile(r"^(\d{1,2})\s*[:.,]\s*([0-5]\d)(?:\s*:\s*([0-5]\d))?\s*(?:([ap])\.?\s*m\.?)?$", re.IGNORECASE)
+# "530 pm": the digits run together, which only reads as a time with am / pm after it ("530" alone could be anything)
+_STAMP_RUN = re.compile(r"^(\d{1,2})([0-5]\d)()\s*([ap])\.?\s*m\.?$", re.IGNORECASE)
+_AM_PM = re.compile(r"[ap]\.?\s*m\.?\s*$", re.IGNORECASE)
 DEFAULT_BREAK = 1.0
 _DATE_LABEL = re.compile(r"date|tarikh|day|hari", re.IGNORECASE)
 _HOURS_LABEL = re.compile(r"total|jumlah|hours|jam|hrs", re.IGNORECASE)
@@ -838,8 +841,9 @@ def clock_pairs(labels: list[str]) -> list[tuple[str, str]]:
 
 
 def parse_clock(value: str | None) -> float | None:
-    """A clock time written on a card -> minutes after midnight: 07:55, 7.55, 17:02:10, 5.30 PM. None if it is not one."""
-    m = _STAMP.match((value or "").strip())
+    """A clock time written on a card -> minutes after midnight: 07:55, 7.55, 17:02:10, 5.30 PM, 530 PM. None if it is
+    not one."""
+    m = _STAMP.match((value or "").strip()) or _STAMP_RUN.match((value or "").strip())
     if not m:
         return None
     hour, half = int(m.group(1)), (m.group(4) or "").lower()
@@ -856,8 +860,9 @@ def _clock_day(cells: dict, pairs: list[tuple[str, str]], break_hours: float, wh
                issues: list[dict], at: dict) -> dict:
     """One day of an IN/OUT time card: the hours between each IN and its OUT, added up. One pair: the break is taken
     off. Several pairs: no break (the gap between them is the break). Only one IN and one OUT in a later pair (morning
-    IN, overtime OUT: the worker clocked twice): one span, the break taken off. A day word instead of times (OFF, PH,
-    CUTI, MC: see DAY_WORD_MARKS) marks the day as on a month grid. Anything unclear leaves the day out. ``at``: where
+    IN, overtime OUT: the worker clocked twice): one span, the break taken off. An OUT written without pm that is
+    earlier than a morning IN is in the afternoon (the user's rule; ``clock["afternoon"]`` lists them). A day word
+    instead of times (OFF, PH, CUTI, MC: see DAY_WORD_MARKS) marks the day as on a month grid. Anything unclear leaves the day out. ``at``: where
     the line is (see read_days)."""
     def unclear(text: str) -> dict:
         issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: {text}", "at": at})
@@ -878,7 +883,7 @@ def _clock_day(cells: dict, pairs: list[tuple[str, str]], break_hours: float, wh
     if len(filled) == 2 and filled[0][1] == "in" and filled[1][1] == "out" and filled[0][0] < filled[1][0]:
         stamps = [(stamps[filled[0][0]][0], stamps[filled[1][0]][1])]   # clocked IN once and OUT once: one span
 
-    spans, written = [], []
+    spans, written, afternoon = [], [], []
     for tin, tout in stamps:
         has_in, has_out = not _NO_STAMP.match(tin), not _NO_STAMP.match(tout)
         if not has_in and not has_out:
@@ -893,6 +898,11 @@ def _clock_day(cells: dict, pairs: list[tuple[str, str]], break_hours: float, wh
         if start is None or end is None:
             return unclear(f"'{tin if start is None else tout}' is not a clock time (such as 07:55 or 5.30 PM). "
                            "Correct it in the document.")
+        if end < start < 720 and end < 720 and not _AM_PM.search(tout):
+            # the user's rule: a morning IN and an OUT written without pm that is earlier than it ("8.00" - "5.00")
+            # is an afternoon OUT; an OUT that says am, a night shift (IN after noon) or OUT = IN stay unclear
+            end += 720
+            afternoon.append(tout)
         if end <= start:
             return unclear(f"OUT {tout} is not later than IN {tin}. If it is an afternoon time, write it as 17.00 or "
                            "5.00 PM in the document. A shift that ends the next day cannot be worked out: type the "
@@ -904,7 +914,8 @@ def _clock_day(cells: dict, pairs: list[tuple[str, str]], break_hours: float, wh
     taken = break_hours if len(spans) == 1 and spans[0] > break_hours else 0.0      # a day shorter than the break keeps its hours
     hours = round(sum(spans) - taken, 2)
     return {"hours": hours, "status": "ok", "source": where, "printed": None, "code": ", ".join(written),
-            "clock": {"hours": hours, "break": taken, "pairs": len(spans)}}
+            "clock": {"hours": hours, "break": taken, "pairs": len(spans),
+                      **({"afternoon": afternoon} if afternoon else {})}}
 
 
 def _check_report_totals(page: dict, where: str, name: str, issues: list[dict]) -> None:

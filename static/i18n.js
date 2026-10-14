@@ -378,6 +378,7 @@ const MS = {
   "{h} hours: the IN/OUT pairs added up, no break taken off": "{h} jam: pasangan IN/OUT dijumlahkan, rehat tidak ditolak",
   "{h} hours: OUT minus IN, less {b} for the break": "{h} jam: OUT tolak IN, tolak {b} untuk rehat",
   "{h} hours: OUT minus IN, no break taken off": "{h} jam: OUT tolak IN, rehat tidak ditolak",
+  "(OUT {out} read as afternoon)": "(OUT {out} dibaca sebagai waktu petang)",
   "Day": "Hari", "Type": "Jenis", "Hours written": "Jam yang ditulis", "Written on the card": "Ditulis pada kad", "Note": "Catatan",
   "Employee {a} of {b}": "Pekerja {a} daripada {b}",
   "Changes are saved automatically.": "Perubahan disimpan secara automatik.",
