@@ -100,14 +100,14 @@
       <button id="mo-settings-open" type="button" data-t>Month settings</button>
       <button id="mo-million-import" type="button" data-t>Import employee list from Million</button>
       <input id="mo-million-file" type="file" accept=".xls" hidden>
-      <button id="mo-csv" type="button" data-t>Download payroll CSV</button>
-      <button id="mo-run" class="primary" data-t>Make the month's Million file (all companies)</button>
+      <button id="mo-export-open" class="primary" type="button" data-t>Export…</button>
     </div>
   </div>
   <div id="mo-error" class="banner error" hidden></div>
   <div id="mo-info" class="banner info" hidden></div>
   <div id="mo-run-result" class="banner info" hidden></div>
   <section id="mo-settings" class="card" hidden></section>
+  <section id="mo-export" class="card" hidden></section>
   <p id="mo-total" class="legend"></p>
   <div class="split">
     <aside class="side" aria-label="Employees" data-t-aria>
@@ -124,7 +124,7 @@
           <h2 id="co-title"></h2>
           <div class="doc-actions"><span id="co-status" class="muted" aria-live="polite"></span>
             <button id="co-million-open" type="button" hidden></button>
-            <button id="co-csv" type="button" data-t>Download payroll CSV</button>
+            <button id="co-export" type="button" data-t>Export…</button>
             <button id="co-settings-open" type="button" data-t>Company settings</button></div>
         </div>
         <div id="co-error" class="banner error" hidden></div>

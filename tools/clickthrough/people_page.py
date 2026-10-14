@@ -19,7 +19,9 @@ async def scenario(page, downloads):
     expect("search keeps SITI only", "SITI" in found and "ALI" not in found, True)
     await page.ev("T.set('pp-search', ''); T.sleep(200)")
     # the month bar's Million file summary opens
-    await page.ev("document.getElementById('mo-run').click(); T.until(() => !document.getElementById('mo-run-result').hidden, 'summary')")
+    await page.ev("document.getElementById('mo-export-open').click(); T.until(() => !document.getElementById('mo-export').hidden, 'export'); "
+                  "document.querySelector('#mo-export input[name=ex-what][value=million]').click(); "
+                  "T.click('Export', document.getElementById('mo-export')); T.until(() => !document.getElementById('mo-run-result').hidden, 'summary')")
     expect("summary shown", "Million file" in await page.ev("document.getElementById('mo-run-result').textContent"), True)
     # step 2's Company chooser also filters step 3: step 3 says so and can show everyone again
     await page.goto(f"{BASE}/#/check")

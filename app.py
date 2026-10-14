@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import hashlib
+import io
 import logging
 import re
 import sys
@@ -13,7 +14,7 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -961,6 +962,46 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                                  text.encode("utf-8-sig"))
         return FileResponse(path, media_type="text/csv; charset=utf-8", filename=path.name)
 
+    @app.get("/api/payroll/{month}/export")
+    def payroll_export(month: str, format: str = "csv", split: str = "one", c: list[str] | None = Query(None)):
+        """Export...: the payroll table (all Edit Payroll figures) as CSV or Excel .xls, of the chosen companies (``c``;
+        none = every company, "" = the employees with no company), in one file or one per company (``split`` "each",
+        several companies: one .zip). A copy is kept in the payroll folder, as the CSV always was."""
+        import zipfile
+
+        if format not in ("csv", "xls"):
+            raise bad_body()
+        chosen = chosen_of(c, split)
+        docs = finished_documents()
+        view = payroll_view(plans.load(month), docs)
+        plan, results = view["plan"], view["results"]
+        company_of_doc = {d["id"]: d["company"] for d in docs}
+        companies = [payroll.employee_company(e, company_of_doc) for e in plan["employees"]]
+        keep = [i for i, company in enumerate(companies) if chosen is None or company in chosen]
+        if not keep:
+            raise OcrError("PAYROLL_EMPTY", "Nobody of the chosen companies is in this month's payroll yet."
+                           if chosen is not None else "Add at least one employee before downloading the payroll file.")
+
+        def data_of(indexes: list[int]) -> bytes:
+            part = {**plan, "employees": [plan["employees"][i] for i in indexes]}
+            rows = [results[i] for i in indexes]
+            return payroll.build_csv(part, rows).encode("utf-8-sig") if format == "csv" else payroll.build_table_xls(part, rows)
+
+        groups: dict[str, list[int]] = {}
+        for i in keep:
+            groups.setdefault(companies[i], []).append(i)
+        media = "text/csv; charset=utf-8" if format == "csv" else "application/vnd.ms-excel"
+        if split == "one" or len(groups) == 1:
+            name = group_name(month, sorted(groups, key=str.casefold), chosen is None) + f".{format}"
+            path = save_payroll_file(name, data_of(keep))
+            return FileResponse(path, media_type=media, filename=path.name)
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
+            for company in sorted(groups, key=str.casefold):
+                z.writestr(group_name(month, [company], False) + f".{format}", data_of(groups[company]))
+        path = save_payroll_file(group_name(month, list(groups), chosen is None) + ".zip", buffer.getvalue())
+        return FileResponse(path, media_type="application/zip", filename=path.name)
+
     @app.get("/api/payroll/{month}/basic-pay")
     def payroll_basic_pay(month: str, company: str = ""):
         """The basic-pay table (CSV): each employee's counts, pay basis, Basic Rate and basic pay."""
@@ -971,10 +1012,27 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                                  text.encode("utf-8-sig"))
         return FileResponse(path, media_type="text/csv; charset=utf-8", filename=path.name)
 
-    def month_file(month: str, make: bool) -> dict:
-        """One Million file for the whole month (every company), with everyone who can go in; the others are listed
-        by company with the reason (payroll.month_run). ``make`` False = the summary shown first: worked out the same
-        way, nothing written ("file" None). Making it works everything out again; it never relies on a summary."""
+    def chosen_of(c: list[str] | None, split: str) -> set[str] | None:
+        """The companies of an export (None = every company; "" = the employees with no company), and its split."""
+        if split not in ("one", "each"):
+            raise bad_body()
+        return None if c is None else set(c)
+
+    def group_name(month: str, groups: list[str], every: bool) -> str:
+        """The name part of an export file: the month, then the company (one), "(N companies)" (several) or nothing
+        (every company)."""
+        if every:
+            return f"Payroll {month}"
+        if len(groups) == 1:
+            return f"Payroll {month} {safe_name(groups[0]) or 'no company'}"
+        return f"Payroll {month} ({len(groups)} companies)"
+
+    def month_file(month: str, make: bool, chosen: set[str] | None = None, split: str = "one") -> dict:
+        """The Million file of the month with everyone who can go in; the others are listed by company with the reason
+        (payroll.month_run, worked out over the whole month so an Employee No. used twice is seen across companies).
+        ``chosen``: only these companies (None = every company); ``split`` "each" = one file per company. ``make``
+        False = the summary shown first: worked out the same way, nothing written ("files" []). Making it works
+        everything out again; it never relies on a summary."""
         docs = finished_documents()
         view = payroll_view(plans.load(month), docs)
         plan, results = view["plan"], view["results"]
@@ -984,11 +1042,23 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         companies = [payroll.employee_company(e, company_of_doc) for e in plan["employees"]]
         listed = plans.load_million()
         names = {e["emp_no"].casefold(): e["name"] for e in listed["employees"]} if listed else None
-        run = payroll.month_run(plan, results, companies, names=names,
-                                known=set(names) if names else payroll.load_million_employees())
-        name = None
-        if make and run["file"] is not None:
-            name = save_payroll_file(f"Payroll {month} (Million).xls", run["file"]).name
+        known = set(names) if names else payroll.load_million_employees()
+        run = payroll.month_run(plan, results, companies, names=names, known=known)
+        if chosen is not None:
+            if not any(company in chosen for company in companies):
+                raise OcrError("PAYROLL_EMPTY", "Nobody of the chosen companies is in this month's payroll yet.")
+            run = {**run, **{kind: [w for w in run[kind] if w["company"] in chosen] for kind in ("ready", "held")}}
+        files = []
+        if make and run["ready"]:
+            by_id = {r["id"]: r for r in results}
+            groups: dict[str, list[dict]] = {}
+            for who in run["ready"]:
+                groups.setdefault(who["company"] if split == "each" else "", []).append(by_id[who["id"]])
+            for company, people in sorted(groups.items(), key=lambda g: g[0].casefold()):
+                names_of = sorted({w["company"] for w in run["ready"]}) if split == "one" else [company]
+                data = payroll.build_xls(plan, people, known=known, names=names)
+                name = group_name(month, names_of, chosen is None and split == "one") + " (Million).xls"
+                files.append(save_payroll_file(name, data).name)
         by_company: dict[str, dict] = {}
         for kind in ("ready", "held"):
             for who in run[kind]:
@@ -999,18 +1069,21 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
                     entry["ready_people"].append({"emp_no": who["emp_no"], "name": who["name"]})
                 else:
                     entry["held"].append({"emp_no": who["emp_no"], "name": who["name"], "reasons": who["reasons"]})
-        return {"file": name, "made": make, "folder": str(plans.root), "ready": len(run["ready"]),
+        return {"file": files[0] if files else None, "files": files, "made": make, "every": chosen is None,
+                "folder": str(plans.root), "ready": len(run["ready"]),
                 "held": len(run["held"]), "checked_with_million": bool(listed),
                 "companies": sorted(by_company.values(), key=lambda c: (c["company"] == "", c["company"].casefold()))}
 
     @app.get("/api/payroll/{month}/run")
-    def payroll_month_summary(month: str):
-        """What the month's Million file would hold, shown before it is made."""
-        return month_file(month, make=False)
+    def payroll_month_summary(month: str, split: str = "one", c: list[str] | None = Query(None)):
+        """What the month's Million file would hold, shown before it is made (``c``: only these companies)."""
+        return month_file(month, make=False, chosen=chosen_of(c, split), split=split)
 
     @app.post("/api/payroll/{month}/run")
-    def payroll_month_run(month: str):
-        return month_file(month, make=True)
+    def payroll_month_run(month: str, split: str = "one", c: list[str] | None = Query(None)):
+        """Make the Million file: of the chosen companies (``c``; none = every company), one file or one per company
+        (``split`` "each"), saved in the payroll folder."""
+        return month_file(month, make=True, chosen=chosen_of(c, split), split=split)
 
     # ------------------------------------------------------------------------------- the Inbox and Tables folders
     watcher = Inbox(store)

@@ -69,7 +69,7 @@ def test_the_page_has_the_three_steps(client):
     for id_ in ("doc", "pages", "download", "ck-files", "ck-month", "ck-needs", "ck-foot", "layout", "ly-save",
                 "company-box"):
         assert f'id="{id_}"' in check, id_
-    for id_ in ("mo-run", "mo-settings-open", "mo-csv", "pp-list", "pp-search", "company", "co-pay", "co-add",
+    for id_ in ("mo-export-open", "mo-export", "mo-settings-open", "co-export", "pp-list", "pp-search", "company", "co-pay", "co-add",
                 "co-million", "employee", "em-needs", "em-cards", "em-window", "em-walk", "look", "lk-accept"):
         assert f'id="{id_}"' in people, id_
 
@@ -1527,3 +1527,59 @@ def test_the_employee_view_offers_the_companys_other_cards(maju_jaya, tmp_path):
     assert c.post(f"/api/payroll/{month}/place", json={"ref": zul, "employee": ali}).json()["employee"] == ali
     view = c.get(f"/api/payroll/{month}/employee/{ali}").json()
     assert zul in [k["ref"] for k in view["cards"]] and zul not in [k["ref"] for k in view["addable"]]
+
+
+# ------------------------------------------------------------------------------------------------ Export...
+def export(client, month, **params):
+    return client.get(f"/api/payroll/{month}/export", params=params)
+
+
+def test_the_payroll_table_exports_as_csv_or_xls_for_the_chosen_companies(tmp_path):
+    import io
+    import zipfile
+
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        month = three_workers(c, store, tmp_path)               # MAJU JAYA: ALI; BINA: SITI and ZUL
+        everyone = export(c, month, format="csv")
+        assert everyone.status_code == 200 and len(everyone.content.decode("utf-8-sig").splitlines()) == 4
+        assert f"Payroll%20{month}.csv" in everyone.headers["content-disposition"]
+        bina = export(c, month, format="csv", c=["BINA"]).content.decode("utf-8-sig").splitlines()
+        assert len(bina) == 3 and not any(",ALI," in line for line in bina)
+        both = export(c, month, format="xls", c=["BINA", "MAJU JAYA"])
+        assert "%282%20companies%29.xls" in both.headers["content-disposition"]
+        sheet = xlrd.open_workbook(file_contents=both.content).sheet_by_index(0)
+        assert sheet.nrows == 4 and sheet.cell_value(0, 0) == "Employee No."
+        assert sorted(sheet.cell_value(r, 1) for r in range(1, 4)) == ["ALI", "SITI", "ZUL"]
+        days = sheet.row_values(0).index("Days Worked")
+        assert sheet.cell(1, days).ctype == xlrd.XL_CELL_NUMBER and sheet.cell(1, 0).ctype == xlrd.XL_CELL_TEXT
+        zipped = export(c, month, format="csv", split="each", c=["BINA", "MAJU JAYA"])
+        assert zipped.headers["content-type"] == "application/zip"
+        with zipfile.ZipFile(io.BytesIO(zipped.content)) as z:
+            assert sorted(z.namelist()) == [f"Payroll {month} BINA.csv", f"Payroll {month} MAJU JAYA.csv"]
+            assert len(z.read(f"Payroll {month} BINA.csv").decode("utf-8-sig").splitlines()) == 3
+        one = export(c, month, format="xls", split="each", c=["BINA"])      # one company: its file, no zip
+        assert f"Payroll%20{month}%20BINA.xls" in one.headers["content-disposition"]
+        assert export(c, month, format="csv", c=["NOBODY"]).json()["code"] == "PAYROLL_EMPTY"
+        assert export(c, month, format="pdf").status_code == 400
+        assert export(c, month, split="some").status_code == 400
+
+
+def test_the_million_file_for_the_chosen_companies_in_one_file_or_one_per_company(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        month = three_workers(c, store, tmp_path)               # ZUL is held back (a number Million does not have)
+        run = c.get(f"/api/payroll/{month}/run", params={"c": ["MAJU JAYA"]}).json()
+        assert (run["ready"], run["held"], run["files"]) == (1, 0, [])
+        assert [x["company"] for x in run["companies"]] == ["MAJU JAYA"]
+        made = c.post(f"/api/payroll/{month}/run", params={"c": ["MAJU JAYA", "BINA"], "split": "each"}).json()
+        assert sorted(made["files"]) == [f"Payroll {month} BINA (Million).xls", f"Payroll {month} MAJU JAYA (Million).xls"]
+        assert (made["ready"], made["held"]) == (2, 1)
+        bina = xlrd.open_workbook(str(tmp_path / "payroll" / f"Payroll {month} BINA (Million).xls")).sheet_by_index(0)
+        assert bina.nrows == 2 and bina.cell_value(1, 0) == "BN1"                    # SITI only: ZUL is held back
+        pair = c.post(f"/api/payroll/{month}/run", params={"c": ["MAJU JAYA", "BINA"]}).json()
+        assert pair["files"] == [f"Payroll {month} (2 companies) (Million).xls"] and pair["file"] == pair["files"][0]
+        whole = c.post(f"/api/payroll/{month}/run").json()
+        assert whole["files"] == [f"Payroll {month} (Million).xls"] and whole["ready"] == 2
+        assert c.get(f"/api/payroll/{month}/run", params={"c": ["NOBODY"]}).json()["code"] == "PAYROLL_EMPTY"
+        assert c.post(f"/api/payroll/{month}/run", params={"split": "some"}).status_code == 400

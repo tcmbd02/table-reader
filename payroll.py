@@ -1643,6 +1643,35 @@ def _notes(result: dict) -> list[str]:
     return notes
 
 
+def build_table_xls(plan: dict, results: list[dict]) -> bytes:
+    """The payroll file of build_csv as an Excel 97-2003 workbook (one sheet "Payroll"): the same columns and rows, the
+    figures as numbers; Employee No., Name, Month End Pay, Message and Notes stay text (an Employee No. "001" keeps its
+    zeros), without the mark build_csv puts before a text Excel would take for a formula (a text cell is never one)."""
+    import xlwt
+
+    rows = list(csv.reader(io.StringIO(build_csv(plan, results))))
+    book = xlwt.Workbook(encoding="utf-8")
+    sheet = book.add_sheet("Payroll")
+    bold, text, number = xlwt.easyxf("font: bold on"), xlwt.easyxf(num_format_str="@"), xlwt.easyxf(num_format_str="0.00")
+    head = rows[0]
+    texts = {0, 1, 2, len(head) - 2, len(head) - 1}
+    for col, label in enumerate(head):
+        sheet.write(0, col, label, bold)
+    for i, row in enumerate(rows[1:], start=1):
+        for col, value in enumerate(row):
+            if col in texts or value == "":
+                sheet.write(i, col, value[1:] if value.startswith("'") and value[1:2] in ("=", "@", "+", "-") else value,
+                            text)
+            else:
+                try:
+                    sheet.write(i, col, float(value), number)
+                except ValueError:
+                    sheet.write(i, col, value, text)
+    out = io.BytesIO()
+    book.save(out)
+    return out.getvalue()
+
+
 def _csv_safe(text: str) -> str:
     if text and (text[0] in "=@" or (text[0] in "+-" and len(text) > 1 and not (text[1].isdigit() or text[1] in " .,"))):
         return "'" + text

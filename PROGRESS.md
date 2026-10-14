@@ -1,5 +1,19 @@
 # Progress log
 
+## Session 24d - 2026-10-14 - Export…: what, format, companies, one file or one per company
+Asked by the user: the "Download payroll CSV" and "Make the month's Million file" buttons as one customisable export.
+Branch `export` (from `pdf-text`).
+- One **Export…** button on the month bar (and one in a company's panel, starting with only that company ticked) opens
+  a panel: What (Payroll table / Million import file), Format (CSV / Excel .xls; the Million file is always Million's
+  .xls), Companies (All, or ticked ones), and for several: one file with all of them / one file per company.
+- Payroll table: `GET /api/payroll/{month}/export?format=&split=&c=…` (new `payroll.build_table_xls`: the CSV's
+  columns, figures as numbers, Employee No. as text); one file per company downloads as one .zip; a copy is kept in the
+  payroll folder.
+- Million file: `/run` (summary and make) takes the same `c` and `split`; worked out over the whole month (an Employee
+  No. used twice is still seen across companies), then only the chosen companies, one file or one per company, saved
+  in the payroll folder after the summary.
+- Tests (2 new), click-through `export` (new; `people_page` moved to it); guides updated.
+
 ## Session 24c - 2026-10-14 - Rest days every week in the settings
 Asked by the user: Sunday a rest day by default in the month settings. It already was (every new month starts with its
 Sundays as rest days); on the user's choice the settings now show it. Branch `weekly-rest` (from `pdf-text`), **merged

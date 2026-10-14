@@ -136,17 +136,22 @@ function heldNodes(run) {
 // One Million file for the whole month: everyone who can go in, and for the others the reason, company by company.
 function showMonthRun(run, box) {
   const withFile = run.companies.filter((c) => c.ready).length;
-  const head = run.file
-    ? tn(run.ready, "Million file made for the whole month: {name}, with {n} employee from {c}.", "Million file made for the whole month: {name}, with {n} employees from {c}.",
-      { name: run.file, c: tn(withFile, "{n} company", "{n} companies") })
-    : t("No Million file was made: no employee is ready yet.");
+  const files = run.files || (run.file ? [run.file] : []);
+  const c = tn(withFile, "{n} company", "{n} companies");
+  const head = !files.length ? t("No Million file was made: no employee is ready yet.")
+    : files.length > 1 ? t("{n} Million files made, one per company: {names}.", { n: files.length, names: files.join("; ") })
+      : run.every !== false
+        ? tn(run.ready, "Million file made for the whole month: {name}, with {n} employee from {c}.", "Million file made for the whole month: {name}, with {n} employees from {c}.", { name: files[0], c })
+        : tn(run.ready, "Million file made: {name}, with {n} employee from {c}.", "Million file made: {name}, with {n} employees from {c}.", { name: files[0], c });
   const parts = [el("strong", { text: head })];
-  if (run.file) parts.push(el("p", { class: "legend", text: t("It is saved in {folder}. Back up Million, then import this one file: it covers every company.", { folder: run.folder }) }));
+  if (files.length > 1) parts.push(el("p", { class: "legend", text: t("They are saved in {folder}. Back up Million, then import each file.", { folder: run.folder }) }));
+  else if (files.length && run.every !== false) parts.push(el("p", { class: "legend", text: t("It is saved in {folder}. Back up Million, then import this one file: it covers every company.", { folder: run.folder }) }));
+  else if (files.length) parts.push(el("p", { class: "legend", text: t("It is saved in {folder}. Back up Million, then import this file.", { folder: run.folder }) }));
   if (!run.checked_with_million) parts.push(el("p", { class: "legend", text: t("The Employee Nos. were not checked against Million: import Million's employee list first.") }));
   parts.push(...heldNodes(run));
   if (run.held) {
     parts.push(el("p", { class: "legend", text: t("Fix what is listed and press the button again. Each run makes the whole file again; importing it again is harmless.") }));
-  } else if (run.file) {
+  } else if (files.length && run.every !== false) {
     parts.push(el("p", { class: "legend", text: t("Every employee of the month is in the file.") }));
   }
   box.replaceChildren(...parts); box.hidden = false;
