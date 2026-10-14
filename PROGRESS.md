@@ -2,7 +2,8 @@
 
 ## Session 24d - 2026-10-14 - Export…: what, format, companies, one file or one per company
 Asked by the user: the "Download payroll CSV" and "Make the month's Million file" buttons as one customisable export.
-Branch `export` (from `pdf-text`).
+Branch `export` (from `pdf-text`), **merged into `pdf-text` and the app rebuilt on the user's OK (not pushed; `download`
+branch not updated).** 558 tests pass.
 - One **Export…** button on the month bar (and one in a company's panel, starting with only that company ticked) opens
   a panel: What (Payroll table / Million import file), Format (CSV / Excel .xls; the Million file is always Million's
   .xls), Companies (All, or ticked ones), and for several: one file with all of them / one file per company.
