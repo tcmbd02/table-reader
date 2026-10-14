@@ -5,11 +5,23 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 **To continue, paste this into the new session:**
 
-> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 24), then let's continue.
+> Read NEXT-SESSION.md (the "Next" box first) and PROGRESS.md (sessions 9 to 24d), then let's continue.
 
-Session 24 rearranged the app into three steps (Upload, Check reading, Payroll): **merged into `pdf-text` and the app
-rebuilt (14 Oct), pushed (PR #2), and the `download` branch updated (build of 14 Oct, commit 27439ec), all on the
-user's OK.** The PDF guide is not regenerated yet (its pictures and some text show the old start page; needs your OK).
+> **Next (asked by the user on 2026-10-14, nothing built yet):** in **2 Check reading**, going to payroll while yellow
+> cells are left asks once: "There are still yellow cells. Are you sure you want to go to payroll?" (Yes goes on.) Today
+> nothing asks; the buttons simply go. To settle in the design (bounded change: short design in chat, then the user's
+> yes): which buttons ask ("Go to payroll for … →", "See … in payroll →", the **3 Payroll** step button), whose yellow
+> cells count (the file shown, or every file of the month in the list), and what "once" means (once per visit to step
+> 2, or until a new yellow cell appears). Malay text needed; a click-through in `tools/clickthrough/`.
+>
+> **State at the end of session 24 (14 Oct):** everything up to 24d (three steps, Add a time card, weekly rest days,
+> Export…) is merged into `pdf-text` and the app on this PC is rebuilt. **5 commits are not pushed** (24c, 24d and
+> their notes) and the `download` branch has the build without them (its zip shows a stray "null" under some
+> employees' cards, fixed in 24c). Pushing, the `download` branch and the PDF guide each need the user's OK.
+
+Session 24 rearranged the app into three steps (Upload, Check reading, Payroll): merged into `pdf-text`, the app
+rebuilt, pushed (PR #2), and the `download` branch updated, all on the user's OK. Sessions 24b-24d added to it (see
+section 0). The PDF guide is not regenerated yet (its pictures and some text show the old start page; needs your OK).
 
 ---
 
