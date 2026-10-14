@@ -1,7 +1,7 @@
 # Progress log
 
 ## Session 22 - 2026-10-14 - Stage 4 Part C: conversion (what Claude reads correctly now reaches Million's fields)
-Built on branch `conversion` (from `pdf-text`), **local, not merged, app not rebuilt**. 530 tests pass; Malay checks
+Built on branch `conversion` (from `pdf-text`), then **merged into `pdf-text` (fast-forward, local, not pushed) and the app rebuilt** on the user's OK; the rebuilt app shows 5 card-layout items on the real month (the 4 counted + the door export). 530 tests pass; Malay checks
 pass. Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`, Tasks 11-17.
 - **The hours column is never a money or minutes column** (`pick_columns`): "TOTAL (RM)" and "E/Out(Min)" were taken as
   the daily hours. A column named exactly for hours (WHrs, Total, Jumlah) is preferred. A column the user chose still

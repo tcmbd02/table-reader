@@ -87,7 +87,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
   export. The user ruled on each, and the plan gained **Part C (conversion), Tasks 11-17, to do before Part B**, on
   branch `conversion` (plan only, nothing built). Still to answer: should the CSV buttons ask about "Needs checking"
   employees (the old page did)? Details: PROGRESS.md 21b.
-- **Session 22 (2026-10-14): Part C built** on branch `conversion`, **not merged, app not rebuilt**:
+- **Session 22 (2026-10-14): Part C built, merged into `pdf-text` (local, not pushed) and the app rebuilt**:
   - the hours column is never money or minutes;
   - the user's afternoon-OUT and SA/SU rules, and "530 pm";
   - weekday-headed grids;
@@ -119,7 +119,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | **Million import file (.xls)** for the office | **Done (session 7).** Button "Download Million file (.xls)"; the office checker says READY on invented figures. Real September file not made yet (needs Employee Nos.). |
 | Browser check | Never clicked through by Claude (Chrome extension was not connected). All checks were tests + API + real-data scripts. |
 
-Tests: **530 pass** on `conversion` (465 on `pdf-text`) (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 21 (14 Oct). Sessions up to 21 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed). The `download` branch still has the build of 12 Oct.
+Tests: **530 pass** on `conversion` (465 on `pdf-text`) (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 22 (14 Oct). Sessions up to 22 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed). The `download` branch still has the build of 12 Oct.
 
 ## 2. Git / GitHub
 
