@@ -43,37 +43,33 @@ def test_page_is_served(client):
     assert client.get("/app.js").status_code == 200 and client.get("/app.css").status_code == 200
 
 
+SCRIPTS = ["i18n.js", "app.js", "paycommon.js", "upload.js", "steps.js"]       # grows with Tasks 5-7
+
+
 def test_browser_must_not_keep_an_old_script_after_an_update(client):
-    for path in ("/", "/app.js", "/paycommon.js", "/companies.js", "/employee.js", "/paytable.js", "/settings.js",
-                 "/look.js", "/i18n.js", "/app.css"):
+    for path in ["/", "/app.css", *(f"/{s}" for s in SCRIPTS)]:
         assert client.get(path).headers["cache-control"] == "no-cache", path
     assert client.get("/api/ping").headers["cache-control"] == "no-store"
 
 
-def test_the_page_has_the_company_first_screens(client):
+def test_the_page_has_the_three_steps(client):
     html = client.get("/").text
-    assert 'id="month"' in html and 'id="company"' in html and "companies.js?v=" in html
-    assert 'id="payroll"' not in html and "payroll.js" not in html     # the old payroll page is gone
-    assert "Old payroll page" not in html and 'id="mo-old"' not in html
-    assert 'id="look"' in html and html.index("companies.js") < html.index("look.js?v=")     # the one-look panel
-    assert html.index("companies.js") < html.index("settings.js?v=") < html.index("look.js")  # month / company settings
-    assert 'id="mo-settings"' in html and 'id="co-settings"' in html
-    assert 'id="co-million"' in html and 'id="co-million-open"' in html                # New in Million
-    assert 'id="mo-csv"' in html and 'id="co-csv"' in html                              # payroll CSV on both screens
-    assert 'id="layout"' in html and html.index("companies.js") < html.index("layout.js?v=")   # card layouts
-    # the employee view, with the helpers it shares with the company screens loaded before both
-    assert 'id="employee"' in html and html.index("app.js?v=") < html.index("paycommon.js") < html.index("companies.js")
-    assert html.index("companies.js") < html.index("employee.js?v=")
-    # the company screen's Pay preview tab and Add employee
-    assert 'id="co-pay"' in html and 'id="co-tab-pay"' in html and 'id="co-add"' in html
-    assert html.index("employee.js") < html.index("paytable.js?v=")
-
-
-def test_the_company_chooser_for_files_is_on_the_start_page_only(client):
-    html = client.get("/").text
-    at = html.index('id="company-box"')
-    assert html.index('<main id="home"') < at < html.index('<main id="doc"')    # with Recent files, which it filters
-    assert 'id="pr-company-box"' not in html                            # the old payroll page (and its chooser) is gone
+    for id_ in ("step-upload", "step-check", "step-payroll", "step-check-n", "step-payroll-n"):
+        assert f'id="{id_}"' in html
+    assert html.index('<main id="upload"') < html.index('<main id="check"') < html.index('<main id="people"')
+    for gone in ('id="home"', 'id="month"', 'id="nav-payroll"', 'id="back"', 'id="mo-back"', 'id="co-back"',
+                 'id="em-back"', 'id="co-tab-employees"', 'id="recent-none"', "companies.js", "layout.js"):
+        assert gone not in html, gone
+    # the parts that move into the steps keep their ids: the file view and the column choice in step 2, the month bar,
+    # company panel, employee view and Look panel in step 3
+    check = html[html.index('<main id="check"'):html.index('<main id="people"')]
+    people = html[html.index('<main id="people"'):]
+    for id_ in ("doc", "pages", "download", "ck-files", "ck-month", "ck-needs", "ck-foot", "layout", "ly-save",
+                "company-box"):
+        assert f'id="{id_}"' in check, id_
+    for id_ in ("mo-run", "mo-settings-open", "mo-csv", "pp-list", "pp-search", "company", "co-pay", "co-add",
+                "co-million", "employee", "em-needs", "em-cards", "em-window", "em-walk", "look", "lk-accept"):
+        assert f'id="{id_}"' in people, id_
 
 
 def test_script_addresses_change_when_a_script_changes(client, tmp_path, monkeypatch):
@@ -82,18 +78,17 @@ def test_script_addresses_change_when_a_script_changes(client, tmp_path, monkeyp
 
     page = client.get("/").text
     stamped = re.findall(r'(?:src|href)="([\w.-]+)\?v=([0-9a-f]{8})"', page)
-    assert [name for name, _ in stamped] == ["app.css", "i18n.js", "app.js", "paycommon.js", "companies.js", "employee.js",
-                                             "paytable.js", "settings.js", "look.js", "layout.js"]
+    assert [name for name, _ in stamped] == ["app.css", *SCRIPTS]
     assert client.get("/index.html").text == page
     assert all(client.get(f"/{name}?v={v}").status_code == 200 for name, v in stamped)
 
     copy = tmp_path / "static"
     shutil.copytree(app_module.static_dir(), copy)
-    (copy / "companies.js").write_text("// an update\n", encoding="utf-8")
+    (copy / "steps.js").write_text("// an update\n", encoding="utf-8")
     monkeypatch.setattr(app_module, "static_dir", lambda: copy)
     after = dict(re.findall(r'(?:src|href)="([\w.-]+)\?v=([0-9a-f]{8})"', app_module.page_html()))
     before = dict(stamped)
-    assert after["companies.js"] != before["companies.js"] and after["app.js"] == before["app.js"]
+    assert after["steps.js"] != before["steps.js"] and after["app.js"] == before["app.js"]
 
 
 def test_upload_read_edit_download(client, tmp_path):

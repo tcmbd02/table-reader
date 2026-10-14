@@ -7,7 +7,6 @@ const QUALITY = { CLEAR: t("Clear"), MOSTLY_CLEAR: t("Mostly clear"), FADED: t("
 let claudeReady = false;
 let currentId = null;
 let currentDoc = null;
-let uploading = false;
 
 function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);
@@ -38,14 +37,6 @@ async function api(method, url, body) {
     throw new Error(t("Something went wrong. Reload the page and try again."));
   }
   return data;
-}
-
-// The Inbox folder (files saved there are read by themselves) and the Tables folder (every finished table as a CSV)
-for (const [id, name] of [["open-inbox", "inbox"], ["open-tables", "tables"]]) {
-  $(id).addEventListener("click", async () => {
-    try { await api("POST", `/api/folders/${name}/open`); }
-    catch (e) { $("upload-messages").replaceChildren(el("div", { class: "banner error", text: e.message })); }
-  });
 }
 
 // ------------------------------------------------------------------------------------------------ Claude status
@@ -79,51 +70,7 @@ async function startLogin() {
   loginTimer = setInterval(() => { if (++tries > 100) { clearInterval(loginTimer); refreshClaude(); } else refreshClaude(); }, 3000);
 }
 
-// ------------------------------------------------------------------------------------------------ upload
-function updateDropState() {
-  const drop = $("drop");
-  drop.classList.toggle("disabled", !claudeReady || uploading);
-  drop.setAttribute("aria-disabled", String(!claudeReady || uploading));
-}
-
-function showMessages(items, kind) {
-  $("upload-messages").replaceChildren(...items.map((m) => el("div", { class: `banner ${kind}`, text: m })));
-}
-
-async function upload(fileList) {
-  const files = [...fileList];
-  if (!files.length || uploading) return;
-  if (!claudeReady) { showMessages([t("Connect your Claude account first (top right), then add your files.")], "error"); return; }
-  uploading = true; updateDropState();
-  showMessages([tn(files.length, "Adding {n} file…", "Adding {n} files…")], "info");
-  const form = new FormData();
-  files.forEach((f) => form.append("files", f, f.name));
-  try {
-    const r = await api("POST", "/api/jobs", form);
-    showMessages(r.rejected.map((x) => tm(x.message)), "error");
-    if (r.created.length === 1 && !r.rejected.length) { location.hash = `#/doc/${encodeURIComponent(r.created[0].id)}`; }
-  } catch (e) { showMessages([e.message], "error"); }
-  uploading = false; updateDropState();
-  loadRecent();
-}
-
-function setupDrop() {
-  const drop = $("drop"), input = $("file-input");
-  drop.addEventListener("click", () => {
-    if (!claudeReady) showMessages([t("Connect your Claude account first (top right), then add your files.")], "error");
-    else if (!uploading) input.click();
-  });
-  drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drop.click(); } });
-  input.addEventListener("change", () => { upload(input.files); input.value = ""; });
-  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
-  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
-  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files); });
-  // a file dropped beside the box must not make the browser leave the page
-  window.addEventListener("dragover", (e) => e.preventDefault());
-  window.addEventListener("drop", (e) => e.preventDefault());
-}
-
-// ------------------------------------------------------------------------------------------------ recent files
+// ------------------------------------------------------------------------------------------------ files and companies
 function progressText(j) {
   if (j.status === "queued") return t("Waiting…");
   if (j.status === "reading") return j.pages_total ? t("Reading page {a} of {b}…", { a: Math.min(j.pages_done + 1, j.pages_total), b: j.pages_total }) : t("Preparing…");
@@ -148,15 +95,21 @@ function suggestCompany(name) {
   return words.length >= 2 ? words.slice(0, -1).join(" ") : "";
 }
 
-function companyBox(j, companies) {
+function companyNames(jobs) {
+  return [...new Set(jobs.map((j) => j.company).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+// The box that files a file under a company. ``done``: called when it closes (saved or not); ``say(text, kind)``:
+// where the page shows what happened ("info" / "error").
+function companyBox(j, companies, done, say) {
   const input = el("input", { type: "text", list: "company-names", maxlength: "80", value: j.company || suggestCompany(j.name),
     placeholder: t("Company name"), "aria-label": t("Company for {name}", { name: j.name }) });
-  const close = () => { editingCompany = null; loadRecent(); };
+  const close = () => { editingCompany = null; done(); };
   const save = async () => {
     try {
       const r = await api("PUT", `/api/jobs/${encodeURIComponent(j.id)}/company`, { company: input.value });
-      if (r.moved) showMessages([tn(r.moved, "{n} other file starting with “{c}” was put under this company too.", "{n} other files starting with “{c}” were put under this company too.", { c: input.value.trim() })], "info");
-    } catch (e) { showMessages([e.message], "error"); }
+      if (r.moved) say(tn(r.moved, "{n} other file starting with “{c}” was put under this company too.", "{n} other files starting with “{c}” were put under this company too.", { c: input.value.trim() }), "info");
+    } catch (e) { say(e.message, "error"); }
     close();
   };
   input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") save(); if (ev.key === "Escape") close(); });
@@ -168,15 +121,15 @@ function companyBox(j, companies) {
     el("datalist", { id: "company-names" }, ...companies.map((c) => el("option", { value: c }))));
 }
 
-// Does a file's company pass the Company chosen beside "Recent files"?
+// Does a file's company pass the Company chooser?
 function companyMatches(company) {
   return !companyFilter || (companyFilter === NO_COMPANY ? !company : company === companyFilter);
 }
 
-// The Company chooser beside "Recent files" on the start page. It filters that list only, and is remembered.
+// The Company chooser of step 2's list (it filters step 3's list too). Remembered in this browser.
 let companySignature = "";
-function renderCompanyFilter(jobs) {
-  const companies = [...new Set(jobs.map((j) => j.company).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+function renderCompanyFilter(jobs, onChange) {
+  const companies = companyNames(jobs);
   const count = (c) => jobs.filter((j) => (c === NO_COMPANY ? !j.company : j.company === c)).length;
   if (companyFilter && companyFilter !== NO_COMPANY && !companies.includes(companyFilter)) companyFilter = "";
   const none = count(NO_COMPANY);
@@ -192,48 +145,28 @@ function renderCompanyFilter(jobs) {
     companyFilter = sel.value;
     companySignature = JSON.stringify([options, companyFilter]);
     try { localStorage.setItem("companyFilter", companyFilter); } catch (_) { /* private window */ }
-    loadRecent();
+    onChange();
   });
   $("company-box").replaceChildren(el("label", {}, t("Company"), sel));
   return companies;
 }
 
-async function loadRecent() {
-  if (editingCompany) return;
-  let jobs;
-  try { jobs = await api("GET", "/api/jobs"); } catch (e) { showMessages([e.message], "error"); return; }
-  const companies = renderCompanyFilter(jobs);
-  const shown = jobs.filter((j) => companyMatches(j.company));
-  const list = $("recent");
-  list.replaceChildren(...shown.map((j) => {
-    const cancelled = j.status === "failed" && j.error && j.error.code === "CANCELLED";
-    const active = j.status === "queued" || j.status === "reading";
-    const cls = j.status === "done" ? "pill good" : j.status === "failed" && !cancelled ? "pill bad" : "pill";
-    const li = el("li", {},
-      el("span", { class: "name", text: j.name }),
-      el("button", { class: j.company ? "company" : "company unset", text: j.company || t("Set company"),
-        title: j.company ? t("Click to change the company") : t("Choose the client company of this file"),
-        onclick: () => { editingCompany = j.id; drawCompanyEditor(j, companies); } }),
-      el("span", { class: "when", text: new Date(j.created).toLocaleString(LOCALE) }),
-      el("span", { class: cls, text: cancelled ? t("Cancelled") : progressText(j) }),
-      active && el("button", { text: t("Cancel"), onclick: async () => {
-        try { await api("POST", `/api/jobs/${encodeURIComponent(j.id)}/cancel`); } catch (e) { showMessages([e.message], "error"); }
-        loadRecent();
-      } }),
-      el("button", { text: t("Open"), onclick: () => { location.hash = `#/doc/${encodeURIComponent(j.id)}`; } }));
-    if (j.status === "failed" && j.error && !cancelled) li.append(el("div", { class: "muted", style: "flex-basis:100%", text: tm(j.error.message) }));
-    li.dataset.id = j.id;
-    return li;
-  }));
-  $("recent-empty").hidden = jobs.length > 0;
-  $("recent-none").hidden = !(jobs.length > 0 && shown.length === 0);
-  return jobs;
+// What this tab remembers (sessionStorage): where the user was in each step, the working month, the files added here.
+// A private window may refuse it: then nothing is remembered and each step opens on its first screen.
+function remember(key, value) { try { sessionStorage.setItem(key, value); } catch (_) { /* refused */ } }
+function recall(key) { try { return sessionStorage.getItem(key); } catch (_) { return null; } }
+function forget(key) { try { sessionStorage.removeItem(key); } catch (_) { /* refused */ } }
+
+// The number beside a step button (0 hides it).
+function stepBadge(step, n) {
+  const badge = $(`step-${step}-n`);
+  badge.hidden = !n; badge.textContent = n ? String(n) : "";
 }
 
-function drawCompanyEditor(j, companies) {
-  document.querySelectorAll(".company-edit").forEach((n) => n.remove());
-  const li = [...$("recent").children].find((n) => n.dataset.id === j.id);
-  if (li) li.append(companyBox(j, companies));
+// "2 Check reading": the yellow cells left in the files step 2's list shows (every file until check.js is loaded).
+function refreshCheckBadge(jobs) {
+  const shown = typeof ckFilter === "function" ? jobs.filter(ckFilter) : jobs;
+  stepBadge("check", shown.reduce((n, j) => n + (j.cells_to_check || 0), 0));
 }
 
 // ------------------------------------------------------------------------------------------------ document view
@@ -401,42 +334,6 @@ async function pollDoc(first) {
   }
 }
 
-// Only one screen shows at a time: the start page, a document, the month overview, a company, an employee, the one-look
-// panel or a card layout.
-function hideScreens() {
-  for (const id of ["home", "doc", "month", "company", "employee", "look", "layout"]) $(id).hidden = true;
-}
-
-function showHome() {
-  currentId = null; currentDoc = null; clearTimeout(docTimer);
-  hideScreens(); $("home").hidden = false;
-  loadRecent();
-}
-
-// #/payroll[/2026-09] = the month overview; .../c/<company> = one company; .../e/<employee id> = the employee view;
-// .../look/<employee id> = the one-look panel; an address of the old payroll page (removed) that is still open or
-// bookmarked opens the overview (.../old) or the employee view (.../old/e/<employee id>);
-// .../layout/<document id>/<page>[/h/<hours column>] = what the columns of a card layout mean.
-// The payroll screens' scripts load after this one; the last of them calls route() when the page opens on one.
-function route() {
-  const m = location.hash.match(/^#\/doc\/(.+)$/);
-  const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?(?:\/(old)(?:\/e\/([^/]+))?|\/c\/(.*)|\/look\/([^/]+)|\/e\/([^/]+))?$/);
-  const lm = location.hash.match(/^#\/payroll\/(\d{4}-\d{2})\/layout\/([^/]+)\/(\d+)(?:\/h\/([^/]+))?$/);
-  if (lm) {
-    if (typeof showLayout === "function") {
-      showLayout(lm[1], decodeURIComponent(lm[2]), Number(lm[3]), lm[4] ? decodeURIComponent(lm[4]) : null);
-    }
-    return;
-  }
-  if (m) openDoc(decodeURIComponent(m[1]));
-  else if (pm && pm[5] !== undefined) { if (typeof showLook === "function") showLook(pm[1], decodeURIComponent(pm[5])); }
-  else if (pm && pm[6] !== undefined) { if (typeof showEmployee === "function") showEmployee(pm[1], decodeURIComponent(pm[6])); }
-  else if (pm && pm[3] !== undefined) { if (typeof showEmployee === "function") showEmployee(pm[1], decodeURIComponent(pm[3])); }
-  else if (pm && pm[4] !== undefined && typeof showCompany === "function") showCompany(pm[1], decodeURIComponent(pm[4]));
-  else if (pm && typeof showMonth === "function") showMonth(pm[1]);
-  else if (!pm) showHome();
-}
-
 function setupQuit() {
   $("quit").addEventListener("click", async () => {
     let active = 0;
@@ -450,7 +347,6 @@ function setupQuit() {
 }
 
 function setupDocButtons() {
-  $("back").addEventListener("click", () => { location.hash = ""; });
   $("cancel").addEventListener("click", async () => {
     try { await api("POST", `/api/jobs/${encodeURIComponent(currentId)}/cancel`); await pollDoc(true); }
     catch (e) { $("doc-error").hidden = false; $("doc-error").textContent = e.message; }
@@ -475,13 +371,7 @@ function setupDocButtons() {
   });
 }
 
-// Keep the recent-files list live while anything is being read.
-setInterval(() => { if (!$("home").hidden) loadRecent(); }, 4000);
-
-setupDrop();
 setupDocButtons();
 setupQuit();
-window.addEventListener("hashchange", route);
 refreshClaude();
 setInterval(() => { if (!loginTimer) refreshClaude(); }, 60000);
-route();

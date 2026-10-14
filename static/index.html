@@ -9,13 +9,17 @@
 <body>
 <header>
   <h1>Table Reader</h1>
+  <nav class="steps" aria-label="Steps" data-t-aria>
+    <a id="step-upload" class="step" href="#/"><span data-t>1 Upload</span></a>
+    <a id="step-check" class="step" href="#/check"><span data-t>2 Check reading</span> <span id="step-check-n" class="badge" hidden></span></a>
+    <a id="step-payroll" class="step" href="#/payroll"><span data-t>3 Payroll</span> <span id="step-payroll-n" class="badge" hidden></span></a>
+  </nav>
   <div id="claude-box" class="claude-box" aria-live="polite" data-t>Checking Claude…</div>
-  <a id="nav-payroll" class="navlink" href="#/payroll" data-t>Payroll</a>
   <button id="lang" class="link" type="button">Bahasa Melayu</button>
   <button id="quit" class="link" title="Close Table Reader on this computer" data-t data-t-title>Quit Table Reader</button>
 </header>
 
-<main id="home">
+<main id="upload">
   <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose files to read" data-t-aria>
     <p class="drop-big" data-t>Drop scans or photos here</p>
     <p><span data-t>PDF, JPG or PNG — or</span> <u data-t>click to choose files</u></p>
@@ -25,32 +29,70 @@
   <p class="legend"><span data-t>No clicks: save files into the Inbox folder (one folder per company) and they are read by themselves. Every finished table is also kept as a CSV in the Tables folder.</span>
     <button id="open-inbox" type="button" data-t>Open the Inbox folder</button>
     <button id="open-tables" type="button" data-t>Open the Tables folder</button></p>
-
-  <div class="recent-head"><h2 data-t>Recent files</h2><div id="company-box" class="company-box" hidden></div></div>
-  <ul id="recent" class="recent"></ul>
-  <p id="recent-empty" class="muted" hidden data-t>Nothing here yet. Add a file above to get started.</p>
-  <p id="recent-none" class="muted" hidden data-t>No files for this company. Choose “All companies” to see every file.</p>
+  <section class="card">
+    <div class="recent-head"><h2 data-t>Just added</h2><span id="up-state" class="muted" aria-live="polite"></span></div>
+    <ul id="recent" class="recent"></ul>
+    <p id="recent-empty" class="muted" hidden data-t>Nothing is being read. Files you add here are listed until you close this tab.</p>
+    <div class="need-buttons foot"><button id="up-check" class="primary" type="button" data-t>Check them →</button></div>
+  </section>
 </main>
 
-<main id="doc" hidden>
-  <div class="doc-bar">
-    <button id="back" class="link" data-t>&larr; All files</button>
-    <h2 id="doc-name"></h2>
-    <div class="doc-actions">
-      <button id="next-check" class="secondary" hidden>Go to next cell to check</button>
-      <button id="cancel" hidden data-t>Cancel reading</button>
-      <button id="continue" hidden data-t>Continue reading</button>
-      <button id="download" class="primary" data-t>Download CSV</button>
-    </div>
+<main id="check" hidden>
+  <div id="ck-error" class="banner error" hidden></div>
+  <div class="split">
+    <aside class="side" aria-label="Files" data-t-aria>
+      <div class="side-filters">
+        <div id="company-box" class="company-box" hidden></div>
+        <label class="side-month"><span data-t>Month</span> <select id="ck-month"></select></label>
+      </div>
+      <ul id="ck-files" class="side-list"></ul>
+    </aside>
+    <section class="pane">
+      <div id="ck-empty" class="card" hidden><p id="ck-empty-text"></p>
+        <button id="ck-to-upload" type="button" data-t>Go to step 1</button></div>
+      <div id="doc" hidden>
+        <div class="doc-bar">
+          <h2 id="doc-name"></h2>
+          <span id="ck-company"></span>
+          <div class="doc-actions">
+            <button id="next-check" class="secondary" hidden>Go to next cell to check</button>
+            <button id="cancel" hidden data-t>Cancel reading</button>
+            <button id="continue" hidden data-t>Continue reading</button>
+            <button id="download" class="primary" data-t>Download CSV</button>
+          </div>
+        </div>
+        <p id="doc-status" class="doc-status"></p>
+        <div id="doc-error" class="banner error" hidden></div>
+        <section id="ck-needs" class="card" hidden></section>
+        <section id="layout" class="card" hidden>
+          <div class="doc-bar">
+            <h3 id="ly-title"></h3>
+            <div class="doc-actions">
+              <button id="ly-ask" type="button" data-t>Ask Claude</button>
+              <button id="ly-as-is" type="button" data-t>It is right as it is</button>
+              <button id="ly-save" class="primary" type="button" data-t>Save</button>
+              <button id="ly-back" type="button" data-t>Close</button>
+            </div>
+          </div>
+          <div id="ly-error" class="banner error" hidden></div>
+          <div id="ly-body" hidden>
+            <p class="legend" data-t>Say once what each column of this card holds. It is kept for every card with the same headings, for every company and month. Claude can suggest it: it is shown only the headings and how the values are written (digits as 9, letters as A), never the names or figures.</p>
+            <div id="ly-note" class="banner info" hidden></div>
+            <div class="page-grid">
+              <div id="ly-rows"></div>
+              <div id="ly-picture" class="page-image"></div>
+            </div>
+          </div>
+        </section>
+        <div id="pages"></div>
+        <div id="ck-foot" class="need-buttons foot"></div>
+      </div>
+    </section>
   </div>
-  <p id="doc-status" class="doc-status"></p>
-  <div id="doc-error" class="banner error" hidden></div>
-  <div id="pages"></div>
 </main>
 
-<main id="month" hidden>
+<main id="people" hidden>
   <div class="doc-bar">
-    <button id="mo-back" class="link" data-t>&larr; All files</button>
     <h2 id="mo-title"></h2>
     <div class="doc-actions">
       <button id="mo-prev" type="button" aria-label="Month before" data-t-aria>&lt;</button>
@@ -66,105 +108,78 @@
   <div id="mo-info" class="banner info" hidden></div>
   <div id="mo-run-result" class="banner info" hidden></div>
   <section id="mo-settings" class="card" hidden></section>
-  <section class="card"><div id="mo-companies"></div><p id="mo-total" class="legend"></p></section>
-</main>
-
-<main id="company" hidden>
-  <div class="doc-bar">
-    <button id="co-back" class="link" data-t>&larr; All companies</button>
-    <h2 id="co-title"></h2>
-    <div class="doc-actions"><span id="co-status" class="muted" aria-live="polite"></span>
-      <button id="co-million-open" type="button" hidden></button>
-      <button id="co-csv" type="button" data-t>Download payroll CSV</button>
-      <button id="co-settings-open" type="button" data-t>Company settings</button></div>
-  </div>
-  <div id="co-error" class="banner error" hidden></div>
-  <section id="co-million" class="card" hidden></section>
-  <section id="co-settings" class="card" hidden></section>
-  <section class="card"><h3 data-t>Needs you</h3><div id="co-items"></div><details id="co-other" hidden></details></section>
-  <section class="card">
-    <div class="pw-tabs co-tabs" role="tablist">
-      <button id="co-tab-employees" type="button" role="tab" class="tab active" aria-selected="true" data-t>Employees</button>
-      <button id="co-tab-pay" type="button" role="tab" class="tab" aria-selected="false" data-t>Pay preview</button>
-    </div>
-    <div id="co-employees-tab">
-      <div id="co-employees"></div>
-      <button id="co-add" type="button" class="link" data-t>Add employee</button>
-    </div>
-    <div id="co-pay" hidden>
-      <p class="legend" data-t>What Million Payroll should pay each employee before EPF, SOCSO and tax, worked out with Million's own overtime tables. The pay basis and Basic Rate come from Million's employee list (import its “Payroll Information” report); type a rate to use another. This is a check for you: Million still does the real calculation.</p>
-      <div id="co-pay-table"></div>
-      <button id="co-pay-download" type="button" data-t>Download the pay table (CSV)</button>
-    </div>
-  </section>
-</main>
-
-<main id="look" hidden>
-  <div class="doc-bar">
-    <button id="lk-back" class="link" data-t>&larr; Back to the company</button>
-    <h2 id="lk-title"></h2>
-    <div class="doc-actions">
-      <span id="lk-count" class="muted"></span>
-      <button id="lk-prev" type="button" aria-label="Card before" data-t-aria>&lt;</button>
-      <button id="lk-next" type="button" aria-label="Card after" data-t-aria>&gt;</button>
-    </div>
-  </div>
-  <div id="lk-error" class="banner error" hidden></div>
-  <div id="lk-body" hidden>
-    <p id="lk-card" class="doc-status"></p>
-    <div class="page-grid">
-      <div id="lk-picture" class="page-image look-picture"></div>
-      <div>
-        <div id="lk-note" class="banner info" hidden></div>
-        <ol id="lk-lines" class="look-lines"></ol>
-        <div class="look-foot"><span id="lk-left" class="muted" aria-live="polite"></span>
-          <button id="lk-accept" class="primary" type="button"></button></div>
+  <p id="mo-total" class="legend"></p>
+  <div class="split">
+    <aside class="side" aria-label="Employees" data-t-aria>
+      <input id="pp-search" type="search" autocomplete="off">
+      <div id="pp-list"></div>
+      <p id="pp-none" class="muted" hidden data-t>No company matches.</p>
+    </aside>
+    <section class="pane">
+      <div id="pp-empty" class="card" hidden><p data-t>No employees for this month yet. Add time cards in step 1.</p>
+        <button id="pp-to-upload" type="button" data-t>Go to step 1</button></div>
+      <div id="company" hidden>
+        <div class="doc-bar">
+          <h2 id="co-title"></h2>
+          <div class="doc-actions"><span id="co-status" class="muted" aria-live="polite"></span>
+            <button id="co-million-open" type="button" hidden></button>
+            <button id="co-csv" type="button" data-t>Download payroll CSV</button>
+            <button id="co-settings-open" type="button" data-t>Company settings</button></div>
+        </div>
+        <div id="co-error" class="banner error" hidden></div>
+        <section id="co-million" class="card" hidden></section>
+        <section id="co-settings" class="card" hidden></section>
+        <section class="card"><h3 data-t>Needs you</h3><div id="co-items"></div></section>
+        <section id="co-pay" class="card">
+          <h3 data-t>Pay preview</h3>
+          <p class="legend" data-t>What Million Payroll should pay each employee before EPF, SOCSO and tax, worked out with Million's own overtime tables. The pay basis and Basic Rate come from Million's employee list (import its “Payroll Information” report); type a rate to use another. This is a check for you: Million still does the real calculation.</p>
+          <div id="co-pay-table"></div>
+          <div class="need-buttons"><button id="co-pay-download" type="button" data-t>Download the pay table (CSV)</button>
+            <button id="co-add" type="button" data-t>Add employee</button></div>
+        </section>
       </div>
-    </div>
+      <div id="employee" hidden>
+        <div class="doc-bar"><h2 id="em-title"></h2>
+          <div class="doc-actions"><span id="em-save" class="muted" aria-live="polite"></span></div></div>
+        <div id="em-error" class="banner error" hidden></div>
+        <section id="em-needs" class="card" hidden></section>
+        <section id="em-cards" class="card" hidden></section>
+        <section class="card"><div id="em-window"></div></section>
+        <div id="em-walk" class="need-buttons foot"></div>
+        <datalist id="em-million-list"></datalist>
+      </div>
+      <div id="look" hidden>
+        <div class="doc-bar">
+          <button id="lk-back" class="link" data-t>&larr; Back to the employee</button>
+          <h2 id="lk-title"></h2>
+          <div class="doc-actions">
+            <span id="lk-count" class="muted"></span>
+            <button id="lk-prev" type="button" aria-label="Card before" data-t-aria>&lt;</button>
+            <button id="lk-next" type="button" aria-label="Card after" data-t-aria>&gt;</button>
+          </div>
+        </div>
+        <div id="lk-error" class="banner error" hidden></div>
+        <div id="lk-body" hidden>
+          <p id="lk-card" class="doc-status"></p>
+          <div class="page-grid">
+            <div id="lk-picture" class="page-image look-picture"></div>
+            <div>
+              <div id="lk-note" class="banner info" hidden></div>
+              <ol id="lk-lines" class="look-lines"></ol>
+              <div class="look-foot"><span id="lk-left" class="muted" aria-live="polite"></span>
+                <button id="lk-accept" class="primary" type="button"></button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
-</main>
-
-<main id="layout" hidden>
-  <div class="doc-bar">
-    <button id="ly-back" class="link" data-t>&larr; Back</button>
-    <h2 id="ly-title"></h2>
-    <div class="doc-actions">
-      <button id="ly-ask" type="button" data-t>Ask Claude</button>
-      <button id="ly-as-is" type="button" data-t>It is right as it is</button>
-      <button id="ly-save" class="primary" type="button" data-t>Save</button>
-    </div>
-  </div>
-  <div id="ly-error" class="banner error" hidden></div>
-  <div id="ly-body" hidden>
-    <p class="legend" data-t>Say once what each column of this card holds. It is kept for every card with the same headings, for every company and month. Claude can suggest it: it is shown only the headings and how the values are written (digits as 9, letters as A), never the names or figures.</p>
-    <div id="ly-note" class="banner info" hidden></div>
-    <div class="page-grid">
-      <div id="ly-rows"></div>
-      <div id="ly-picture" class="page-image"></div>
-    </div>
-  </div>
-</main>
-
-<main id="employee" hidden>
-  <div class="doc-bar">
-    <button id="em-back" class="link" data-t>&larr; Back to the company</button>
-    <h2 id="em-title"></h2>
-    <div class="doc-actions"><span id="em-save" class="muted" aria-live="polite"></span></div>
-  </div>
-  <div id="em-error" class="banner error" hidden></div>
-  <section id="em-cards" class="card" hidden></section>
-  <section class="card"><div id="em-window"></div></section>
-  <datalist id="em-million-list"></datalist>
 </main>
 
 <script src="i18n.js"></script>
 <script src="app.js"></script>
 <script src="paycommon.js"></script>
-<script src="companies.js"></script>
-<script src="employee.js"></script>
-<script src="paytable.js"></script>
-<script src="settings.js"></script>
-<script src="look.js"></script>
-<script src="layout.js"></script>
+<script src="upload.js"></script>
+<script src="steps.js"></script>
 </body>
 </html>

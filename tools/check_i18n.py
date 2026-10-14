@@ -9,9 +9,9 @@ from pathlib import Path
 import esprima
 
 S = Path(__file__).resolve().parent.parent / "static"
+SCRIPTS = sorted(p.name for p in S.glob("*.js"))
 trees = {}
-for name in ("i18n.js", "app.js", "paycommon.js", "companies.js", "employee.js", "paytable.js", "settings.js",
-             "look.js", "layout.js"):
+for name in SCRIPTS:
     try:
         src = (S / name).read_text(encoding="utf-8")
         src = re.sub(r"catch \{", "catch (_e) {", src)             # optional catch binding: valid, too new for esprima
@@ -48,8 +48,7 @@ def find_calls(node):
         for a in args[: (1 if node.callee.name == "t" else 2)]:
             if a.type == "Literal" and isinstance(a.value, str):
                 used.append(a.value)
-for name in ("app.js", "paycommon.js", "companies.js", "employee.js", "paytable.js", "settings.js", "look.js",
-             "layout.js"):
+for name in [n for n in SCRIPTS if n != "i18n.js"]:
     walk(trees[name], find_calls)
 # data-t texts in index.html
 html = (S / "index.html").read_text(encoding="utf-8")
