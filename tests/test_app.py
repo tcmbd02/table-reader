@@ -1235,3 +1235,17 @@ def test_claude_failing_is_shown_not_a_crash(tmp_path, monkeypatch):
         [item] = [i for i in view["items"] if i["kind"] == "layout"]
         got = c.get("/api/layouts", params={"doc": item["doc"], "page": item["page"], "ask": "true"}).json()
         assert got["suggestion"] is None and "usage limit" in got["error"]
+
+
+def test_it_is_right_as_it_is_keeps_the_hours_column_the_user_chose(tmp_path):
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        where = {"doc": item["doc"], "page": item["page"]}
+        assert c.put("/api/layouts", json={**where, "as_is": True, "hours_column": "OT"}).json() == {"ok": True}
+        assert c.get("/api/layouts", params=where).json()["saved"]["OT"] == {"role": "hours", "unit": "hours"}
+        r = c.put("/api/layouts", json={**where, "as_is": True, "hours_column": "NOT A COLUMN"})
+        assert r.status_code == 400 and r.json()["code"] == "BAD_LAYOUT"
+        got = c.get("/api/layouts", params={**where, "hours": "WHrs"}).json()
+        assert got["as_read"]["WHrs"]["role"] == "hours"

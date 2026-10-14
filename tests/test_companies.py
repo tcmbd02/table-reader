@@ -282,7 +282,8 @@ def test_an_unknown_layout_with_figures_is_an_item_once():
     items = companies.unknown_layouts([layout_card("d1", card_page()), layout_card("d2", card_page())], {})
     assert len(items) == 1
     assert items[0] == {"kind": "layout", "signature": _payroll.layout_signature(list(REPORT_2)), "doc": "d1",
-                        "page": 1, "name": "card.jpg", "columns": ["OT", "LIn(Min)", "E/Out(Min)"]}
+                        "page": 1, "name": "card.jpg", "columns": ["OT", "LIn(Min)", "E/Out(Min)"], "confirmed": False,
+                        "hours_column": None}
 
 
 def test_row_numbers_text_and_few_figures_are_not_an_item():
@@ -300,3 +301,23 @@ def test_a_confirmed_layout_or_a_known_report_is_not_an_item():
     report = card_page(labels=labels, values={"Date": "{d}", "Shift Details / Normal": "8",
                                               "Shift Details / Actual": "9", "OverTime / 1.5": "1"})
     assert companies.unknown_layouts([layout_card("d2", report)], {}) == []
+
+
+def test_a_door_export_with_stamps_is_an_item():
+    page = card_page(labels=("Date", "Name", "Times"), values={"Date": "{d}", "Name": "ALI",
+                                                               "Times": "07:58 12:01 13:02 17:05"})
+    [item] = companies.unknown_layouts([layout_card("d1", page)], {})
+    assert item["columns"] == ["Times"]
+
+
+def test_a_confirmed_layout_that_reads_nothing_comes_back():
+    page = card_page()
+    all_ignored = {c: {"role": "ignore", "unit": "none"} for c in REPORT_2}
+    [item] = companies.unknown_layouts([layout_card("d1", page)],
+                                       {_payroll.layout_signature(list(REPORT_2)): {"columns": all_ignored}})
+    assert item["kind"] == "layout" and item["confirmed"] is True
+
+
+def test_the_item_carries_the_cards_hours_column():
+    [item] = companies.unknown_layouts([{**layout_card("d1", card_page()), "hours_column": "WHrs"}], {})
+    assert item["hours_column"] == "WHrs"

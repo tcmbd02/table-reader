@@ -884,13 +884,32 @@ def _counted(text: str | None, unit: str) -> float | None:
     return _minutes(text) if unit == "minutes" else parse_hours(text)
 
 
+def _map_roles(labels: list[str], layouts: dict | None) -> dict | None:
+    """{label: {"role", "unit"}} of the user's map for these headings, looked up by heading key (a card that writes
+    "WHRS" where the map was saved from "WHrs" has the same signature); None when there is none or it does not fit."""
+    columns = ((layouts or {}).get(layout_signature(labels)) or {}).get("columns")
+    if not isinstance(columns, dict):
+        return None
+    by_key = {_key(k): v for k, v in columns.items()}
+    roles = {c: by_key.get(_key(c)) for c in labels}
+    fits = all(isinstance(r, dict) and r.get("role") in LAYOUT_ROLES and r.get("unit") in LAYOUT_UNITS
+               for r in roles.values())
+    return roles if fits else None
+
+
+def layout_reads_days(labels: list[str], layouts: dict | None) -> bool:
+    """False when the user's map for these headings gives no date, or no hours, IN/OUT or stamps (the days cannot be
+    worked out with it: the layout is asked about again)."""
+    how = _layout_columns(labels, None, layouts)
+    return not how.get("map") or bool(how["date"] and (how["hours"] or how["pairs"] or how["stamps"]))
+
+
 def _layout_columns(labels: list[str], hours_column: str | None, layouts: dict | None) -> dict:
     """How read_days reads a page with these headings: {"map", "date", "hours", "units", "report", "pairs", "stamps",
     "grid"}. A confirmed map decides everything; else the built-in rules (month grid, hours column, IN/OUT pairs,
     the clock report)."""
-    layout = (layouts or {}).get(layout_signature(labels))
-    if layout:
-        roles = layout["columns"]
+    roles = _map_roles(labels, layouts)
+    if roles:
         of = lambda role: [c for c in labels if roles[c]["role"] == role]       # noqa: E731
         return {"map": True, "grid": None, "date": next(iter(of("date")), None), "hours": next(iter(of("hours")), None),
                 "units": {c: roles[c]["unit"] for c in labels},
@@ -948,7 +967,7 @@ def is_figure_text(text: str | None) -> bool:
     """A cell that holds a number or a clock time (what a column the payroll could use would hold)."""
     value = (text or "").strip()
     return bool(re.search(r"\d", value)) and (parse_clock(value) is not None or parse_hours(value) is not None
-                                              or _number_or_none(value) is not None)
+                                              or _number_or_none(value) is not None or bool(_STAMP_IN_TEXT.search(value)))
 
 
 def _stamp_cells(cells: dict, stamp_cols: list[str]) -> tuple[dict, list[tuple[str, str]], str | None]:
@@ -1130,11 +1149,14 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                                "Open the card layout and say which column holds the date."})
                 continue
             if hours_col is None and not pairs and not stamp_cols:
-                issues.append({"kind": "column", "text": f"{where}: no column with the daily hours was found. "
-                                                         "Choose it in the 'Hours column' list.", "job": name})
+                issues.append({"kind": "column", "job": name, "text": f"{where}: the card layout has no column with the "
+                               "hours or the times. Open the card layout and say which column holds them."} if how["map"]
+                              else {"kind": "column", "text": f"{where}: no column with the daily hours was found. "
+                                                              "Choose it in the 'Hours column' list.", "job": name})
                 continue
-            others = [c for c in page["column_labels"] if c not in (date_col, hours_col)] if hours_col and not pairs \
-                and not report and not how["map"] else []
+            # columns not read, looked at on a day whose hours are empty (times there: the day is not "not worked")
+            others = [c for c in page["column_labels"] if c not in (date_col, hours_col) and c not in report] \
+                if hours_col and not pairs and not stamp_cols and (how["map"] or not report) else []
             if report and not how["map"]:
                 _check_report_totals(page, where, name, issues)
                 flat = next((c for c in page["column_labels"] if _key(c) == REPORT_FLAT), None)
@@ -1143,6 +1165,23 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                     issues.append({"kind": "flat", "job": name, "text": f"{where}: the report has Flat overtime. "
                                    "Table Reader does not add it: type it in the right Million Payroll field yourself."})
             timed_cols = ([hours_col] if hours_col else []) + [c for pair in pairs for c in pair] + stamp_cols
+
+            def printed_of(cells: dict, day: int, entry: dict, read: list[str]) -> dict:
+                """The day's printed figures (the clock report's, or a map's figure columns), unit converted. One that
+                is unclear or not a number makes the day unclear."""
+                printed = {}
+                for col, field in report.items():
+                    c = cells[col]
+                    value = None if c["needs_review"] else _counted(c["value"], units.get(col, "hours"))
+                    if value is None:
+                        entry["status"] = "unclear"
+                        issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: the {col} "
+                                       "figure is unclear or not a number of hours. Check it in the document.",
+                                       "at": at(day, read)})
+                    else:
+                        printed[field] = printed.get(field, 0.0) + value
+                return printed
+
             for r, row in enumerate(page["rows"], start=1):
                 cells = row["cells"]
                 dcell = cells[date_col]
@@ -1177,8 +1216,11 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                         _put_day(days, day, {"hours": None, "status": "unclear", "source": where, "printed": None},
                                  name, issues)
                         continue
-                    _put_day(days, day, _clock_day({**cells, **stamped}, pairs + more, break_hours, where, day, name,
-                                                   issues, at(day, timed_cols)), name, issues)
+                    entry = _clock_day({**cells, **stamped}, pairs + more, break_hours, where, day, name, issues,
+                                       at(day, timed_cols))
+                    if report:                                  # a map's figure columns count on these days too
+                        entry["printed"] = printed_of(cells, day, entry, [*timed_cols, *report])
+                    _put_day(days, day, entry, name, issues)
                     continue
                 read = [hours_col, *report]                     # what the lines below read
                 if not written and any(cells[c]["needs_review"] or parse_clock(cells[c]["value"]) is not None
@@ -1204,20 +1246,7 @@ def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int
                     issues.append({"kind": "unclear", "text": f"{where}, day {day}: the hours are still unclear. Check the "
                                                               "yellow cell in the document.", "job": name,
                                    "at": at(day, read)})
-                entry["printed"] = None
-                if report:
-                    printed = {}
-                    for col, field in report.items():
-                        c = cells[col]
-                        value = None if c["needs_review"] else _counted(c["value"], units.get(col, "hours"))
-                        if value is None:
-                            entry["status"] = "unclear"
-                            issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: the {col} "
-                                           "figure is unclear or not a number of hours. Check it in the document.",
-                                           "at": at(day, read)})
-                        else:
-                            printed[field] = printed.get(field, 0.0) + value
-                    entry["printed"] = printed
+                entry["printed"] = printed_of(cells, day, entry, read) if report else None
                 _put_day(days, day, entry, name, issues)
     return days, issues
 
@@ -1322,7 +1351,7 @@ def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict, mi
         mark = entry.get("mark") if entry else None
         if kind == "work":
             values["working_days"] += 1
-        if status == "ok" and printed is not None:
+        if status == "ok" and printed is not None and any(field.startswith("ot_") for field in printed):
             # clock-system report: the overtime is already split into its rates by the clock system
             for field, value in printed.items():
                 values[field] += value
@@ -1331,6 +1360,8 @@ def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict, mi
             elif hours == 0 and kind == "holiday":
                 values["public_holiday"] += 1
         elif status == "ok":
+            for field, value in (printed or {}).items():                # a map's lateness / early departure only
+                values[field] += value
             # a month-grid tick is a day worked with no hours written: a normal day, no overtime
             if (hours is not None and hours > 0) or mark == "present":
                 if kind == "work":
@@ -2045,7 +2076,9 @@ class PayrollStore:
             data = json.loads((self.root / "layouts.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            return {}
+        return {k: v for k, v in data.items() if isinstance(v, dict) and isinstance(v.get("columns"), dict)}
 
     def save_layouts(self, layouts: dict) -> None:
         self._write(self.root / "layouts.json", layouts)

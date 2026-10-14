@@ -260,15 +260,24 @@ function itemNode(item) {
     }
     buttons.push(openCardButton(item.doc));
   } else if (item.kind === "layout") {
-    // a card layout Table Reader has no rule for, with columns of figures the payroll does not use (yet)
-    head = t("{file}: a card layout Table Reader does not know", { file: item.name });
-    details = [t("Columns with figures that are not used: {list}. Say once what they mean; it is kept for every card with the same headings.",
-      { list: item.columns.join(", ") })];
+    // a card layout Table Reader has no rule for, with columns of figures the payroll does not use (yet); or one the
+    // user confirmed with which the days cannot be worked out (it comes back until the columns are said again)
+    head = item.confirmed ? t("{file}: the days cannot be worked out with the saved card layout", { file: item.name })
+      : t("{file}: a card layout Table Reader does not know", { file: item.name });
+    details = [item.confirmed ? t("Say which column holds the date and which the hours or times.")
+      : t("Columns with figures that are not used: {list}. Say once what they mean; it is kept for every card with the same headings.",
+        { list: item.columns.join(", ") })];
+    const hours = item.hours_column ? `/h/${encodeURIComponent(item.hours_column)}` : "";
     const check = el("button", { type: "button", class: "primary", text: t("Check the columns"),
-      onclick: () => { location.hash = `#/payroll/${moMonth}/layout/${encodeURIComponent(item.doc)}/${item.page}`; } });
-    const asIs = el("button", { type: "button", text: t("It is right as it is") });
-    asIs.addEventListener("click", () => coAct(asIs, () => api("PUT", "/api/layouts", { doc: item.doc, page: item.page, as_is: true })));
-    buttons.push(check, asIs, openCardButton(item.doc));
+      onclick: () => { location.hash = `#/payroll/${moMonth}/layout/${encodeURIComponent(item.doc)}/${item.page}${hours}`; } });
+    buttons.push(check);
+    if (!item.confirmed) {
+      const asIs = el("button", { type: "button", text: t("It is right as it is") });
+      asIs.addEventListener("click", () => coAct(asIs, () => api("PUT", "/api/layouts",
+        { doc: item.doc, page: item.page, as_is: true, hours_column: item.hours_column })));
+      buttons.push(asIs);
+    }
+    buttons.push(openCardButton(item.doc));
   } else if (item.kind === "month") {
     head = t("{file}: which month is this for?", { file: item.name });
     details = [tm(item.why)];

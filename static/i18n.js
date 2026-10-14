@@ -471,6 +471,8 @@ const MS = {
   "Columns with figures that are not used: {list}. Say once what they mean; it is kept for every card with the same headings.":
     "Lajur dengan angka yang tidak digunakan: {list}. Nyatakan sekali maksudnya; ia disimpan untuk setiap kad dengan tajuk yang sama.",
   "Check the columns": "Semak lajur",
+  "{file}: the days cannot be worked out with the saved card layout": "{file}: hari-hari tidak dapat dikira dengan susun atur kad yang disimpan",
+  "Say which column holds the date and which the hours or times.": "Nyatakan lajur yang memegang tarikh dan lajur yang memegang jam atau masa.",
   "It is right as it is": "Ia betul seperti sekarang",
   "{file}: what do the columns mean?": "{file}: apakah maksud lajur-lajur ini?",
   "← Back": "← Kembali",
@@ -543,6 +545,7 @@ const MS_PATTERNS = [
   [/^(.+), day (\d+): the (.+) figure is unclear or not a number of hours\. Check it in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: angka ${m[3]} tidak jelas atau bukan bilangan jam. Semaknya dalam dokumen.`],
   [/^(.+), day (\d+): the (.+) column is empty but other columns of the row have times or yellow cells\. Type the hours in the (.+) column of the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: lajur ${m[3]} kosong tetapi lajur lain dalam baris itu ada masa atau sel kuning. Taip jam dalam lajur ${m[4]} dalam dokumen.`],
   [/^No entry found for day (.+) in the chosen documents\. These days were counted as not worked: add the other card if there is one\.$/, "Tiada catatan dijumpai untuk hari $1 dalam dokumen yang dipilih. Hari-hari ini dikira sebagai tidak bekerja: tambah kad yang satu lagi jika ada."],
+  [/^(.+): the card layout has no column with the hours or the times\. Open the card layout and say which column holds them\.$/, (m) => `${msWhere(m[1])}: susun atur kad ini tiada lajur jam atau masa. Buka susun atur kad dan nyatakan lajur yang memegangnya.`],
   [/^(.+): the card layout has no date column\. Open the card layout and say which column holds the date\.$/, (m) => `${msWhere(m[1])}: susun atur kad ini tiada lajur tarikh. Buka susun atur kad dan nyatakan lajur yang memegang tarikh.`],
   [/^(.+), day (\d+): '([\s\S]*)' holds an odd number of clock times, so IN and OUT cannot be paired\. Correct it in the document\.$/, (m) => `${msWhere(m[1])}, hari ${m[2]}: '${m[3]}' mempunyai bilangan masa jam yang ganjil, jadi IN dan OUT tidak dapat dipasangkan. Betulkannya dalam dokumen.`],
   [/^(.+): no column with the daily hours was found\. Choose it in the 'Hours column' list\.$/, (m) => `${msWhere(m[1])}: tiada lajur dengan jam harian dijumpai. Pilihnya dalam senarai 'Lajur jam'.`],

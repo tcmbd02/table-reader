@@ -414,13 +414,18 @@ function showHome() {
 
 // #/payroll[/2026-09] = the month overview; .../c/<company> = one company; .../old = the old payroll page
 // (.../old/e/<employee id> = on that employee and their company); .../look/<employee id> = the one-look panel;
-// .../layout/<document id>/<page> = what the columns of a card layout mean.
+// .../layout/<document id>/<page>[/h/<hours column>] = what the columns of a card layout mean.
 // The payroll screens' scripts load after this one; the last of them calls route() when the page opens on one.
 function route() {
   const m = location.hash.match(/^#\/doc\/(.+)$/);
   const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?(?:\/(old)(?:\/e\/([^/]+))?|\/c\/(.*)|\/look\/([^/]+))?$/);
-  const lm = location.hash.match(/^#\/payroll\/(\d{4}-\d{2})\/layout\/([^/]+)\/(\d+)$/);
-  if (lm) { if (typeof showLayout === "function") showLayout(lm[1], decodeURIComponent(lm[2]), Number(lm[3])); return; }
+  const lm = location.hash.match(/^#\/payroll\/(\d{4}-\d{2})\/layout\/([^/]+)\/(\d+)(?:\/h\/([^/]+))?$/);
+  if (lm) {
+    if (typeof showLayout === "function") {
+      showLayout(lm[1], decodeURIComponent(lm[2]), Number(lm[3]), lm[4] ? decodeURIComponent(lm[4]) : null);
+    }
+    return;
+  }
   if (m) openDoc(decodeURIComponent(m[1]));
   else if (pm && pm[5] !== undefined) { if (typeof showLook === "function") showLook(pm[1], decodeURIComponent(pm[5])); }
   else if (pm && pm[2] && typeof showPayroll === "function") showPayroll(pm[1], pm[3] ? decodeURIComponent(pm[3]) : null);

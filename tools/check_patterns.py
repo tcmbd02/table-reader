@@ -126,6 +126,9 @@ door = record([{"Date": good("1"), "Times": good("07:58 12:01 13:02")}, {"Date":
 door_pages = jobs.merged_pages({"pages": [door]}, {"edits": []})
 msgs += [i["text"] for i in payroll.calculate(p, [("door.pdf", door_pages)], emp, layouts=lay)["issues"]]
 msgs += [i["text"] for i in payroll.calculate(p, [("door.pdf", door_pages)], emp, layouts=lay_nodate)["issues"]]
+lay_notimes = {payroll.layout_signature(list(st_labels)): {"columns": {"Date": {"role": "date", "unit": "none"},
+                                                                      "Times": {"role": "ignore", "unit": "none"}}}}
+msgs += [i["text"] for i in payroll.calculate(p, [("door.pdf", door_pages)], emp, layouts=lay_notimes)["issues"]]
 
 # Million file refusals, built by the real code
 mapping = payroll.load_office_mapping(ROOT / "million" / "office-mapping.csv")

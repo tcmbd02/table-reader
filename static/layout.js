@@ -6,6 +6,7 @@
 let lyMonth = null;        // the month the panel was opened from ("2026-09")
 let lyView = null;         // what the server sent: {doc, page, name, labels, shapes, saved, suggestion, as_read, ...}
 let lySelects = [];        // per column: {label, role, unit}
+let lyHours = null;        // the hours column the card's employee chose (kept by "It is right as it is")
 
 const ROLE_WORDS = {
   date: "Date", hours: "Hours worked that day", in: "Clock in (IN)", out: "Clock out (OUT)",
@@ -17,10 +18,12 @@ const COUNTED = ["hours", "lateness", "early_departure", "ot_1", "ot_1_5", "ot_2
 
 function lyError(message) { $("ly-error").hidden = !message; $("ly-error").textContent = message || ""; }
 
-async function showLayout(month, doc, page) {
+async function showLayout(month, doc, page, hours) {
   clearTimeout(docTimer); currentId = null; currentDoc = null;
   hideScreens(); $("layout").hidden = false;
   lyMonth = month || defaultPayrollMonth();
+  lyHours = hours || null;
+  for (const id of ["ly-save", "ly-as-is", "ly-ask"]) $(id).disabled = false;   // a save made before left them off
   $("ly-title").textContent = ""; $("ly-body").hidden = true; $("ly-note").hidden = true;
   lyError("");
   await loadLayout(doc, page, false);
@@ -28,7 +31,8 @@ async function showLayout(month, doc, page) {
 
 async function loadLayout(doc, page, ask) {
   try {
-    lyView = await api("GET", `/api/layouts?doc=${encodeURIComponent(doc)}&page=${page}${ask ? "&ask=true" : ""}`);
+    const hours = lyHours ? `&hours=${encodeURIComponent(lyHours)}` : "";
+    lyView = await api("GET", `/api/layouts?doc=${encodeURIComponent(doc)}&page=${page}${ask ? "&ask=true" : ""}${hours}`);
   } catch (e) { lyError(e.message); return; }
   drawLayout();
 }
@@ -92,4 +96,4 @@ $("ly-ask").addEventListener("click", async () => {
 });
 $("ly-save").addEventListener("click", () => saveLayout($("ly-save"), {
   columns: Object.fromEntries(lySelects.map((s) => [s.label, { role: s.role.value, unit: s.unit.value }])) }));
-$("ly-as-is").addEventListener("click", () => saveLayout($("ly-as-is"), { as_is: true }));
+$("ly-as-is").addEventListener("click", () => saveLayout($("ly-as-is"), { as_is: true, hours_column: lyHours }));

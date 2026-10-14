@@ -196,12 +196,20 @@ def unknown_layouts(cards: list[dict], layouts: dict) -> list[dict]:
     """"A card layout Table Reader does not know" items: one per layout (signature) of these cards ([{doc, name, page,
     hours_column}]) that the user has not confirmed, when a column the calculation does not read holds numbers or clock
     times in LAYOUT_FIGURE_ROWS rows or more (so a figure for Million may be being left out). Row numbers and codes
-    ("No.", "Emp. No.") do not count; month grids and the clock report are read by their own rules and never asked."""
+    ("No.", "Emp. No.") do not count; month grids and the clock report are read by their own rules and never asked.
+    A layout the user confirmed comes back ("confirmed": True, no columns) while its map cannot work out the days.
+    "hours_column": the card's employee's chosen hours column, kept by "It is right as it is"."""
     out, seen = [], set()
     for c in cards:
         labels = c["page"]["column_labels"]
         signature = payroll.layout_signature(labels)
-        if signature in seen or signature in layouts or payroll.built_in_layout(labels):
+        if signature in seen or payroll.built_in_layout(labels):
+            continue
+        if signature in layouts:
+            if not payroll.layout_reads_days(labels, layouts):     # saved, but the days cannot be worked out with it
+                seen.add(signature)
+                out.append({"kind": "layout", "signature": signature, "doc": c["doc"], "page": c["page"]["page"],
+                            "name": c["name"], "columns": [], "confirmed": True, "hours_column": c["hours_column"]})
             continue
         read = payroll.columns_read(labels, c["hours_column"], layouts)
         figures = [label for label in labels if label not in read and not payroll.is_row_number(label)
@@ -210,7 +218,7 @@ def unknown_layouts(cards: list[dict], layouts: dict) -> list[dict]:
         if figures:
             seen.add(signature)
             out.append({"kind": "layout", "signature": signature, "doc": c["doc"], "page": c["page"]["page"],
-                        "name": c["name"], "columns": figures})
+                        "name": c["name"], "columns": figures, "confirmed": False, "hours_column": c["hours_column"]})
     return out
 
 

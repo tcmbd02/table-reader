@@ -633,8 +633,13 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             raise OcrError("PAGE_NOT_FOUND", "That page of the card was not found.")
         return found, name
 
+    def chosen_hours(labels: list[str], hours: str | None) -> str | None:
+        if hours is not None and hours not in labels:
+            raise OcrError("BAD_LAYOUT", "What the columns mean could not be understood. Open the card layout again.")
+        return hours
+
     @app.get("/api/layouts")
-    def get_layout(doc: str, page: int, ask: bool = False):
+    def get_layout(doc: str, page: int, ask: bool = False, hours: str | None = None):
         """What the columns of a card's layout mean: the map the user saved, today's reading as a map, and the value
         shapes Claude would see. ``ask``: Claude's suggestion too (only when nothing is saved; never by just
         opening)."""
@@ -648,7 +653,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             except OcrError as exc:
                 error = exc.message
         try:
-            as_read = payroll.map_as_read(labels, None)
+            as_read = payroll.map_as_read(labels, chosen_hours(labels, hours))
         except OcrError:
             pass
         return {"doc": doc, "page": page, "name": name, "labels": labels, "shapes": layouts.shapes(p), "saved": saved,
@@ -664,7 +669,8 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             raise OcrError("BAD_LAYOUT", "What the columns mean could not be understood. Open the card layout again.")
         p, _ = layout_page(body["doc"], body["page"])
         labels = p["column_labels"]
-        columns = payroll.map_as_read(labels, None) if body.get("as_is") is True \
+        hours = body.get("hours_column") if isinstance(body.get("hours_column"), str) else None
+        columns = payroll.map_as_read(labels, chosen_hours(labels, hours)) if body.get("as_is") is True \
             else payroll.valid_layout_map(labels, body.get("columns"))
         with auto_lock:
             saved = plans.load_layouts()

@@ -1626,3 +1626,60 @@ def test_a_sheet_with_weekday_headings_is_never_read_as_a_time_card():
     r = payroll.calculate(plan_for(), [("sheet", merged(rows, labels=tuple(WEEKDAY_GRID)))], employee())
     assert any("this sheet lists 4 workers" in i["text"] for i in r["issues"])
     assert all(d["hours"] in (None, 0) for d in r["days"])                # no "No." column read as dates
+
+
+# ------------------------------------------------------------------ review fixes: layout maps (Part C review)
+def test_a_map_saved_with_other_capitals_or_spacing_is_used_not_a_crash():
+    page = mapped_rows(("1", "10", "2", "15", "0"), labels=("date", "WHRS", "ot", "Lin(min)", "E/OUT(MIN)"))
+    days, _ = payroll.read_days([("report", page)], 30, 9, None, layouts=REPORT_MAP)    # saved as DATE, WHrs, OT ...
+    assert days[1]["printed"]["ot_1_5"] == 2.0
+
+
+def test_a_damaged_layout_entry_is_left_out(tmp_path):
+    store = payroll.PayrollStore(tmp_path)
+    store.save_layouts({payroll.layout_signature(list(MAPPED)): {"confirmed": "2026-10-14"}, **REPORT_MAP})
+    store.save_layouts({**{"x | y": {"columns": "nonsense"}}, **store.load_layouts()})
+    assert set(store.load_layouts()) == set(REPORT_MAP)
+
+
+def test_it_is_right_as_it_is_reads_exactly_as_today():
+    labels = ("Date", "Masuk Pagi", "Keluar Petang", "Jumlah")
+    rows = [{"Date": good("1"), "Masuk Pagi": good("08:00"), "Keluar Petang": good("17:00"), "Jumlah": good("")},
+            {"Date": good("2"), "Masuk Pagi": good(""), "Keluar Petang": good(""), "Jumlah": good("8")}]
+    page = merged(rows, labels=labels)
+    as_is = {payroll.layout_signature(list(labels)): {"columns": payroll.map_as_read(list(labels), None)}}
+    today = payroll.read_days([("card", page)], 30, 9, None)
+    mapped = payroll.read_days([("card", page)], 30, 9, None, layouts=as_is)
+    assert {d: (e["hours"], e["status"]) for d, e in mapped[0].items()} == \
+        {d: (e["hours"], e["status"]) for d, e in today[0].items()}
+    assert [i["text"] for i in mapped[1]] == [i["text"] for i in today[1]] and today[0][1]["status"] == "unclear"
+
+
+def test_mapped_figures_are_read_on_in_out_and_stamp_days_too():
+    labels = ("DATE", "IN", "OUT", "OT", "Late (Min)")
+    m = layout_map(labels, {"DATE": ("date", "none"), "IN": ("in", "none"), "OUT": ("out", "none"),
+                            "OT": ("ot_1_5", "hours"), "Late (Min)": ("lateness", "minutes")})
+    days, _ = payroll.read_days([("card", mapped_rows(("1", "08:00", "19:00", "2", "30"), labels=labels))], 30, 9, None,
+                                layouts=m)
+    assert days[1]["printed"] == {"ot_1_5": 2.0, "lateness": 0.5} and days[1]["hours"] == 10.0
+    labels = ("Date", "Punch", "OT")
+    m = layout_map(labels, {"Date": ("date", "none"), "Punch": ("stamps", "none"), "OT": ("ot_1_5", "hours")})
+    days, _ = payroll.read_days([("door", mapped_rows(("1", "08:00 19:00", "2"), labels=labels))], 30, 9, None, layouts=m)
+    assert days[1]["printed"] == {"ot_1_5": 2.0}
+
+
+def test_mapping_only_lateness_keeps_the_overtime_and_rest_day_rules():
+    labels = ("Date", "WHrs", "Late (Min)")
+    m = layout_map(labels, {"Date": ("date", "none"), "WHrs": ("hours", "hours"), "Late (Min)": ("lateness", "minutes")})
+    page = mapped_rows(("1", "10", "15"), ("6", "8", "0"), labels=labels)            # the 6th is a Sunday
+    v = values(payroll.calculate(plan_for(), [("card", page)], employee(), layouts=m))
+    assert v["ot_1_5"] == 2.0 and v["ot_rest_day"] == 1 and v["lateness"] == 0.25
+
+
+def test_as_is_keeps_the_users_hours_column():
+    m = payroll.map_as_read(["Date", "Normal Hrs", "Total"], "Normal Hrs")
+    assert m["Normal Hrs"]["role"] == "hours" and m["Total"]["role"] == "ignore"
+
+
+def test_a_cell_with_several_clock_times_holds_figures():
+    assert payroll.is_figure_text("07:58 12:01 13:02 17:05")
