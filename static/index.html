@@ -132,6 +132,18 @@
   </div>
 </main>
 
+<main id="employee" hidden>
+  <div class="doc-bar">
+    <button id="em-back" class="link" data-t>&larr; Back to the company</button>
+    <h2 id="em-title"></h2>
+    <div class="doc-actions"><span id="em-save" class="muted" aria-live="polite"></span></div>
+  </div>
+  <div id="em-error" class="banner error" hidden></div>
+  <section id="em-cards" class="card" hidden></section>
+  <section class="card"><div id="em-window"></div></section>
+  <datalist id="em-million-list"></datalist>
+</main>
+
 <main id="payroll" hidden>
   <div class="doc-bar">
     <button id="pr-back" class="link" data-t>&larr; All companies</button>
@@ -174,8 +186,10 @@
 
 <script src="i18n.js"></script>
 <script src="app.js"></script>
+<script src="paycommon.js"></script>
 <script src="payroll.js"></script>
 <script src="companies.js"></script>
+<script src="employee.js"></script>
 <script src="settings.js"></script>
 <script src="look.js"></script>
 <script src="layout.js"></script>

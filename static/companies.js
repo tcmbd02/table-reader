@@ -1,6 +1,6 @@
 "use strict";
 // Payroll by company: the month overview (one row per company) and a company's screen ("Needs you" + employees).
-// Loaded after app.js and payroll.js and uses their helpers. The old payroll page stays at #/payroll/<month>/old.
+// Loaded after app.js and paycommon.js and uses their helpers. The old payroll page stays at #/payroll/<month>/old.
 
 let moMonth = null;        // the month the overview / company screen shows ("2026-09")
 let moOver = null;         // what the server last sent for the overview (its "settings" = the month's default)
@@ -185,8 +185,8 @@ function employeeName(id) {
 // where it is. Coming back to this tab draws the list again (see the end of this file).
 function openInNewTab(hash) { window.open(location.pathname + hash, "_blank"); }
 
-// The old payroll page on this employee and their company: every figure, the cards, the number, the overrides.
-function openEmployee(id) { openInNewTab(`#/payroll/${moMonth}/old/e/${encodeURIComponent(id)}`); }
+// The employee view: every figure, the cards, the number, the overrides.
+function openEmployee(id) { openInNewTab(`#/payroll/${moMonth}/e/${encodeURIComponent(id)}`); }
 
 function openEmployeeButton(id) {
   return el("button", { type: "button", text: t("Open employee"), onclick: () => openEmployee(id) });
@@ -385,11 +385,12 @@ $("co-back").addEventListener("click", () => { location.hash = `#/payroll/${moMo
 let lastReturn = 0;
 async function refreshOnReturn() {
   if (document.hidden || Date.now() - lastReturn < 1000) return;      // the two events below often come together
-  const typing = document.activeElement && document.activeElement.tagName === "INPUT";
+  const typing = document.activeElement && ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName);
   if (typing) return;                                                  // do not wipe a box the user is typing in
   lastReturn = Date.now();
   if (!$("company").hidden) loadCompany();
   else if (!$("look").hidden) refreshLook();
+  else if (!$("employee").hidden) { if (emView && !Object.keys(emPending).length) emLoad(); }      // nothing waiting to be sent
   else if (!$("layout").hidden) return;                                // the user is choosing: leave it as it is
   else if (!$("month").hidden) {
     try { drawMonth(await api("GET", `/api/payroll/${moMonth}/companies`)); } catch (e) { moError(e.message); }

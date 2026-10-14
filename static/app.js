@@ -31,7 +31,7 @@ async function api(method, url, body) {
   let data = null;
   try { data = await res.json(); } catch { /* not JSON */ }
   if (!res.ok) {
-    if (data && data.message) throw new Error(tm(data.message));
+    if (data && data.message) throw Object.assign(new Error(tm(data.message)), { code: data.code });   // code: for a screen that acts on it
     if (res.status === 404 || res.status === 405) {
       throw new Error(t("Table Reader was updated while it was open. Close its window, open Table Reader again, then reload this page."));
     }
@@ -401,9 +401,10 @@ async function pollDoc(first) {
   }
 }
 
-// Only one screen shows at a time: the start page, a document, the month overview, a company, or the old payroll page.
+// Only one screen shows at a time: the start page, a document, the month overview, a company, an employee, or the old
+// payroll page.
 function hideScreens() {
-  for (const id of ["home", "doc", "month", "company", "look", "layout", "payroll"]) $(id).hidden = true;
+  for (const id of ["home", "doc", "month", "company", "employee", "look", "layout", "payroll"]) $(id).hidden = true;
 }
 
 function showHome() {
@@ -413,12 +414,13 @@ function showHome() {
 }
 
 // #/payroll[/2026-09] = the month overview; .../c/<company> = one company; .../old = the old payroll page
-// (.../old/e/<employee id> = on that employee and their company); .../look/<employee id> = the one-look panel;
+// (.../old/e/<employee id> = on that employee and their company); .../e/<employee id> = the employee view;
+// .../look/<employee id> = the one-look panel;
 // .../layout/<document id>/<page>[/h/<hours column>] = what the columns of a card layout mean.
 // The payroll screens' scripts load after this one; the last of them calls route() when the page opens on one.
 function route() {
   const m = location.hash.match(/^#\/doc\/(.+)$/);
-  const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?(?:\/(old)(?:\/e\/([^/]+))?|\/c\/(.*)|\/look\/([^/]+))?$/);
+  const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?(?:\/(old)(?:\/e\/([^/]+))?|\/c\/(.*)|\/look\/([^/]+)|\/e\/([^/]+))?$/);
   const lm = location.hash.match(/^#\/payroll\/(\d{4}-\d{2})\/layout\/([^/]+)\/(\d+)(?:\/h\/([^/]+))?$/);
   if (lm) {
     if (typeof showLayout === "function") {
@@ -428,6 +430,7 @@ function route() {
   }
   if (m) openDoc(decodeURIComponent(m[1]));
   else if (pm && pm[5] !== undefined) { if (typeof showLook === "function") showLook(pm[1], decodeURIComponent(pm[5])); }
+  else if (pm && pm[6] !== undefined) { if (typeof showEmployee === "function") showEmployee(pm[1], decodeURIComponent(pm[6])); }
   else if (pm && pm[2] && typeof showPayroll === "function") showPayroll(pm[1], pm[3] ? decodeURIComponent(pm[3]) : null);
   else if (pm && pm[4] !== undefined && typeof showCompany === "function") showCompany(pm[1], decodeURIComponent(pm[4]));
   else if (pm && typeof showMonth === "function") showMonth(pm[1]);
