@@ -36,4 +36,4 @@ In `Documents\Table Reader` on your PC: the files you added, your corrections an
 uploaded by Table Reader itself.
 
 ---
-Build of 14 October 2026 (source: branch `pdf-text`, commit 535b5bd).
+Build of 14 October 2026 (source: branch `pdf-text`, commit 87baaa6).
