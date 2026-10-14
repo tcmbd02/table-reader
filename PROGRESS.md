@@ -1,7 +1,7 @@
 # Progress log
 
 ## Session 22 - 2026-10-14 - Stage 4 Part C: conversion (what Claude reads correctly now reaches Million's fields)
-Built on branch `conversion` (from `pdf-text`), **local, not merged, app not rebuilt**. 519 tests pass; Malay checks
+Built on branch `conversion` (from `pdf-text`), **local, not merged, app not rebuilt**. 530 tests pass; Malay checks
 pass. Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`, Tasks 11-17.
 - **The hours column is never a money or minutes column** (`pick_columns`): "TOTAL (RM)" and "E/Out(Min)" were taken as
   the daily hours. A column named exactly for hours (WHrs, Total, Jumlah) is preferred. A column the user chose still
@@ -50,8 +50,27 @@ pass. Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`
     with the Shift Details report): is that right for these reports?
   - roles for overtime on rest days and holidays as days;
   - should the payroll CSV buttons ask about "Needs checking" employees.
-- A test (`test_company_can_be_set_and_is_listed`) failed once in a full run and passed in every run after: a timing
-  flake in an upload test, not payroll code.
+- Two tests (`test_company_can_be_set_and_is_listed`, `test_the_month_run_makes_one_file_and_lists_who_is_held_back`)
+  each failed once in a full run and passed in every run after: timing flakes, not caused here.
+- **Whole-branch review (fresh reviewer): "with fixes", 2 critical, 5 important, 8 minor. All 7 fixed, each with a
+  test that failed first; 530 tests pass:**
+  - a saved map whose headings differ only in capitals or spacing crashed every month view;
+  - "It is right as it is" turned days flagged today (empty Total, times in other columns) into silent 0-hour days;
+  - mapped figure columns were dropped on IN/OUT and stamp days;
+  - a map with lateness only wiped out overtime and rest-day work;
+  - "It is right as it is" ignored the employee's chosen hours column;
+  - a confirmed layout could never be reopened. A layout whose map cannot work out the days now comes back as an
+    item, and its sentence says "Open the card layout";
+  - door exports (several times in one cell) never got an item.
+
+  Also found while clicking through the fixes: after a save, the panel's Save stayed disabled in that tab (fixed).
+- **Left for later (minor):**
+  - two "hours" columns are accepted;
+  - a wrong value in a minutes column says "not a number of hours";
+  - Malay "minit" / "gaji" are not in the never-hours words;
+  - the panel offers "It is right as it is" also over a saved map;
+  - a hand-made request could map the clock report;
+  - **a question for the user:** a 24-hour OUT "00:30" after a morning IN is read as 12:30 pm by the afternoon rule.
 
 ## Session 21b - 2026-10-14 - Why read cards do not reach Million; Part C (conversion) added to the plan
 The user: Claude reads the tables well, but some data is not converted into the file Million imports. Measured on a copy

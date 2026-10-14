@@ -7,14 +7,15 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 > Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 21), then let's continue.
 
-**To start stage 4 Part C (conversion, done before Part B), paste this instead:**
+**To start stage 4 Part B (after Part C is merged), paste this instead:**
 
-> Continue the company-first payroll with stage 4 Part C (conversion). Read NEXT-SESSION.md (section 0), PROGRESS.md
-> sessions 18 to 21b, and the plan `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md` ("Part C:
-> decided by the user", "Part C: decided here", Tasks 11-17). Use branch `conversion` (made from `pdf-text`, it holds
-> the updated plan). Build it here with tests first, click it through on made-up data, compare the real September
-> figures read-only (counts only), then one fresh reviewer for the whole branch. Ask me before merging, pushing,
-> rebuilding, or calling Claude on real data. After Part C comes Part B (Tasks 4-10, branch `employee-view`).
+> Continue the company-first payroll with stage 4 Part B. Read NEXT-SESSION.md (section 0), PROGRESS.md sessions 18
+> to 22, the plan `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md` (Part B = Tasks 4-10) and the
+> spec `docs/superpowers/specs/2026-10-12-company-first-payroll-design.md`. Make branch `employee-view` from
+> `pdf-text`, build it here with tests first, click it through on made-up data, compare the real September figures
+> read-only (counts only), then one fresh reviewer for the whole branch. The employee view must also show the layout
+> map's day notes (afternoon OUT) and, for a card with a confirmed layout, say that the Hours column list does not
+> apply. Ask me before merging, pushing or rebuilding.
 
 ---
 
@@ -92,8 +93,9 @@ workers are not in that month's payroll, so there was nothing to update. Details
   - weekday-headed grids;
   - layout maps, with Claude's text-only suggestion and the user's confirmation.
 
-  Real September data: 6 employees changed, each for an expected reason; 78 identical. Waiting for the user: merge /
-  rebuild, one real Claude check, and the questions in PROGRESS.md 22. Next after merging: Part B.
+  Real September data: 6 employees changed, each for an expected reason; 78 identical. Reviewed: 2 critical and 5
+  important findings fixed. Waiting for the user: merge / rebuild, one real Claude check, and the questions in
+  PROGRESS.md 22. Next after merging: Part B.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -117,7 +119,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | **Million import file (.xls)** for the office | **Done (session 7).** Button "Download Million file (.xls)"; the office checker says READY on invented figures. Real September file not made yet (needs Employee Nos.). |
 | Browser check | Never clicked through by Claude (Chrome extension was not connected). All checks were tests + API + real-data scripts. |
 
-Tests: **519 pass** on `conversion` (465 on `pdf-text`) (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 21 (14 Oct). Sessions up to 21 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed). The `download` branch still has the build of 12 Oct.
+Tests: **530 pass** on `conversion` (465 on `pdf-text`) (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 21 (14 Oct). Sessions up to 21 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed). The `download` branch still has the build of 12 Oct.
 
 ## 2. Git / GitHub
 
