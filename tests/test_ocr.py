@@ -753,3 +753,30 @@ def test_auth_status_check_runs_without_a_console_window(monkeypatch):
     monkeypatch.setattr(subprocess, "run", _fake_run(json.dumps({"loggedIn": False}), calls=calls))
     ocr.auth_status()
     assert calls[0][1]["creationflags"] == ocr.NO_WINDOW
+
+
+# ------------------------------------------------------------------------- a question in text (layout maps)
+def test_ask_text_runs_without_tools_or_image(monkeypatch, signed_in):
+    calls = []
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-not-real")
+    monkeypatch.setattr(subprocess, "run", _fake_run(envelope(structured_output={"columns": []}), calls=calls))
+    assert ocr.ask_text("What do these columns mean?", {"type": "object"}) == {"columns": []}
+    cmd, kw = calls[0]
+    assert cmd[cmd.index("--json-schema") + 1] == '{"type": "object"}'
+    assert cmd[cmd.index("--tools") + 1] == "" and "Read" not in cmd and "--add-dir" not in cmd
+    assert cmd[cmd.index("--model") + 1] == ocr.MODEL and "ANTHROPIC_API_KEY" not in kw["env"]
+    assert kw["input"] == "What do these columns mean?"
+
+
+def test_ask_text_needs_claude_signed_in(monkeypatch):
+    monkeypatch.setattr(ocr, "auth_status", lambda: {"installed": True, "logged_in": False, "message": "Sign in."})
+    with pytest.raises(ocr.OcrError) as e:
+        ocr.ask_text("x", {"type": "object"})
+    assert e.value.code == "CLAUDE_LOGIN_REQUIRED"
+
+
+def test_ask_text_reports_a_plan_limit_in_plain_words(monkeypatch, signed_in):
+    monkeypatch.setattr(subprocess, "run", _fake_run(envelope(is_error=True, result="Usage limit reached")))
+    with pytest.raises(ocr.OcrError) as e:
+        ocr.ask_text("x", {"type": "object"})
+    assert e.value.code == "CLAUDE_PLAN_LIMIT"
