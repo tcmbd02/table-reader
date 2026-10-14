@@ -549,13 +549,15 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
 
     @app.post("/api/payroll/{month}/place")
     async def place_card(month: str, request: Request):
-        """Put a card on an employee of the month, or on a new employee ("employee": null)."""
+        """Put a card on an employee of the month, or on a new employee ("employee": null). "move": true takes it off
+        the employee who has it first; without it, a card that is on someone else is refused."""
         try:
             body = await request.json()
         except ValueError:
             body = None
         if not isinstance(body, dict) or not isinstance(body.get("ref"), str) or "employee" not in body \
-                or not (body["employee"] is None or isinstance(body["employee"], str)):
+                or not (body["employee"] is None or isinstance(body["employee"], str)) \
+                or not isinstance(body.get("move", False), bool):
             raise OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
         with auto_lock:
             plan, docs = plans.load(month), finished_documents()
@@ -568,6 +570,8 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             if candidate is None:
                 raise OcrError("JOB_NOT_FOUND", "That card was not found. It may have been moved or deleted.")
             before = {e["id"] for e in plan["employees"]}
+            if body.get("move"):                        # "Move to ..." in the employee view: off its employee first
+                payroll.take_off_card(plan, body["ref"])
             employee = payroll.place_card(plan, candidate, body["employee"], lambda: "e" + uuid.uuid4().hex[:12],
                                           plans.load_directory())
             checked = payroll.validate_plan(plan, known_refs(docs))      # refuses a card that is on someone else
@@ -741,6 +745,126 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             if payroll.remember_employees(plan, directory):
                 plans.save_directory(directory)
         return {"ok": True}
+
+    # ------------------------------------------------------------------- one employee (the employee view)
+    def employee_view(month: str, plan: dict, employee_id: str) -> dict:
+        """One employee as the employee view shows them: the saved entry, their figures (with their company's
+        settings), their cards, the same company's other employees, and what the Results window needs."""
+        person = next((e for e in plan["employees"] if e["id"] == employee_id), None)
+        if person is None:
+            raise OcrError("EMPLOYEE_NOT_FOUND", payroll.EMPLOYEE_GONE)
+        files = {j["id"]: j for j in store.list_jobs()}
+        company_of_doc = {i: j["company"] for i, j in files.items()}
+        company = payroll.employee_company(person, company_of_doc)
+        load_pages, cache = page_loader()
+        million, saved_layouts = plans.load_million(), plans.load_layouts()
+        [result] = payroll.compute_all({**plan, "employees": [person]}, load_pages, million_by_no(million), [company],
+                                       saved_layouts)
+        labels: list[str] = []
+        cards = []
+        for ref in person["jobs"]:
+            doc = payroll.split_part(ref)[0]
+            name, pages = cache.get(ref, ((files.get(doc) or {}).get("name", ""), []))
+            for page in pages:
+                labels += [c for c in page["column_labels"] if c not in labels]
+            # a confirmed layout map says itself which column holds the hours: the Hours column list does not apply
+            cards.append({"ref": ref, "doc": doc, "name": name,
+                          "mapped": any(payroll.has_layout_map(p["column_labels"], saved_layouts) for p in pages)})
+        result["columns"] = labels
+        others = [{"id": e["id"], "emp_no": e["emp_no"], "name": e["name"]} for e in plan["employees"]
+                  if e["id"] != person["id"] and payroll.employee_company(e, company_of_doc) == company]
+        return {"month": month, "employee": person, "result": result, "company": company, "cards": cards,
+                "others": others, "lists": plan["lists"],
+                "fields": [{"key": k, "label": label, "unit": unit} for k, label, unit in payroll.FIELDS],
+                "list_heads": {kind: {"title": title, "type": type_head}
+                               for kind, (title, type_head, _) in payroll.LISTS.items()},
+                "million": [{"emp_no": e["emp_no"], "name": e["name"]} for e in million["employees"]] if million else None}
+
+    def bad_body() -> OcrError:
+        return OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+
+    @app.get("/api/payroll/{month}/employee/{employee_id}")
+    def get_employee(month: str, employee_id: str):
+        """The employee view. Reads the plan as saved; changes nothing (the month was opened by the company screen)."""
+        return employee_view(month, plans.load(month), employee_id)
+
+    @app.put("/api/payroll/{month}/employee/{employee_id}")
+    async def change_employee(month: str, employee_id: str, request: Request):
+        """Change only the keys sent ({"changes": {key: value}}), so a view opened before another tab changed
+        something else on this employee does not undo it."""
+        body = await settings_body(request)
+        changes = body.get("changes")
+        if not isinstance(changes, dict):
+            raise bad_body()
+        change_plan(month, lambda plan: payroll.change_employee(plan, employee_id, changes))
+        plan = plans.load(month)
+        if "emp_no" in changes or "name" in changes:                # Employee No. typed: kept for next month
+            directory = plans.load_directory()
+            if payroll.remember_employees(plan, directory):
+                plans.save_directory(directory)
+        return employee_view(month, plan, employee_id)
+
+    @app.delete("/api/payroll/{month}/employee/{employee_id}")
+    def delete_employee(month: str, employee_id: str):
+        return change_plan(month, lambda plan: payroll.remove_employee(plan, employee_id))
+
+    @app.post("/api/payroll/{month}/employee")
+    async def add_employee(month: str, request: Request):
+        """An employee typed in by hand; in a company, with a new Employee No. made from the company's name."""
+        body = await settings_body(request)
+        if not isinstance(body.get("company"), str):
+            raise bad_body()
+        company = " ".join(body["company"].split())
+        new_id = "e" + uuid.uuid4().hex[:12]
+        with auto_lock:
+            plan, docs = plans.load(month), finished_documents()
+            drop_gone_documents(plan, known_refs(docs))
+            before = {e["id"] for e in plan["employees"]}
+            payroll.add_employee(plan, new_id, company)
+            payroll.validate_plan(plan, known_refs(docs))
+            if company:
+                number_new_employees(plan, docs, before)
+            plans.save(payroll.validate_plan(plan, known_refs(docs)))
+        return {"employee": new_id}
+
+    @app.post("/api/payroll/{month}/take-off")
+    async def take_off(month: str, request: Request):
+        """Take a card off its employee: it is a "whose card is this?" item again."""
+        body = await settings_body(request)
+        if not isinstance(body.get("ref"), str):
+            raise bad_body()
+
+        def change(plan: dict) -> None:
+            if payroll.take_off_card(plan, body["ref"]) is None:
+                raise OcrError("BAD_PAYROLL", "That card is not on any employee any more. Reload the page.")
+
+        return change_plan(month, change)
+
+    @app.put("/api/payroll/{month}/lists")
+    async def save_lists(month: str, request: Request):
+        """The allowance, deduction, benefit and leave lines (the same for every employee); a line removed takes its
+        figures off every employee (validate_plan)."""
+        body = await settings_body(request)
+        lists = body.get("lists")
+        if not isinstance(lists, dict):
+            raise bad_body()
+        return change_plan(month, lambda plan: plan.update({"lists": lists}))
+
+    @app.get("/api/payroll/{month}/pay")
+    def pay_table(month: str, company: str = ""):
+        """The company's pay preview: per employee the pay basis and Basic Rate (typed, or from Million's list) and
+        the basic pay they give."""
+        try:
+            plan, results = payroll_of(month, company)
+        except OcrError as exc:
+            if exc.code != "PAYROLL_EMPTY":
+                raise
+            return {"rows": []}
+        return {"rows": [{"id": e["id"], "emp_no": e["emp_no"], "name": e["name"], "typed_basis": e["pay_basis"],
+                          "typed_rate": e["basic_rate"], "rate_source": r["rate_source"], "pay_basis": r["pay_basis"],
+                          "basic_rate": r["basic_rate"], "pay": r["pay"],
+                          "days_worked": r["values"]["days_worked"]["value"], "complete": r["complete"]}
+                         for e, r in zip(plan["employees"], results)]}
 
     @app.put("/api/payroll/{month}")
     async def save_payroll(month: str, request: Request):

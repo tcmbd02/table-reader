@@ -487,7 +487,7 @@ def test_a_card_is_placed_on_an_employee_or_on_a_new_one():
     assert len(payroll.validate_plan(p, {"j1", "j2", "j3", "j4"})["employees"]) == 3
     with pytest.raises(ocr.OcrError) as exc:
         payroll.place_card(p, other, "gone", lambda: "d", {})
-    assert exc.value.code == "BAD_PAYROLL"
+    assert exc.value.code == "EMPLOYEE_NOT_FOUND"            # the employee was removed in another tab
 
 
 def test_the_month_chosen_for_a_file_is_kept(tmp_path):

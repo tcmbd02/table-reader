@@ -529,9 +529,7 @@ def place_card(plan: dict, candidate: dict, employee_id: str | None, new_id: Cal
     plan is made without the worker's key, so the two are not remembered as one. Changes ``plan`` in place and
     returns the employee."""
     if employee_id is not None:
-        employee = next((e for e in plan["employees"] if e["id"] == employee_id), None)
-        if employee is None:
-            raise OcrError("BAD_PAYROLL", "That employee is not in this month's payroll any more. Reload the page.")
+        employee = _employee(plan, employee_id)
         if candidate["ref"] not in employee["jobs"]:
             employee["jobs"].append(candidate["ref"])
         return employee
@@ -939,6 +937,11 @@ def _map_roles(labels: list[str], layouts: dict | None) -> dict | None:
     fits = all(isinstance(r, dict) and r.get("role") in LAYOUT_ROLES and r.get("unit") in LAYOUT_UNITS
                for r in roles.values())
     return roles if fits else None
+
+
+def has_layout_map(labels: list[str], layouts: dict | None) -> bool:
+    """A page with these headings is read with a map the user confirmed (not with the built-in rules)."""
+    return _map_roles(labels, layouts) is not None
 
 
 def layout_reads_days(labels: list[str], layouts: dict | None) -> bool:

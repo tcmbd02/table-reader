@@ -1249,3 +1249,138 @@ def test_it_is_right_as_it_is_keeps_the_hours_column_the_user_chose(tmp_path):
         assert r.status_code == 400 and r.json()["code"] == "BAD_LAYOUT"
         got = c.get("/api/layouts", params={**where, "hours": "WHrs"}).json()
         assert got["as_read"]["WHrs"]["role"] == "hours"
+
+
+# ------------------------------------------------------------------------------- the employee view (stage 4 B)
+@pytest.fixture
+def maju_jaya(tmp_path):
+    """MAJU JAYA with ALI and SITI, one 30-day card each, placed by opening the month. (client, month, ALI's id,
+    SITI's id, ALI's card ref)"""
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        for name in (f"MAJU JAYA ALI SEPT {YEAR}.png", f"MAJU JAYA SITI SEPT {YEAR}.png"):
+            upload(c, tmp_path, name=name)
+        store.wait_idle()
+        set_company(c, "MAJU JAYA", "MAJU JAYA")
+        month = f"{YEAR}-09"
+        view = c.get(f"/api/payroll/{month}/company", params={"name": "MAJU JAYA"}).json()
+        people = {e["name"]: e["id"] for e in view["employees"]}
+        ref = c.get(f"/api/payroll/{month}/employee/{people['ALI']}").json()["employee"]["jobs"][0]
+        yield c, month, people["ALI"], people["SITI"], ref
+
+
+def change(c, month, who, **changes):
+    return c.put(f"/api/payroll/{month}/employee/{who}", json={"changes": changes})
+
+
+def test_the_employee_view_shows_figures_cards_and_colleagues(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    view = c.get(f"/api/payroll/{month}/employee/{ali}").json()
+    assert view["month"] == month and view["company"] == "MAJU JAYA" and view["employee"]["name"] == "ALI"
+    assert view["result"]["values"]["days_worked"]["value"] == 26                # September's 4 Sundays are rest days
+    assert view["result"]["columns"] == ["Date", "Total"]
+    assert [(k["ref"], k["doc"]) for k in view["cards"]] == [(ref, ref)] and "ALI" in view["cards"][0]["name"]
+    assert [(o["id"], o["name"]) for o in view["others"]] == [(siti, "SITI")]
+    assert "allowance" in view["lists"] and view["fields"] and "allowance" in view["list_heads"]
+    assert view["million"] is None
+
+
+def test_an_override_is_saved_and_returned(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    r = change(c, month, ali, overrides={"ot_1_5": 4})
+    assert r.json()["result"]["values"]["ot_1_5"] == {"value": 4, "computed": 26.0, "edited": True}   # 1 h a day
+    back = change(c, month, ali, overrides={}).json()["result"]["values"]["ot_1_5"]
+    assert back["edited"] is False and back["value"] == back["computed"]
+    assert change(c, month, ali, overrides={"ot_1_5": -1}).status_code == 400
+    assert change(c, month, ali, jobs=[]).status_code == 400                 # cards move through /place and /take-off
+    assert c.put(f"/api/payroll/{month}/employee/{ali}", json={"name": "X"}).status_code == 400     # no "changes"
+
+
+def test_saving_one_field_keeps_what_another_tab_changed(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    assert c.put(f"/api/payroll/{month}/employees/{ali}", json={"emp_no": "MJ9"}).json() == {"ok": True}
+    saved = change(c, month, ali, name="ALI B").json()["employee"]
+    assert (saved["emp_no"], saved["name"]) == ("MJ9", "ALI B")
+
+
+def test_an_employee_removed_elsewhere_says_so(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    assert c.delete(f"/api/payroll/{month}/employee/{ali}").json() == {"ok": True}
+    for r in (c.get(f"/api/payroll/{month}/employee/{ali}"), change(c, month, ali, name="X"),
+              c.delete(f"/api/payroll/{month}/employee/{ali}"),
+              c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": ali})):
+        assert r.json()["code"] == "EMPLOYEE_NOT_FOUND"
+        assert r.json()["message"].startswith("This employee is no longer in the payroll of this month")
+
+
+def test_moving_a_card_takes_it_off_its_employee(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    r = c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": siti})
+    assert r.status_code == 400 and "one employee only" in r.json()["message"]     # without "move": refused
+    assert c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": siti, "move": True}).json()["ok"] is True
+    assert c.get(f"/api/payroll/{month}/employee/{ali}").json()["employee"]["jobs"] == []
+    assert ref in c.get(f"/api/payroll/{month}/employee/{siti}").json()["employee"]["jobs"]
+    items = c.get(f"/api/payroll/{month}/company", params={"name": "MAJU JAYA"}).json()["items"]
+    assert [i["kind"] for i in items if i.get("employee") == ali] == ["nocard"]
+    assert c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": ali, "move": "yes"}).status_code == 400
+
+
+def test_a_card_taken_off_is_whose_card_again(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    assert c.post(f"/api/payroll/{month}/take-off", json={"ref": ref}).json() == {"ok": True}
+    items = c.get(f"/api/payroll/{month}/company", params={"name": "MAJU JAYA"}).json()["items"]
+    assert [i["ref"] for i in items if i["kind"] == "unplaced"] == [ref]
+    again = c.post(f"/api/payroll/{month}/take-off", json={"ref": ref}).json()
+    assert again["code"] == "BAD_PAYROLL" and "not on any employee" in again["message"]
+    assert c.post(f"/api/payroll/{month}/take-off", json={"ref": 5}).status_code == 400
+
+
+def test_add_employee_by_hand_gets_a_number(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    new = c.post(f"/api/payroll/{month}/employee", json={"company": "MAJU JAYA"}).json()["employee"]
+    view = c.get(f"/api/payroll/{month}/employee/{new}").json()
+    assert view["employee"]["emp_no"].startswith("MAJUJAY") and view["company"] == "MAJU JAYA"
+    assert view["employee"]["emp_no"] not in {o["emp_no"] for o in view["others"]}
+    assert c.post(f"/api/payroll/{month}/employee", json={"company": 5}).status_code == 400
+
+
+def test_a_removed_allowance_line_clears_its_figures(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    lists = c.get(f"/api/payroll/{month}/employee/{ali}").json()["lists"]
+    with_transport = {**lists, "allowance": lists["allowance"] + [{"name": "Transport", "type": "Fixed"}]}
+    assert c.put(f"/api/payroll/{month}/lists", json={"lists": with_transport}).json() == {"ok": True}
+    assert change(c, month, ali, entries={"allowance": {"Transport": 50}}).json()["employee"]["entries"]["allowance"] \
+        == {"Transport": 50}
+    c.put(f"/api/payroll/{month}/lists", json={"lists": lists})
+    assert c.get(f"/api/payroll/{month}/employee/{ali}").json()["employee"]["entries"]["allowance"] == {}
+    assert c.put(f"/api/payroll/{month}/lists", json={"lists": "x"}).status_code == 400
+
+
+def test_the_pay_table_of_one_company(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    change(c, month, ali, pay_basis="daily", basic_rate=80)
+    rows = {r["name"]: r for r in c.get(f"/api/payroll/{month}/pay", params={"company": "MAJU JAYA"}).json()["rows"]}
+    assert set(rows) == {"ALI", "SITI"}
+    assert (rows["ALI"]["typed_basis"], rows["ALI"]["typed_rate"], rows["ALI"]["rate_source"]) == ("daily", 80, "typed")
+    assert rows["ALI"]["pay"]["basic"] == 80 * 26 and rows["ALI"]["days_worked"] == 26
+    assert rows["ALI"]["id"] == ali and "complete" in rows["ALI"] and "emp_no" in rows["ALI"]
+
+
+def test_the_employee_view_refuses_other_websites(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    r = c.put(f"/api/payroll/{month}/employee/{ali}", json={"changes": {"name": "X"}},
+              headers={"Origin": "http://evil.example"})
+    assert r.status_code == 403
+
+
+def test_the_employee_view_says_which_cards_follow_a_confirmed_layout(tmp_path):
+    """On such a card the map says which column holds the hours, so the view says the Hours column list does not
+    apply to it."""
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        who = view["employees"][0]["id"]
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        assert [k["mapped"] for k in c.get(f"/api/payroll/{month}/employee/{who}").json()["cards"]] == [False]
+        c.put("/api/layouts", json={"doc": item["doc"], "page": item["page"], "columns": report_2_map()})
+        assert [k["mapped"] for k in c.get(f"/api/payroll/{month}/employee/{who}").json()["cards"]] == [True]
