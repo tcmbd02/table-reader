@@ -55,7 +55,6 @@
     <div class="doc-actions">
       <button id="mo-prev" type="button" aria-label="Month before" data-t-aria>&lt;</button>
       <button id="mo-next" type="button" aria-label="Month after" data-t-aria>&gt;</button>
-      <a id="mo-old" class="navlink" href="#/payroll" data-t>Old payroll page</a>
       <button id="mo-settings-open" type="button" data-t>Month settings</button>
       <button id="mo-million-import" type="button" data-t>Import employee list from Million</button>
       <input id="mo-million-file" type="file" accept=".xls" hidden>
@@ -158,50 +157,9 @@
   <datalist id="em-million-list"></datalist>
 </main>
 
-<main id="payroll" hidden>
-  <div class="doc-bar">
-    <button id="pr-back" class="link" data-t>&larr; All companies</button>
-    <h2 data-t>Payroll for Million Payroll</h2>
-    <div class="doc-actions">
-      <span id="pr-company-box" class="company-box"></span>
-      <span id="pr-save" class="muted" aria-live="polite"></span>
-      <button id="pr-download" data-t>Download payroll CSV</button>
-      <button id="pr-download-xls" data-t>Download Million file (.xls)</button>
-      <button id="pr-run" class="primary" data-t>Make the month's Million file (all companies)</button>
-    </div>
-  </div>
-  <div id="pr-run-result" class="banner info" hidden></div>
-  <p class="muted" data-t>Pick the month and mark the days, add each employee and tick their time-card files. Table Reader adds up
-    days worked and overtime from the cells you have already checked. Anything it cannot work out is listed, never guessed,
-    and you can type over any figure.</p>
-  <div id="pr-error" class="banner error" hidden></div>
-  <section class="card"><h3 data-t>1. Month and days</h3><div id="pr-month"></div></section>
-  <section class="card"><h3 data-t>2. Employees and their time cards</h3>
-    <div class="auto-bar">
-      <button id="pr-auto" type="button" class="primary" data-t>Add employees from files</button>
-      <span id="pr-auto-company" class="muted"></span>
-      <button id="pr-million-import" type="button" data-t>Import employee list from Million</button>
-      <input id="pr-million-file" type="file" accept=".xls" hidden>
-      <button id="pr-suggest-all" type="button" hidden></button>
-      <button id="pr-assign-all" type="button" hidden></button>
-    </div>
-    <p id="pr-million" class="legend"></p>
-    <datalist id="pr-million-list"></datalist>
-    <p class="legend" data-t>One employee is added for each worker in the files, with their time cards ticked. Employee No. is filled in from earlier months; a new worker of a company gets a new one (the company's first 7 letters and a number, like MAJUJAY001) that you can change.</p>
-    <div id="pr-info" class="banner info" hidden></div>
-    <div id="pr-employees"></div>
-    <button id="pr-add" type="button" data-t>Add employee</button></section>
-  <section class="card"><h3 data-t>3. Results</h3><div id="pr-results"></div></section>
-  <section class="card"><h3 data-t>4. Pay preview (monthly or daily rate)</h3>
-    <p class="legend" data-t>What Million Payroll should pay each employee before EPF, SOCSO and tax, worked out with Million's own overtime tables. The pay basis and Basic Rate come from Million's employee list (import its “Payroll Information” report); type a rate to use another. This is a check for you: Million still does the real calculation.</p>
-    <div id="pr-daily"></div>
-    <button id="pr-daily-download" type="button" data-t>Download the pay table (CSV)</button></section>
-</main>
-
 <script src="i18n.js"></script>
 <script src="app.js"></script>
 <script src="paycommon.js"></script>
-<script src="payroll.js"></script>
 <script src="companies.js"></script>
 <script src="employee.js"></script>
 <script src="paytable.js"></script>

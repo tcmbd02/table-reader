@@ -97,3 +97,6 @@ $("ly-ask").addEventListener("click", async () => {
 $("ly-save").addEventListener("click", () => saveLayout($("ly-save"), {
   columns: Object.fromEntries(lySelects.map((s) => [s.label, { role: s.role.value, unit: s.unit.value }])) }));
 $("ly-as-is").addEventListener("click", () => saveLayout($("ly-as-is"), { as_is: true, hours_column: lyHours }));
+
+if (location.hash.startsWith("#/payroll")) route();      // the page was opened on a payroll screen: app.js ran before the
+                                                         // payroll scripts, and this one loads last

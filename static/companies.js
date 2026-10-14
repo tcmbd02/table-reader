@@ -1,6 +1,6 @@
 "use strict";
 // Payroll by company: the month overview (one row per company) and a company's screen ("Needs you" + employees).
-// Loaded after app.js and paycommon.js and uses their helpers. The old payroll page stays at #/payroll/<month>/old.
+// Loaded after app.js and paycommon.js and uses their helpers.
 
 let moMonth = null;        // the month the overview / company screen shows ("2026-09")
 let moOver = null;         // what the server last sent for the overview (its "settings" = the month's default)
@@ -32,7 +32,6 @@ async function showMonth(month) {
   hideScreens(); $("month").hidden = false;
   moMonth = month || defaultPayrollMonth();
   $("mo-title").textContent = t("Payroll {month}", { month: monthTitle(moMonth) });
-  $("mo-old").href = `#/payroll/${moMonth}/old`;
   $("mo-run-result").hidden = true;
   $("mo-settings").hidden = true;
   moError("");
@@ -65,7 +64,8 @@ function drawMonth(over) {
 }
 
 $("mo-back").addEventListener("click", () => { location.hash = ""; });
-$("mo-old").addEventListener("click", () => { window.prOpenCompany = ""; });      // the old page on every company
+// the top bar's Payroll link: on a payroll screen already, the address does not change, so draw it again
+$("nav-payroll").addEventListener("click", () => { if (location.hash.startsWith("#/payroll")) route(); });
 $("mo-prev").addEventListener("click", () => { location.hash = `#/payroll/${shiftMonth(moMonth, -1)}`; });
 $("mo-next").addEventListener("click", () => { location.hash = `#/payroll/${shiftMonth(moMonth, 1)}`; });
 

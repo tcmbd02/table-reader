@@ -401,10 +401,10 @@ async function pollDoc(first) {
   }
 }
 
-// Only one screen shows at a time: the start page, a document, the month overview, a company, an employee, or the old
-// payroll page.
+// Only one screen shows at a time: the start page, a document, the month overview, a company, an employee, the one-look
+// panel or a card layout.
 function hideScreens() {
-  for (const id of ["home", "doc", "month", "company", "employee", "look", "layout", "payroll"]) $(id).hidden = true;
+  for (const id of ["home", "doc", "month", "company", "employee", "look", "layout"]) $(id).hidden = true;
 }
 
 function showHome() {
@@ -413,9 +413,9 @@ function showHome() {
   loadRecent();
 }
 
-// #/payroll[/2026-09] = the month overview; .../c/<company> = one company; .../old = the old payroll page
-// (.../old/e/<employee id> = on that employee and their company); .../e/<employee id> = the employee view;
-// .../look/<employee id> = the one-look panel;
+// #/payroll[/2026-09] = the month overview; .../c/<company> = one company; .../e/<employee id> = the employee view;
+// .../look/<employee id> = the one-look panel; an address of the old payroll page (removed) that is still open or
+// bookmarked opens the overview (.../old) or the employee view (.../old/e/<employee id>);
 // .../layout/<document id>/<page>[/h/<hours column>] = what the columns of a card layout mean.
 // The payroll screens' scripts load after this one; the last of them calls route() when the page opens on one.
 function route() {
@@ -431,7 +431,7 @@ function route() {
   if (m) openDoc(decodeURIComponent(m[1]));
   else if (pm && pm[5] !== undefined) { if (typeof showLook === "function") showLook(pm[1], decodeURIComponent(pm[5])); }
   else if (pm && pm[6] !== undefined) { if (typeof showEmployee === "function") showEmployee(pm[1], decodeURIComponent(pm[6])); }
-  else if (pm && pm[2] && typeof showPayroll === "function") showPayroll(pm[1], pm[3] ? decodeURIComponent(pm[3]) : null);
+  else if (pm && pm[3] !== undefined) { if (typeof showEmployee === "function") showEmployee(pm[1], decodeURIComponent(pm[3])); }
   else if (pm && pm[4] !== undefined && typeof showCompany === "function") showCompany(pm[1], decodeURIComponent(pm[4]));
   else if (pm && typeof showMonth === "function") showMonth(pm[1]);
   else if (!pm) showHome();

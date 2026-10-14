@@ -189,4 +189,3 @@ $("lk-back").addEventListener("click", backFromLook);
 // Back in this tab after changing a cell somewhere else: show what is still wrong (what was typed here is kept).
 function refreshLook() { if (lkView) loadLook(lkView.cards[lkCard]?.doc ?? null, false); }
 
-if (location.hash.startsWith("#/payroll")) route();      // the page was opened on a payroll screen: app.js ran before this file
