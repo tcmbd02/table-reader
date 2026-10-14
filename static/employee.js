@@ -1,9 +1,10 @@
 "use strict";
-// The employee view (#/payroll/<month>/e/<employee id>): one employee's Edit Payroll window, their time cards (open,
-// move to another employee, take off), the Hours column, and Remove. Opened in a new tab from the company screen.
+// The employee view inside step 3 (#/payroll/<month>/e/<employee id>): one employee's Edit Payroll window, their time
+// cards (check in step 2, move to another employee, take off), the Hours column, and Remove.
 // Every change goes to the server as that one key ({"changes": {key: value}}), one request after the other, so a view
 // opened before another tab changed something else on the employee never undoes it. Nothing keeps a copy of the plan.
-// Loaded after companies.js and uses its helpers (monthTitle, companyHash, openInNewTab) and paycommon.js's.
+// Loaded after people.js and uses its helpers (monthTitle, employeeHash, ppDrawEmployeeNeeds, ppDrawWalk, ppRefreshSoon)
+// and paycommon.js's.
 // The window copies Million Payroll's Edit Payroll screen, so its labels stay in English in both languages.
 
 let emMonth = null;         // the month ("2026-09")
@@ -23,9 +24,8 @@ function emState(text) { $("em-save").textContent = text; }
 function emPerson() { return { ...emView.employee, ...emPending }; }
 
 async function showEmployee(month, id) {
-  clearTimeout(docTimer); currentId = null; currentDoc = null;
-  hideScreens(); $("employee").hidden = false;
-  emMonth = month || defaultPayrollMonth();
+  if (emView && (month !== emMonth || id !== emId)) await emFlush();     // what was typed for the last one goes first
+  emMonth = month;
   emId = id;
   emView = null; emTab = "basic";
   for (const k of Object.keys(emTimers)) { clearTimeout(emTimers[k]); delete emTimers[k]; }
@@ -52,9 +52,11 @@ function emLoad() {
 // An employee removed in another tab: say so and show nothing that could be changed.
 function emFail(e) {
   emError(e.message);
-  if (e.code === "EMPLOYEE_NOT_FOUND") {
+  if (e.code === "EMPLOYEE_NOT_FOUND") {             // removed in another tab: step 3 starts again from its list
     emView = null;
     $("em-cards").hidden = true; $("em-window").replaceChildren(); emState("");
+    forget("place.payroll"); ppView = null;
+    location.replace(`#/payroll/${emMonth}`);
   }
 }
 
@@ -72,6 +74,7 @@ function emSend(changes) {
       emView = view; emError("");
       emState(Object.keys(emTimers).length ? t("Saving…") : t("Saved"));
       emDraw();
+      ppRefreshSoon();
     } catch (e) {
       if (month !== emMonth || id !== emId) return;
       for (const [k, v] of Object.entries(changes)) if (emPending[k] === v) delete emPending[k];   // back to the server's
@@ -96,10 +99,13 @@ function emFlush() {
   return emChain;
 }
 
+// Leaving the employee (another address): what is still waiting for the user to stop typing goes now.
+function emLeave() { if (emView) emFlush(); }
+
 // After a change that is not one of the employee's keys (cards, lines): the server's view again.
 async function emAct(button, action) {
   if (button) button.disabled = true;
-  try { await emFlush(); await action(); await emLoad(); }
+  try { await emFlush(); await action(); await emLoad(); ppRefreshSoon(); }
   catch (e) { emFail(e); if (button) button.disabled = false; }
 }
 
@@ -134,6 +140,7 @@ function emDraw() {
   $("em-title").textContent = `${e.name || t("An employee")} - ${emView.company || t("(no company)")} - ${monthTitle(emMonth)}`;
   $("em-million-list").replaceChildren(...(emView.million || []).map((x) => el("option", { value: x.emp_no, label: x.name })));
   emKeepFocus(() => { emDrawCards(); emDrawWindow(); });
+  ppDrawEmployeeNeeds(); ppDrawWalk();
 }
 
 // ------------------------------------------------------------------------------------------- the employee's cards
@@ -148,13 +155,13 @@ function emDrawCards() {
       { ref: card.ref, employee: target.value || null, move: true, from: emId })));
     const off = el("button", { type: "button", text: t("Take off") });
     off.addEventListener("click", () => {
-      if (!confirm(t("Take this card off the employee? It goes back to the company's “Needs you” list as a card whose employee is not known."))) return;
+      if (!confirm(t("Take this card off the employee? It goes back to step 2 as a card whose employee is not known."))) return;
       emAct(off, () => api("POST", emUrl("/take-off"), { ref: card.ref, from: emId }));
     });
     return el("li", { class: "need" }, el("strong", { text: card.name || card.doc }),
       card.mapped ? el("p", { class: "legend", text: t("Read with the saved card layout: the Hours column list does not apply to this card.") }) : null,
       el("div", { class: "need-buttons" },
-        el("button", { type: "button", text: t("Open the card"), onclick: () => openInNewTab(`#/doc/${encodeURIComponent(card.doc)}`) }),
+        el("button", { type: "button", text: t("Check this card →"), onclick: () => { location.hash = `#/check/${encodeURIComponent(card.doc)}`; } }),
         el("label", {}, t("Move to"), target), move, off));
   });
   const columns = emView.result.columns || [];
@@ -165,9 +172,9 @@ function emDrawCards() {
   const remove = el("button", { type: "button", text: t("Remove employee") });
   remove.addEventListener("click", () => {
     if (!confirm(t("Remove this employee from the payroll? Their documents are not deleted."))) return;
-    const back = companyHash(emMonth, emView.company);
+    const back = `#/payroll/${emMonth}`;
     remove.disabled = true;
-    emFlush().then(() => api("DELETE", emEmployeeUrl())).then(() => { location.hash = back; })
+    emFlush().then(() => api("DELETE", emEmployeeUrl())).then(() => { forget("place.payroll"); ppView = null; location.hash = back; })
       .catch((err) => { emFail(err); remove.disabled = false; });
   });
   $("em-cards").replaceChildren(
@@ -407,9 +414,5 @@ function emDrawWindow() {
 // a box whose change was sent: what is in it is no longer "typed and not sent" (emKeepFocus would keep it over the answer)
 $("employee").addEventListener("change", (ev) => { if (ev.target.dataset && ev.target.dataset.drawn !== undefined) ev.target.dataset.drawn = ev.target.value; });
 
-$("em-back").addEventListener("click", async () => {
-  await emFlush();
-  location.hash = emView ? companyHash(emMonth, emView.company) : `#/payroll/${emMonth}`;
-});
 // a tab closed or left right after typing: what is still waiting goes now
 document.addEventListener("visibilitychange", () => { if (document.hidden && !$("employee").hidden) emFlush(); });

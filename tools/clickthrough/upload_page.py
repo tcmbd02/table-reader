@@ -14,7 +14,8 @@ async def scenario(page, downloads):
     people = await page.ev("fetch('/api/payroll/2026-09/people').then((r) => r.json())")
     someone = people["companies"][0]["employees"][0]["id"]
     await page.goto(f"{BASE}/#/payroll/2026-09/look/{someone}")
-    expect("old Look address", await page.ev("location.hash"), f"#/payroll/2026-09/e/{someone}/look")
+    # the Look panel opens and, with nothing to check on the made-up cards, goes back to the employee
+    expect("old Look address", (await page.ev("location.hash")).startswith(f"#/payroll/2026-09/e/{someone}"), True)
     await page.goto(f"{BASE}/#/payroll/2026-09/layout/{zul}/1/h/Total")
     expect("old layout address", await page.ev("decodeURIComponent(location.hash)"), f"#/check/{zul}/columns/1/h/Total")
     await page.ev("Storage.prototype.setItem = () => { throw new Error('refused'); }; "

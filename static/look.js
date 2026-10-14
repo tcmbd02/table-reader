@@ -2,7 +2,8 @@
 // The one-look panel: one employee's time cards, one card at a time, showing only the lines the calculation could not
 // use, beside the card's picture. Accepting saves every box of the card as a correction, exactly as Enter in a cell of
 // the document page does, marked "via": "look". Claude's reading is never changed.
-// Loaded after companies.js and uses its helpers (monthTitle, companyHash).
+// Inside step 3 (#/payroll/<month>/e/<employee id>/look). Loaded after people.js and uses its helpers (monthTitle,
+// employeeHash, ppRefreshSoon).
 
 let lkMonth = null;         // the month ("2026-09")
 let lkEmployee = null;      // the employee's id
@@ -15,8 +16,6 @@ const lkDraft = new Map();  // what was typed in a card not saved yet ("doc|page
 function lkError(message) { $("lk-error").hidden = !message; $("lk-error").textContent = message || ""; }
 
 async function showLook(month, employee) {
-  clearTimeout(docTimer); currentId = null; currentDoc = null;
-  hideScreens(); $("look").hidden = false;
   lkMonth = month || defaultPayrollMonth();
   lkEmployee = employee; lkView = null; lkCard = 0; lkLine = 0; lkDraft.clear();
   $("lk-title").textContent = ""; $("lk-body").hidden = true;
@@ -37,9 +36,7 @@ async function loadLook(stayOn, saved) {
   drawLookCard(saved && same >= 0);
 }
 
-function backFromLook() {
-  location.hash = lkView ? companyHash(lkMonth, lkView.company) : `#/payroll/${lkMonth}`;
-}
+function backFromLook() { location.hash = employeeHash(lkMonth, lkEmployee); }
 
 function draftKey(doc, line, column) { return `${doc}|${line.page}|${line.row}|${column}`; }
 
@@ -173,6 +170,7 @@ $("lk-accept").addEventListener("click", async () => {
     for (const key of [...lkDraft.keys()]) if (key.startsWith(`${card.doc}|`)) lkDraft.delete(key);
     lkError("");
     await loadLook(card.doc, true);
+    ppRefreshSoon();
   } catch (e) {
     await loadLook(card.doc, false);                           // show what is saved now; what was typed here is kept
     lkError(e.message);

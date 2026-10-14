@@ -54,6 +54,7 @@ const MS = {
   "Next needing you ›": "Seterusnya yang perlukan anda ›",
   "Nobody else needs you": "Tiada orang lain perlukan anda",
   "Search name or Employee No.": "Cari nama atau No. Pekerja",
+  "Take this card off the employee? It goes back to step 2 as a card whose employee is not known.": "Tanggalkan kad ini daripada pekerja? Ia kembali ke langkah 2 sebagai kad yang pekerjanya tidak diketahui.",
   "Payroll": "Gaji",
   "Quit Table Reader": "Tutup Table Reader",
   "Close Table Reader on this computer": "Tutup Table Reader pada komputer ini",

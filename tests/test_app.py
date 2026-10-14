@@ -44,7 +44,7 @@ def test_page_is_served(client):
 
 
 SCRIPTS = ["i18n.js", "app.js", "paycommon.js", "upload.js", "check.js", "columns.js", "people.js",
-           "paytable.js", "settings.js", "steps.js"]       # grows with Tasks 5-7
+           "employee.js", "look.js", "paytable.js", "settings.js", "steps.js"]       # grows with Tasks 5-7
 
 
 def test_browser_must_not_keep_an_old_script_after_an_update(client):

@@ -18,6 +18,12 @@ EDGE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 PORT = 9344
 BASE = "http://127.0.0.1:8777"
 problems: list[str] = []
+allowed: list[str] = []          # parts of addresses whose failed loads a scenario expects (allow())
+
+
+def allow(fragment):
+    """A failed load of an address containing ``fragment`` is expected (for example an employee the scenario removed)."""
+    allowed.append(fragment)
 
 HELPERS = r"""
 window.confirm = () => true;
@@ -65,7 +71,8 @@ class Page:
             elif msg.get("method") == "Runtime.consoleAPICalled" and msg["params"]["type"] in ("error", "warning"):
                 problems.append("console " + msg["params"]["type"] + ": " + json.dumps(msg["params"]["args"])[:300])
             elif (msg.get("method") == "Log.entryAdded" and msg["params"]["entry"]["level"] == "error"
-                  and not msg["params"]["entry"].get("url", "").endswith("/favicon.ico")):   # the app has no icon
+                  and not msg["params"]["entry"].get("url", "").endswith("/favicon.ico")      # the app has no icon
+                  and not any(f in msg["params"]["entry"].get("url", "") for f in allowed)):
                 problems.append("log error: " + msg["params"]["entry"]["text"][:300] + " " + msg["params"]["entry"].get("url", ""))
 
     async def send(self, method, **params):
