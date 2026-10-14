@@ -74,11 +74,11 @@ workers are not in that month's payroll, so there was nothing to update. Details
   and the app rebuilt on the user's OK: Month settings on the overview, Company settings on a
   company screen (own hours, break, calendar; "next month" carry-over), an item when the default changes after a
   company's own settings. Reviewed, its one important finding fixed; 7 minor ones in PROGRESS.md 20.
-- **Session 21 (2026-10-14): stage 4 planned and Part A built** on branch `million-summary` (from `pdf-text`, local,
-  **not merged, app not rebuilt**). Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`, split in
+- **Session 21 (2026-10-14): stage 4 planned and Part A built**, merged into `pdf-text` (fast-forward, local,
+  **not pushed**) and the app rebuilt on the user's OK. Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`, split in
   Part A (summary before the month's Million file, "New in Million" list with Copy, payroll CSV on the new screens) and
-  Part B (employee view, pay preview tab, Add employee, then the old page and its endpoints removed). Next: the user's
-  OK to merge Part A, then Part B. Details: PROGRESS.md 21.
+  Part B (employee view, pay preview tab, Add employee, then the old page and its endpoints removed). Next: Part B;
+  first the user decides whether the CSV buttons should ask about "Needs checking" employees. Details: PROGRESS.md 21.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -102,7 +102,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | **Million import file (.xls)** for the office | **Done (session 7).** Button "Download Million file (.xls)"; the office checker says READY on invented figures. Real September file not made yet (needs Employee Nos.). |
 | Browser check | Never clicked through by Claude (Chrome extension was not connected). All checks were tests + API + real-data scripts. |
 
-Tests: **465 pass** on `million-summary` (463 on `pdf-text`) (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 20. Sessions up to 20 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed); session 21 on `million-summary`.
+Tests: **465 pass** (`.venv\Scripts\python -m pytest -q`). Package rebuilt in session 21 (14 Oct). Sessions up to 21 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed). The `download` branch still has the build of 12 Oct.
 
 ## 2. Git / GitHub
 

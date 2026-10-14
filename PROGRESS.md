@@ -4,7 +4,8 @@
 Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`. Stage 4 is split in two parts, each merged
 and shippable by itself: **Part A** (this session) and **Part B** (employee view, pay preview tab, Add employee, then
 the old page and the endpoints only it used are removed). Part A built on branch `million-summary` (from `pdf-text`),
-**local, not merged, app not rebuilt**. 465 tests pass; Malay checks pass.
+then **merged into `pdf-text` (fast-forward, local, not pushed) and the app rebuilt** on the user's OK; the rebuilt app
+answers the summary on the real month (8 in, 76 held back, no file written). 465 tests pass; Malay checks pass.
 - **What the user sees:** "Make the month's Million file" first shows what the file would hold: per company the
   employees going in, then who is held back with the reason. **Make the file** makes it (worked out again then, so
   something fixed in between is in it); **Not now** closes the summary. A company with employees Million does not have
