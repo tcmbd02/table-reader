@@ -112,6 +112,7 @@ class Jobs:
         self._cancels: dict[str, threading.Event] = {}   # set = the user pressed Cancel for this job
         self._current: str | None = None         # the job the worker is reading at this moment
         self._worker: threading.Thread | None = None
+        self._yellow: dict[str, tuple[tuple, int]] = {}    # id -> (sizes and times of result/edits, cells to check)
         self._recover_interrupted()
 
     # ------------------------------------------------------------------------------------------- folders
@@ -188,6 +189,12 @@ class Jobs:
                 continue
         for m in out:
             m.setdefault("company", "")                            # files added before companies existed
+            m["cells_to_check"] = None
+            if m.get("status") == "done":
+                try:
+                    m["cells_to_check"] = self._cells_to_check(m["id"])
+                except (OcrError, OSError, ValueError):
+                    pass                                           # a reading that cannot be opened: no count
         return sorted(out, key=lambda m: (m.get("created", ""), m.get("id", "")), reverse=True)
 
     # ------------------------------------------------------------------------------------------- companies
@@ -220,10 +227,21 @@ class Jobs:
     def get_job(self, job_id: str) -> dict:
         """Status and progress, plus how many cells the user still has to check."""
         meta = self._meta(job_id)
-        meta["cells_to_check"] = None
-        if meta["status"] == "done":
-            meta["cells_to_check"] = count_to_check(merged_pages(self.load_result(job_id), self.load_edits(job_id)))
+        meta["cells_to_check"] = self._cells_to_check(job_id) if meta["status"] == "done" else None
         return meta
+
+    def _cells_to_check(self, job_id: str) -> int:
+        """count_to_check of a finished document, worked out again only when its reading or corrections change on
+        disk (so the file list can carry it on every refresh)."""
+        d = self._dir(job_id)
+        key = tuple((p.stat().st_mtime_ns, p.stat().st_size) if p.exists() else None
+                    for p in (d / "result.json", d / "edits.json"))
+        hit = self._yellow.get(job_id)
+        if hit is not None and hit[0] == key:
+            return hit[1]
+        n = count_to_check(merged_pages(self.load_result(job_id), self.load_edits(job_id)))
+        self._yellow[job_id] = (key, n)
+        return n
 
     # ------------------------------------------------------------------------------------------ queue/worker
     def _enqueue(self, job_id: str) -> None:

@@ -592,3 +592,11 @@ def test_setting_a_company_files_matching_files_and_new_uploads_under_it(store, 
     with pytest.raises(ocr.OcrError):
         store.set_company(a["id"], "x" * 81)
     store.wait_idle()
+
+
+def test_the_file_list_says_how_many_cells_are_left_to_check(done):
+    s, jid = done
+    [row] = s.list_jobs()
+    assert row["cells_to_check"] == 2
+    s.save_edits(jid, [{"page": 1, "row": 0, "column": "In", "value": "7:30"}])
+    assert s.list_jobs()[0]["cells_to_check"] == 1 == s.get_job(jid)["cells_to_check"]
