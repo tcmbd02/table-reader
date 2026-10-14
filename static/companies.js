@@ -73,7 +73,7 @@ $("mo-next").addEventListener("click", () => { location.hash = `#/payroll/${shif
 // again then, so something fixed in between is in it).
 function personText(p) { return [p.emp_no, p.name].filter(Boolean).join(" ") || t("An employee"); }
 
-function showMonthSummary(run) {
+function showMonthSummary(run, month) {
   const box = $("mo-run-result");
   const going = run.companies.filter((c) => c.ready);
   const parts = [el("strong", { text: run.ready
@@ -89,7 +89,7 @@ function showMonthSummary(run) {
   const make = el("button", { type: "button", class: "primary", text: t("Make the file"), disabled: !run.ready });
   make.addEventListener("click", async () => {
     make.disabled = true;
-    try { showMonthRun(await api("POST", `/api/payroll/${moMonth}/run`), box); moError(""); }
+    try { showMonthRun(await api("POST", `/api/payroll/${month}/run`), box); moError(""); }    // the summary's month
     catch (e) { moError(e.message); make.disabled = false; }
   });
   const later = el("button", { type: "button", text: t("Not now"), onclick: () => { box.hidden = true; } });
@@ -99,14 +99,36 @@ function showMonthSummary(run) {
 }
 
 $("mo-run").addEventListener("click", async () => {
-  const btn = $("mo-run");
+  const btn = $("mo-run"), month = moMonth;
   btn.disabled = true;
-  try { showMonthSummary(await api("GET", `/api/payroll/${moMonth}/run`)); moError(""); }
-  catch (e) { moError(e.message); }
+  try {
+    const run = await api("GET", `/api/payroll/${month}/run`);
+    if (month === moMonth && !$("month").hidden) { showMonthSummary(run, month); moError(""); }   // still on that month
+  } catch (e) { if (month === moMonth) moError(e.message); }
   finally { btn.disabled = false; }
 });
 
-$("mo-csv").addEventListener("click", () => { location.href = `/api/payroll/${moMonth}/csv`; });
+// A payroll file (CSV), fetched rather than opened as a link: when it cannot be made or saved (open in Excel, nobody
+// in it) the reason is shown on the screen in the user's language instead of replacing the page.
+async function downloadFile(url, showError) {
+  let res;
+  try { res = await fetch(url); }
+  catch (_) { showError(t("Table Reader is not running any more. Close this tab and open Table Reader again.")); return; }
+  if (!res.ok) {
+    let data = null;
+    try { data = await res.json(); } catch (_) { /* not JSON */ }
+    showError(data && data.message ? tm(data.message) : t("Something went wrong. Reload the page and try again."));
+    return;
+  }
+  const blob = await res.blob();
+  const m = /filename\*=utf-8''([^;]+)|filename="?([^";]+)"?/i.exec(res.headers.get("content-disposition") || "");
+  const a = el("a", { href: URL.createObjectURL(blob), download: m ? decodeURIComponent(m[1] || m[2]) : "Payroll.csv" });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  showError("");
+}
+
+$("mo-csv").addEventListener("click", () => downloadFile(`/api/payroll/${moMonth}/csv`, moError));
 
 $("mo-million-import").addEventListener("click", () => $("mo-million-file").click());
 $("mo-million-file").addEventListener("change", async () => {
@@ -133,7 +155,8 @@ async function showCompany(month, company) {
   $("co-title").textContent = `${company || t("(no company)")} - ${monthTitle(moMonth)}`;
   $("co-settings").hidden = true;
   $("co-million").hidden = true;
-  $("co-settings-open").hidden = !company;                   // files with no company have no settings of their own
+  $("co-million-open").hidden = true;                        // until this company's list is in (not the last one's)
+  $("co-settings-open").hidden = !company;                  // files with no company have no settings of their own
   $("co-csv").hidden = !company;                             // the CSV without a company would hold every company
   coError("");
   await loadCompany();
@@ -335,9 +358,7 @@ function drawMillionNew() {
 }
 
 $("co-million-open").addEventListener("click", () => { $("co-million").hidden = !$("co-million").hidden; drawMillionNew(); });
-$("co-csv").addEventListener("click", () => {
-  location.href = `/api/payroll/${moMonth}/csv?company=${encodeURIComponent(coCompany)}`;
-});
+$("co-csv").addEventListener("click", () => downloadFile(`/api/payroll/${moMonth}/csv?company=${encodeURIComponent(coCompany)}`, coError));
 
 $("co-back").addEventListener("click", () => { location.hash = `#/payroll/${moMonth}`; });
 

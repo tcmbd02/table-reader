@@ -21,6 +21,16 @@ the old page and the endpoints only it used are removed). Part A built on branch
 - **Clicked through** in the app's browser pane on made-up data: offers accepted, "Ready, 1 waiting for Million", the
   New in Million panel, Copy all's text, summary / Not now / Make the file, both CSV addresses. Not looked at by eye
   (screenshots time out while the app window is minimized); the real Windows clipboard was not written.
+- **Whole-branch review (fresh reviewer): "with fixes", 0 critical, 1 important, 7 minor.** Fixed (each reproduced in
+  the browser first, then gone): the CSV buttons replaced the screen with a raw English error when the file could not
+  be saved (open in Excel); they now download in the page and show the reason in the banner, in Malay too. Also fixed
+  (raised from minor): a summary that arrives after the user moved to another month was shown there, and its Make the
+  file made that other month's file; the previous company's "New in Million" button stayed while another company
+  loaded or failed to load. Left for later (minor): the old page asked "n employees are marked Needs checking ...
+  download anyway?" before the CSV, the new buttons do not (decide before Part B removes the old page); a second Copy
+  click within 1.5 s can leave the button reading "Copied"; the month-file button is not disabled on a month with no
+  employees (the server's message is about downloading); an open summary is not redrawn on coming back to the tab
+  (Make the file works everything out again, so the file is right); the layout not yet looked at by eye.
 
 ## Session 20 - 2026-10-12 - Company-first payroll, stage 3: month and company settings
 Built on branch `company-settings` (from `pdf-text`), then **merged into `pdf-text` (fast-forward, local, not
