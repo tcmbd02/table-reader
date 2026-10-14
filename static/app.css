@@ -217,3 +217,7 @@ ol.needs li.need:last-child { border-bottom: 0; }
 /* month and company settings */
 label.check { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
 .own-settings { margin: 4px 0 8px 26px; }
+
+/* a card layout: what each column means */
+.layout-table select { font: inherit; padding: 2px 4px; }
+.layout-table td.muted { font-family: ui-monospace, Consolas, monospace; font-size: .85rem; }

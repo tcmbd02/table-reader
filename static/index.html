@@ -111,6 +111,27 @@
   </div>
 </main>
 
+<main id="layout" hidden>
+  <div class="doc-bar">
+    <button id="ly-back" class="link" data-t>&larr; Back</button>
+    <h2 id="ly-title"></h2>
+    <div class="doc-actions">
+      <button id="ly-ask" type="button" data-t>Ask Claude</button>
+      <button id="ly-as-is" type="button" data-t>It is right as it is</button>
+      <button id="ly-save" class="primary" type="button" data-t>Save</button>
+    </div>
+  </div>
+  <div id="ly-error" class="banner error" hidden></div>
+  <div id="ly-body" hidden>
+    <p class="legend" data-t>Say once what each column of this card holds. It is kept for every card with the same headings, for every company and month. Claude can suggest it: it is shown only the headings and how the values are written (digits as 9, letters as A), never the names or figures.</p>
+    <div id="ly-note" class="banner info" hidden></div>
+    <div class="page-grid">
+      <div id="ly-rows"></div>
+      <div id="ly-picture" class="page-image"></div>
+    </div>
+  </div>
+</main>
+
 <main id="payroll" hidden>
   <div class="doc-bar">
     <button id="pr-back" class="link" data-t>&larr; All companies</button>
@@ -157,5 +178,6 @@
 <script src="companies.js"></script>
 <script src="settings.js"></script>
 <script src="look.js"></script>
+<script src="layout.js"></script>
 </body>
 </html>

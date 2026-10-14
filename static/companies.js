@@ -259,6 +259,16 @@ function itemNode(item) {
       buttons.push(none);
     }
     buttons.push(openCardButton(item.doc));
+  } else if (item.kind === "layout") {
+    // a card layout Table Reader has no rule for, with columns of figures the payroll does not use (yet)
+    head = t("{file}: a card layout Table Reader does not know", { file: item.name });
+    details = [t("Columns with figures that are not used: {list}. Say once what they mean; it is kept for every card with the same headings.",
+      { list: item.columns.join(", ") })];
+    const check = el("button", { type: "button", class: "primary", text: t("Check the columns"),
+      onclick: () => { location.hash = `#/payroll/${moMonth}/layout/${encodeURIComponent(item.doc)}/${item.page}`; } });
+    const asIs = el("button", { type: "button", text: t("It is right as it is") });
+    asIs.addEventListener("click", () => coAct(asIs, () => api("PUT", "/api/layouts", { doc: item.doc, page: item.page, as_is: true })));
+    buttons.push(check, asIs, openCardButton(item.doc));
   } else if (item.kind === "month") {
     head = t("{file}: which month is this for?", { file: item.name });
     details = [tm(item.why)];
@@ -371,6 +381,7 @@ async function refreshOnReturn() {
   lastReturn = Date.now();
   if (!$("company").hidden) loadCompany();
   else if (!$("look").hidden) refreshLook();
+  else if (!$("layout").hidden) return;                                // the user is choosing: leave it as it is
   else if (!$("month").hidden) {
     try { drawMonth(await api("GET", `/api/payroll/${moMonth}/companies`)); } catch (e) { moError(e.message); }
   }

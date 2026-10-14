@@ -10,7 +10,7 @@ import esprima
 
 S = Path(__file__).resolve().parent.parent / "static"
 trees = {}
-for name in ("i18n.js", "app.js", "payroll.js", "companies.js", "settings.js", "look.js"):
+for name in ("i18n.js", "app.js", "payroll.js", "companies.js", "settings.js", "look.js", "layout.js"):
     try:
         src = (S / name).read_text(encoding="utf-8")
         src = re.sub(r"catch \{", "catch (_e) {", src)             # optional catch binding: valid, too new for esprima
@@ -47,7 +47,7 @@ def find_calls(node):
         for a in args[: (1 if node.callee.name == "t" else 2)]:
             if a.type == "Literal" and isinstance(a.value, str):
                 used.append(a.value)
-for name in ("app.js", "payroll.js", "companies.js", "settings.js", "look.js"):
+for name in ("app.js", "payroll.js", "companies.js", "settings.js", "look.js", "layout.js"):
     walk(trees[name], find_calls)
 # data-t texts in index.html
 html = (S / "index.html").read_text(encoding="utf-8")
@@ -63,7 +63,11 @@ used += ["January", "Sun", "Working day", "benefit", "leave", "allowance", "dedu
          "{name}: cells to check on the card", "{name}: days that do not add up",
          "{name}: Table Reader cannot work out the days", "{name}: no time card yet",
          "{name}: not ready for the Million file", "Waiting for Million", "Needs you", "Ready", "Employee No.", "Name",
-         "Days Worked", "OT 1.5 (hours)", "Rest day (days)", "Status"]
+         "Days Worked", "OT 1.5 (hours)", "Rest day (days)", "Status",
+         # layout.js: what a column can mean, and its unit
+         "Date", "Hours worked that day", "Clock in (IN)", "Clock out (OUT)", "Several clock times in one cell",
+         "Lateness", "Early departure", "Overtime 1.0", "Overtime 1.5", "Overtime 2.0", "Overtime 3.0", "Not used",
+         "hours", "minutes", "—"]
 missing = sorted(set(u for u in used if u not in ms_keys))
 print("texts used:", len(set(used)), "| missing Malay:", len(missing))
 for m in missing:
