@@ -1,9 +1,10 @@
 "use strict";
-// A card layout Table Reader does not know: the user says once what each column means (a layout map). Claude may
-// suggest it (text only: the headings and the shapes of the values), but nothing is used until the user saves it.
-// The map is kept for every card with the same headings. Loaded after companies.js and uses its helpers.
+// The column choice of a card layout, opened under the file in step 2 (#/check/<file>/columns/<page>): the user says
+// once what each column means (a layout map). Claude may suggest it (text only: the headings and the shapes of the
+// values), but nothing is used until the user saves it. The map is kept for every card with the same headings.
+// Loaded after check.js and uses its helpers.
 
-let lyMonth = null;        // the month the panel was opened from ("2026-09")
+let lyDoc = null;          // the file the choice is opened from
 let lyView = null;         // what the server sent: {doc, page, name, labels, shapes, saved, suggestion, as_read, ...}
 let lySelects = [];        // per column: {label, role, unit}
 let lyHours = null;        // the hours column the card's employee chose (kept by "It is right as it is")
@@ -18,14 +19,14 @@ const COUNTED = ["hours", "lateness", "early_departure", "ot_1", "ot_1_5", "ot_2
 
 function lyError(message) { $("ly-error").hidden = !message; $("ly-error").textContent = message || ""; }
 
-async function showLayout(month, doc, page, hours) {
-  clearTimeout(docTimer); currentId = null; currentDoc = null;
-  hideScreens(); $("layout").hidden = false;
-  lyMonth = month || defaultPayrollMonth();
+async function showLayout(doc, page, hours) {
+  lyDoc = doc;
   lyHours = hours || null;
+  $("layout").hidden = false;
   for (const id of ["ly-save", "ly-as-is", "ly-ask"]) $(id).disabled = false;   // a save made before left them off
   $("ly-title").textContent = ""; $("ly-body").hidden = true; $("ly-note").hidden = true;
   lyError("");
+  $("layout").scrollIntoView({ block: "start" });
   await loadLayout(doc, page, false);
 }
 
@@ -77,14 +78,12 @@ async function saveLayout(button, body) {
   button.disabled = true;
   try {
     await api("PUT", "/api/layouts", { doc: lyView.doc, page: lyView.page, ...body });
+    await ckLoad();                              // the file's problems change
     backFromLayout();
   } catch (e) { lyError(e.message); button.disabled = false; }
 }
 
-function backFromLayout() {
-  if (history.length > 1) history.back();
-  else location.hash = `#/payroll/${lyMonth}`;
-}
+function backFromLayout() { location.hash = `#/check/${encodeURIComponent(lyDoc)}`; }
 
 $("ly-back").addEventListener("click", backFromLayout);
 $("ly-ask").addEventListener("click", async () => {
@@ -97,6 +96,3 @@ $("ly-ask").addEventListener("click", async () => {
 $("ly-save").addEventListener("click", () => saveLayout($("ly-save"), {
   columns: Object.fromEntries(lySelects.map((s) => [s.label, { role: s.role.value, unit: s.unit.value }])) }));
 $("ly-as-is").addEventListener("click", () => saveLayout($("ly-as-is"), { as_is: true, hours_column: lyHours }));
-
-if (location.hash.startsWith("#/payroll")) route();      // the page was opened on a payroll screen: app.js ran before the
-                                                         // payroll scripts, and this one loads last

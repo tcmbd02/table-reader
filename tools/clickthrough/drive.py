@@ -86,7 +86,11 @@ class Page:
         await self.send("Page.navigate", url="about:blank")
         await asyncio.sleep(0.3)
         await self.send("Page.navigate", url=url)
-        await asyncio.sleep(1.2)
+        for _ in range(100):                          # the page and its scripts loaded (up to 10 s)
+            await asyncio.sleep(0.1)
+            if await self.ev("document.readyState === 'complete' && location.href !== 'about:blank' && typeof route === 'function'"):
+                break
+        await asyncio.sleep(0.8)                      # its first requests
         await self.ev(HELPERS)
 
 
@@ -143,4 +147,5 @@ if __name__ == "__main__":
     import importlib
 
     sys.path.insert(0, str(Path(__file__).parent))
+    sys.modules["drive"] = sys.modules["__main__"]     # a scenario's "from drive import expect" adds to these problems
     sys.exit(asyncio.run(run(importlib.import_module(sys.argv[1]).scenario)))

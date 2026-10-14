@@ -14,6 +14,17 @@ function defaultPayrollMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function monthTitle(month) {
+  const [y, m] = month.split("-").map(Number);
+  return `${t(MONTH_NAMES[m - 1])} ${y}`;
+}
+
+function shiftMonth(month, by) {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(y, m - 1 + by, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 // Files read since the last visit that went into this month's payroll by themselves (the month is printed in the
 // file name or on the card), and the ones that could not be put in a month.
 function addedByThemselves(info) {

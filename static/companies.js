@@ -5,17 +5,6 @@
 let moMonth = null;        // the month the overview / company screen shows ("2026-09")
 let moOver = null;         // what the server last sent for the overview (its "settings" = the month's default)
 
-function monthTitle(month) {
-  const [y, m] = month.split("-").map(Number);
-  return `${t(MONTH_NAMES[m - 1])} ${y}`;
-}
-
-function shiftMonth(month, by) {
-  const [y, m] = month.split("-").map(Number);
-  const d = new Date(y, m - 1 + by, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
 function companyHash(month, company) { return `#/payroll/${month}/c/${encodeURIComponent(company)}`; }
 
 function statusText(row) {

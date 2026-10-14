@@ -10,6 +10,6 @@ for i in $(seq 1 60); do curl -s -o /dev/null localhost:8777/api/ping && break; 
 (cd "$S" && timeout 300 "$PY" drive.py "$1")
 STATUS=$?
 kill $PID 2>/dev/null
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { \$_.CommandLine -like '*clickthrough*serve.py*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }"
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { \$_.CommandLine -like '*clickthrough*serve.py*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue }"
 rm -rf "$HOME_DIR" "$HOME_DIR.log"
 exit $STATUS

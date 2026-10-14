@@ -3,10 +3,7 @@
 // Text shown to the user goes through t()/tn() (page text) or tm() (server messages) from i18n.js.
 
 const $ = (id) => document.getElementById(id);
-const QUALITY = { CLEAR: t("Clear"), MOSTLY_CLEAR: t("Mostly clear"), FADED: t("Faded or small print"), ILLEGIBLE: t("Hard to read") };
 let claudeReady = false;
-let currentId = null;
-let currentDoc = null;
 
 function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);
@@ -169,171 +166,6 @@ function refreshCheckBadge(jobs) {
   stepBadge("check", shown.reduce((n, j) => n + (j.cells_to_check || 0), 0));
 }
 
-// ------------------------------------------------------------------------------------------------ document view
-function findCell(doc, loc) {
-  const page = doc.pages.find((p) => p.page === loc.page);
-  if (!page) return null;
-  if (loc.header !== undefined) return page.header_fields[loc.header]?.cell ?? null;
-  return page.rows[loc.row]?.cells[loc.column] ?? null;
-}
-
-async function saveCell(loc, value, node) {
-  const change = { page: loc.page, value };
-  if (loc.header !== undefined) change.header = loc.header; else { change.row = loc.row; change.column = loc.column; }
-  try {
-    const doc = await api("PUT", `/api/jobs/${encodeURIComponent(currentId)}/cells`, { changes: [change] });
-    currentDoc = doc;
-    const cell = findCell(doc, loc);
-    if (cell) paintCell(node, loc, cell);
-    paintStatus(doc);
-  } catch (e) { alert(e.message); }
-}
-
-// Fills a .cell element (input + helper buttons) from a merged cell. Called on first draw and after each save.
-function paintCell(node, loc, cell) {
-  node.className = "cell" + (cell.needs_review ? " flag" : "") + (cell.edited ? " edited" : "");
-  node.title = cell.needs_review ? (tm(cell.unclear_reason) || t("Claude was not sure about this cell.")) : "";
-  const input = node.querySelector("input");
-  // A cell Claude was not sure about: the yellow box shows what Claude saw, and nothing else (the reason is the
-  // tooltip). It stays yellow, and unconfirmed, until the user presses Enter in it or types over it. A "?" before or
-  // after the marks ("18:50?") is Claude's doubt, not part of the value, so it is not shown; a "?" inside ("1?:50") stays.
-  const shown = cell.needs_review ? (cell.raw_text || "").trim().replace(/^\?+|\?+$/g, "").trim() : cell.value ?? "";
-  if (cell.needs_review && cell.raw_text && cell.raw_text.trim() !== shown) node.title += " " + t("Claude saw: {x}", { x: cell.raw_text });
-  if (document.activeElement !== input) input.value = shown;
-  input.dataset.original = shown;
-  input.setAttribute("aria-label", cell.needs_review ? t("Cell to check. Press Enter to accept it, or type the correct value.") : t("Cell value"));
-  node.querySelector(".tools")?.remove();
-  const tools = el("div", { class: "tools" });
-  if (cell.edited) {
-    tools.append(el("button", { type: "button", text: t("Undo my change"), onclick: () => saveCell(loc, null, node) }));
-  }
-  if (tools.children.length) node.append(tools);
-}
-
-function makeCell(loc, cell) {
-  const input = el("input", { type: "text", autocomplete: "off", spellcheck: "false" });
-  const node = el("div", {}, input);
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      // Enter in a yellow cell accepts what the box shows (an empty box: the cell is empty), also when nothing was typed
-      const c = findCell(currentDoc, loc);
-      if (c && c.needs_review && input.value.trim() === input.dataset.original) saveCell(loc, input.value.trim(), node);
-      input.blur();
-    } else if (e.key === "Escape") { input.value = input.dataset.original; input.blur(); }
-  });
-  input.addEventListener("change", () => {
-    const value = input.value.trim();
-    const c = findCell(currentDoc, loc);
-    if (!c) return;
-    if (c.needs_review ? value === input.dataset.original : value === (c.value ?? "")) return;   // nothing typed
-    saveCell(loc, value, node);
-  });
-  paintCell(node, loc, cell);
-  return node;
-}
-
-function buildPage(doc, page) {
-  const wrap = el("section", { class: "page" });
-  if (doc.pages_total > 1) wrap.append(el("h3", { text: t("Page {a} of {b}", { a: page.page, b: doc.pages_total }) }));
-
-  const notes = [];
-  if (page.quality !== "CLEAR") notes.push(t("Picture quality: {q}. Check the highlighted cells carefully.", { q: QUALITY[page.quality] || page.quality }));
-  notes.push(...page.notes);
-  const right = el("div");
-  if (notes.length) right.append(el("div", { class: "notes" }, el("strong", { text: t("Claude's notes") }),
-    el("ul", {}, ...notes.map((n) => el("li", { text: tm(n) })))));
-
-  if (page.header_fields.length) {
-    right.append(el("div", { class: "fields" }, ...page.header_fields.map((f, i) =>
-      el("div", { class: "field" }, el("label", { text: f.label }), makeCell({ page: page.page, header: i }, f.cell)))));
-  }
-  if (!page.rows.length) {
-    right.append(el("div", { class: "banner error", text: tm(page.problem) || t("No table was found on this page.") }));
-  } else {
-    const head = el("tr", {}, el("th", { text: "#" }), ...page.column_labels.map((c) => el("th", { text: c })));
-    const body = page.rows.map((row, r) => el("tr", {}, el("td", { class: "rownum", text: String(r + 1) }),
-      ...page.column_labels.map((col) => el("td", {}, makeCell({ page: page.page, row: r, column: col }, row.cells[col])))));
-    right.append(el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, head), el("tbody", {}, ...body))));
-  }
-
-  const src = `/api/jobs/${encodeURIComponent(doc.id)}/pages/${page.page}`;
-  const left = el("div", { class: "page-image" },
-    el("a", { href: src, target: "_blank", rel: "noopener" }, el("img", { src, alt: t("Original, page {n}", { n: page.page }) })),
-    el("p", { class: "hint", text: t("Click the picture to open it larger.") }));
-  wrap.append(el("div", { class: "page-grid" }, left, right));
-  return wrap;
-}
-
-function paintStatus(doc) {
-  $("doc-name").textContent = doc.name;
-  const active = doc.status === "queued" || doc.status === "reading";
-  let text;
-  if (doc.status === "queued") text = t("Waiting for the other files to finish…");
-  else if (doc.status === "reading") {
-    text = doc.pages_total
-      ? t("Reading page {a} of {b}… This takes about a minute per page. You can keep this window open and add more files.", { a: Math.min(doc.pages_done + 1, doc.pages_total), b: doc.pages_total })
-      : t("Preparing the pages…");
-  } else if (doc.status === "done" && !doc.pages.some((p) => p.rows.length)) {
-    text = t("Finished, but no table could be read from this file. See the message below the picture.");
-  } else if (doc.status === "done") {
-    text = doc.cells_to_check
-      ? tn(doc.cells_to_check, "Finished. {n} cell to check — the yellow box shows what Claude saw. Press Enter in it to accept it, or type the correct value.", "Finished. {n} cells to check — the yellow boxes show what Claude saw. Press Enter in a box to accept it, or type the correct value.")
-      : t("Finished. Nothing was marked as unsure, but have a look before you rely on it.");
-  } else if (doc.error && doc.error.code === "CANCELLED") {
-    text = t("Cancelled after {a} of {b} pages. Nothing more will be read unless you press Continue.", { a: doc.pages_done, b: doc.pages_total ?? "?" });
-  } else text = doc.pages.length ? t("Stopped after {a} of {b} pages.", { a: doc.pages_done, b: doc.pages_total ?? "?" }) : t("Stopped.");
-  $("doc-status").textContent = text;
-  $("cancel").hidden = !active;
-  const err = $("doc-error");
-  err.className = "banner " + (doc.error && doc.error.code === "CANCELLED" ? "info" : "error");
-  err.hidden = !(doc.status === "failed" && doc.error);
-  err.textContent = doc.error ? tm(doc.error.message) : "";
-  $("continue").hidden = !doc.can_continue;
-  $("download").disabled = doc.status !== "done" || !doc.pages.some((p) => p.rows.length);
-  if (err.hidden === false) {
-    const code = doc.error.code;
-    if (code === "CLAUDE_LOGIN_REQUIRED" || code === "CLAUDE_CLI_MISSING") refreshClaude();   // top-right box shows Sign in
-    if (!doc.can_continue) err.append(t(" Use “All files” to go back and add a corrected file."));
-  }
-  $("next-check").hidden = !(doc.cells_to_check > 0);
-  $("next-check").textContent = t("Go to next cell to check ({n})", { n: doc.cells_to_check });
-  return active;
-}
-
-function showDoc(doc) {
-  currentDoc = doc;
-  const active = paintStatus(doc);
-  // Do not redraw the table while someone is typing in it; the next poll will catch up.
-  if (!$("pages").contains(document.activeElement)) $("pages").replaceChildren(...doc.pages.map((p) => buildPage(doc, p)));
-  return active;
-}
-
-let docTimer = null;
-async function openDoc(id) {
-  currentId = id; currentDoc = null;
-  hideScreens(); $("doc").hidden = false;
-  $("pages").replaceChildren(); $("doc-name").textContent = ""; $("doc-status").textContent = t("Opening…");
-  $("doc-error").hidden = true;
-  clearTimeout(docTimer);
-  await pollDoc(true);
-}
-
-async function pollDoc(first) {
-  if (currentId === null) return;
-  const id = currentId;
-  try {
-    const doc = await api("GET", `/api/jobs/${encodeURIComponent(id)}`);
-    if (id !== currentId) return;
-    const changed = first || !currentDoc || doc.status !== currentDoc.status || doc.pages_done !== currentDoc.pages_done;
-    const active = changed ? showDoc(doc) : (doc.status === "queued" || doc.status === "reading");
-    if (active) docTimer = setTimeout(() => pollDoc(false), 2500);
-  } catch (e) {
-    if (id !== currentId) return;
-    $("doc-status").textContent = "";
-    $("doc-error").hidden = false; $("doc-error").textContent = e.message;
-  }
-}
-
 function setupQuit() {
   $("quit").addEventListener("click", async () => {
     let active = 0;
@@ -346,32 +178,6 @@ function setupQuit() {
   });
 }
 
-function setupDocButtons() {
-  $("cancel").addEventListener("click", async () => {
-    try { await api("POST", `/api/jobs/${encodeURIComponent(currentId)}/cancel`); await pollDoc(true); }
-    catch (e) { $("doc-error").hidden = false; $("doc-error").textContent = e.message; }
-  });
-  $("continue").addEventListener("click", async () => {
-    try { await api("POST", `/api/jobs/${encodeURIComponent(currentId)}/resume`); await pollDoc(true); }
-    catch (e) { $("doc-error").hidden = false; $("doc-error").textContent = e.message; }
-  });
-  $("download").addEventListener("click", () => {
-    if (!currentDoc || currentDoc.status !== "done") return;
-    const n = currentDoc.cells_to_check;
-    if (n && !confirm(tn(n, "{n} cell is still highlighted. In the CSV they will be left blank with a note. Download anyway?", "{n} cells are still highlighted. In the CSV they will be left blank with a note. Download anyway?"))) return;
-    location.href = `/api/jobs/${encodeURIComponent(currentId)}/csv`;
-  });
-  $("next-check").addEventListener("click", () => {
-    const inputs = [...document.querySelectorAll("#pages .cell.flag input")];
-    if (!inputs.length) return;
-    const after = inputs.findIndex((i) => i === document.activeElement);
-    const next = inputs[(after + 1) % inputs.length];
-    next.scrollIntoView({ block: "center", behavior: "smooth" });
-    next.focus({ preventScroll: true });
-  });
-}
-
-setupDocButtons();
 setupQuit();
 refreshClaude();
 setInterval(() => { if (!loginTimer) refreshClaude(); }, 60000);
