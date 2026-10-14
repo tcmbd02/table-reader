@@ -109,8 +109,8 @@ workers are not in that month's payroll, so there was nothing to update. Details
   87 employees identical, 9 ready / 78 held, same file problems. Click-throughs in `tools/clickthrough/`. Details:
   PROGRESS.md 24.
 - **Session 24b (2026-10-14): "Add a time card"** on the employee view (any card of the employee's company; one on
-  another employee is moved after a question). Merged into `pdf-text` and the app rebuilt; **not pushed, `download`
-  branch not updated** (it still has the three steps without this). Details: PROGRESS.md 24b.
+  another employee is moved after a question). Merged into `pdf-text`, the app rebuilt, pushed, and the
+  `download` branch updated (commit 14bd93b), all on the user's OK. Details: PROGRESS.md 24b.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists

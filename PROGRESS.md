@@ -2,8 +2,8 @@
 
 ## Session 24b - 2026-10-14 - "Add a time card" on an employee
 Asked by the user: under "Time cards of this employee", a choice of any time card of the same company. Branch `add-card`
-(from `pdf-text`), **merged into `pdf-text` and the app rebuilt on the user's OK (not pushed; `download` branch not
-updated).** 556 tests pass.
+(from `pdf-text`), **merged into `pdf-text`, the app rebuilt, pushed and the `download` branch updated, on the user's
+OK.** 556 tests pass.
 - `GET /employee/<id>` gives `addable`: every card (file, or page / grid row) of the employee's company's finished files
   that is not theirs, with the month it is for and who has it now. The page groups them "on nobody" / "on another
   employee" (with "read as October", "set aside", "no month", "now on SITI").
