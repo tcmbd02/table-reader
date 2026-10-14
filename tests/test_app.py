@@ -56,6 +56,8 @@ def test_the_page_has_the_company_first_screens(client):
     assert 'id="look"' in html and html.index("companies.js") < html.index("look.js?v=")     # the one-look panel
     assert html.index("companies.js") < html.index("settings.js?v=") < html.index("look.js")  # month / company settings
     assert 'id="mo-settings"' in html and 'id="co-settings"' in html
+    assert 'id="co-million"' in html and 'id="co-million-open"' in html                # New in Million
+    assert 'id="mo-csv"' in html and 'id="co-csv"' in html                              # payroll CSV on both screens
 
 
 def test_the_company_chooser_for_files_is_on_the_start_page_only(client):

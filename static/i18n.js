@@ -444,6 +444,26 @@ const MS = {
   "A time card of this employee could not be opened. Read the file again, or take it off this employee.": "Satu kad perakam waktu pekerja ini tidak dapat dibuka. Baca fail itu semula, atau keluarkannya daripada pekerja ini.",
   "A document can belong to one employee only. Untick it from the other employee first.": "Satu dokumen hanya boleh dimiliki oleh seorang pekerja. Nyahtanda dokumen itu daripada pekerja lain dahulu.",
   "The Million file was not made. Fix these first, then download again:": "Fail Million tidak dibuat. Betulkan perkara ini dahulu, kemudian muat turun semula:",
+  // the month's Million file: the summary shown before it is made
+  "The month's Million file would hold {n} employee from {c}.": "Fail Million bulan ini akan mengandungi {n} pekerja daripada {c}.",
+  "The month's Million file would hold {n} employees from {c}.": "Fail Million bulan ini akan mengandungi {n} pekerja daripada {c}.",
+  "No employee is ready for the month's Million file yet.": "Belum ada pekerja yang sedia untuk fail Million bulan ini.",
+  "Make the file": "Buat fail",
+  "Not now": "Bukan sekarang",
+  // New in Million (a company's employees Million does not have yet)
+  "New in Million: {n} employee": "Baharu dalam Million: {n} pekerja",
+  "New in Million: {n} employees": "Baharu dalam Million: {n} pekerja",
+  "{company}: {n} employee Million does not have yet": "{company}: {n} pekerja yang belum ada dalam Million",
+  "{company}: {n} employees Million does not have yet": "{company}: {n} pekerja yang belum ada dalam Million",
+  "Create them in Million with exactly these numbers, then export Million's employee list and import it on the month page.":
+    "Cipta mereka dalam Million dengan nombor yang sama, kemudian eksport senarai pekerja Million dan importnya di halaman bulan.",
+  "To export the list in Million Payroll: Employee > Print > Employment Listing > Print > Excel > File. The file is rptempepmlist.xls in Million's company folder (for example C:\\million\\Payroll\\mycompany).":
+    "Untuk mengeksport senarai dalam Million Payroll: Employee > Print > Employment Listing > Print > Excel > File. Failnya ialah rptempepmlist.xls dalam folder syarikat Million (contohnya C:\\million\\Payroll\\mycompany).",
+  "Copy": "Salin",
+  "Copy all": "Salin semua",
+  "Copied": "Disalin",
+  "Close": "Tutup",
+  "Copying did not work. Select the numbers and copy them yourself.": "Salinan tidak berjaya. Pilih nombor-nombor itu dan salin sendiri.",
 };
 
 // "card.pdf, page 2" -> "card.pdf, halaman 2" (where a payroll message says which document it is about)

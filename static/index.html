@@ -59,6 +59,7 @@
       <button id="mo-settings-open" type="button" data-t>Month settings</button>
       <button id="mo-million-import" type="button" data-t>Import employee list from Million</button>
       <input id="mo-million-file" type="file" accept=".xls" hidden>
+      <button id="mo-csv" type="button" data-t>Download payroll CSV</button>
       <button id="mo-run" class="primary" data-t>Make the month's Million file (all companies)</button>
     </div>
   </div>
@@ -74,9 +75,12 @@
     <button id="co-back" class="link" data-t>&larr; All companies</button>
     <h2 id="co-title"></h2>
     <div class="doc-actions"><span id="co-status" class="muted" aria-live="polite"></span>
+      <button id="co-million-open" type="button" hidden></button>
+      <button id="co-csv" type="button" data-t>Download payroll CSV</button>
       <button id="co-settings-open" type="button" data-t>Company settings</button></div>
   </div>
   <div id="co-error" class="banner error" hidden></div>
+  <section id="co-million" class="card" hidden></section>
   <section id="co-settings" class="card" hidden></section>
   <section class="card"><h3 data-t>Needs you</h3><div id="co-items"></div></section>
   <section class="card"><h3 data-t>Employees</h3><div id="co-employees"></div></section>

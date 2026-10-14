@@ -55,6 +55,7 @@ function drawMonth(over) {
     ? el("table", { class: "daytable companies" },
       el("tr", {}, el("th", { text: t("Company") }), el("th", { text: t("Employees") }), el("th", { text: t("Status") })), ...rows)
     : el("p", { class: "muted", text: t("No files for this month yet. Add time cards on the start page or in the Inbox folder.") }));
+  $("mo-csv").disabled = !over.companies.some((c) => c.employees);
   const total = over.companies.filter((c) => c.status !== "none").length;
   $("mo-total").textContent = [
     t("{a} of {b} companies ready.", { a: over.ready_companies, b: total }),
@@ -68,13 +69,44 @@ $("mo-old").addEventListener("click", () => { window.prOpenCompany = ""; });    
 $("mo-prev").addEventListener("click", () => { location.hash = `#/payroll/${shiftMonth(moMonth, -1)}`; });
 $("mo-next").addEventListener("click", () => { location.hash = `#/payroll/${shiftMonth(moMonth, 1)}`; });
 
+// The month's Million file: first what it would hold and who is held back, then made on "Make the file" (worked out
+// again then, so something fixed in between is in it).
+function personText(p) { return [p.emp_no, p.name].filter(Boolean).join(" ") || t("An employee"); }
+
+function showMonthSummary(run) {
+  const box = $("mo-run-result");
+  const going = run.companies.filter((c) => c.ready);
+  const parts = [el("strong", { text: run.ready
+    ? tn(run.ready, "The month's Million file would hold {n} employee from {c}.", "The month's Million file would hold {n} employees from {c}.",
+      { c: tn(going.length, "{n} company", "{n} companies") })
+    : t("No employee is ready for the month's Million file yet.") })];
+  if (going.length) {
+    parts.push(el("ul", {}, ...going.map((c) => el("li", {}, el("strong", { text: `${c.company || t("No company")}: ` }),
+      c.ready_people.map(personText).join("; ")))));
+  }
+  if (!run.checked_with_million) parts.push(el("p", { class: "legend", text: t("The Employee Nos. were not checked against Million: import Million's employee list first.") }));
+  parts.push(...heldNodes(run));
+  const make = el("button", { type: "button", class: "primary", text: t("Make the file"), disabled: !run.ready });
+  make.addEventListener("click", async () => {
+    make.disabled = true;
+    try { showMonthRun(await api("POST", `/api/payroll/${moMonth}/run`), box); moError(""); }
+    catch (e) { moError(e.message); make.disabled = false; }
+  });
+  const later = el("button", { type: "button", text: t("Not now"), onclick: () => { box.hidden = true; } });
+  parts.push(el("div", { class: "need-buttons" }, make, later));
+  box.replaceChildren(...parts); box.hidden = false;
+  box.scrollIntoView({ block: "nearest" });
+}
+
 $("mo-run").addEventListener("click", async () => {
   const btn = $("mo-run");
   btn.disabled = true;
-  try { showMonthRun(await api("POST", `/api/payroll/${moMonth}/run`), $("mo-run-result")); moError(""); }
+  try { showMonthSummary(await api("GET", `/api/payroll/${moMonth}/run`)); moError(""); }
   catch (e) { moError(e.message); }
   finally { btn.disabled = false; }
 });
+
+$("mo-csv").addEventListener("click", () => { location.href = `/api/payroll/${moMonth}/csv`; });
 
 $("mo-million-import").addEventListener("click", () => $("mo-million-file").click());
 $("mo-million-file").addEventListener("change", async () => {
@@ -100,7 +132,9 @@ async function showCompany(month, company) {
   coCompany = company;
   $("co-title").textContent = `${company || t("(no company)")} - ${monthTitle(moMonth)}`;
   $("co-settings").hidden = true;
+  $("co-million").hidden = true;
   $("co-settings-open").hidden = !company;                   // files with no company have no settings of their own
+  $("co-csv").hidden = !company;                             // the CSV without a company would hold every company
   coError("");
   await loadCompany();
 }
@@ -249,13 +283,61 @@ function drawCompany() {
   $("co-employees").replaceChildren(rows.length
     ? el("table", { class: "daytable companies" }, el("tr", {}, ...EMPLOYEE_HEADS.map((h) => el("th", { text: t(h) }))), ...rows)
     : el("p", { class: "muted", text: t("No employees for this company in this month yet.") }));
-  if (coView.million_new.length) {
-    $("co-employees").append(el("p", { class: "legend", text: tn(coView.million_new.length,
-      "{n} employee is not in Million yet: {list}. Create them in Million with exactly this number, then import Million's employee list on the month page.",
-      "{n} employees are not in Million yet: {list}. Create them in Million with exactly these numbers, then import Million's employee list on the month page.",
-      { list: coView.million_new.map((m) => `${m.emp_no} ${m.name}`.trim()).join("; ") }) }));
-  }
+  $("co-csv").disabled = !coView.employees.length;
+  drawMillionNew();
 }
+
+// "New in Million": the company's employees whose Employee No. is not in Million's imported list. They are held back
+// from the month's file until they are created in Million and its list is imported again; the rest go in.
+// The clipboard API first; where the browser refuses it, the older copy of a selected text box.
+function copyBySelecting(text) {
+  const box = el("textarea", { readonly: true, style: "position:fixed;left:-9999px", text });
+  document.body.append(box);
+  box.select();
+  let done = false;
+  try { done = document.execCommand("copy"); } catch (_) { /* not supported */ }
+  box.remove();
+  if (!done) throw new Error("copy refused");
+}
+
+async function copyText(button, text) {
+  try {
+    try { await navigator.clipboard.writeText(text); } catch (_) { copyBySelecting(text); }
+    const was = button.textContent;
+    button.textContent = t("Copied");
+    setTimeout(() => { button.textContent = was; }, 1500);
+    coError("");
+  } catch (_) { coError(t("Copying did not work. Select the numbers and copy them yourself.")); }
+}
+
+function drawMillionNew() {
+  const list = coView.million_new, panel = $("co-million");
+  $("co-million-open").hidden = !list.length;
+  $("co-million-open").textContent = tn(list.length, "New in Million: {n} employee", "New in Million: {n} employees");
+  if (!list.length) panel.hidden = true;
+  if (panel.hidden) return;
+  const rows = list.map((m) => {
+    const copy = el("button", { type: "button", text: t("Copy") });
+    copy.addEventListener("click", () => copyText(copy, m.emp_no));
+    return el("tr", {}, el("td", { text: m.emp_no }), el("td", { text: m.name }), el("td", {}, copy));
+  });
+  const all = el("button", { type: "button", class: "primary", text: t("Copy all") });
+  all.addEventListener("click", () => copyText(all, list.map((m) => `${m.emp_no}\t${m.name}`).join("\n")));   // two columns in Excel
+  const close = el("button", { type: "button", text: t("Close"), onclick: () => { panel.hidden = true; } });
+  panel.replaceChildren(
+    el("h3", { text: tn(list.length, "{company}: {n} employee Million does not have yet", "{company}: {n} employees Million does not have yet",
+      { company: coCompany || t("(no company)") }) }),
+    el("table", { class: "daytable companies" },
+      el("tr", {}, el("th", { text: t("Employee No.") }), el("th", { text: t("Name") }), el("th")), ...rows),
+    el("p", { class: "legend", text: t("Create them in Million with exactly these numbers, then export Million's employee list and import it on the month page.") }),
+    el("p", { class: "legend", text: t("To export the list in Million Payroll: Employee > Print > Employment Listing > Print > Excel > File. The file is rptempepmlist.xls in Million's company folder (for example C:\\million\\Payroll\\mycompany).") }),
+    el("div", { class: "need-buttons" }, all, close));
+}
+
+$("co-million-open").addEventListener("click", () => { $("co-million").hidden = !$("co-million").hidden; drawMillionNew(); });
+$("co-csv").addEventListener("click", () => {
+  location.href = `/api/payroll/${moMonth}/csv?company=${encodeURIComponent(coCompany)}`;
+});
 
 $("co-back").addEventListener("click", () => { location.hash = `#/payroll/${moMonth}`; });
 

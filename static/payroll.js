@@ -854,6 +854,14 @@ $("pr-daily-download").addEventListener("click", async () => {
   location.href = payrollUrl("/basic-pay") + (c ? `?company=${encodeURIComponent(c)}` : "");
 });
 
+// Who the month's Million file holds back, company by company, each with the reasons (also shown before it is made).
+function heldNodes(run) {
+  if (!run.held) return [];
+  return [el("p", {}, el("strong", { text: tn(run.held, "{n} employee is not in the file yet:", "{n} employees are not in the file yet:") })),
+    ...run.companies.filter((x) => x.held.length).map((c) => el("div", { class: "run-company" }, el("strong", { text: c.company || t("No company") }),
+      el("ul", {}, ...c.held.map((h) => el("li", { text: `${[h.emp_no, h.name].filter(Boolean).join(" ") || t("An employee")}: ${h.reasons.map(runReason).join(" ")}` })))))];
+}
+
 // One Million file for the whole month: everyone who can go in, and for the others the reason, company by company.
 function showMonthRun(run, box = $("pr-run-result")) {
   const withFile = run.companies.filter((c) => c.ready).length;
@@ -864,12 +872,8 @@ function showMonthRun(run, box = $("pr-run-result")) {
   const parts = [el("strong", { text: head })];
   if (run.file) parts.push(el("p", { class: "legend", text: t("It is saved in {folder}. Back up Million, then import this one file: it covers every company.", { folder: run.folder }) }));
   if (!run.checked_with_million) parts.push(el("p", { class: "legend", text: t("The Employee Nos. were not checked against Million: import Million's employee list first.") }));
+  parts.push(...heldNodes(run));
   if (run.held) {
-    parts.push(el("p", {}, el("strong", { text: tn(run.held, "{n} employee is not in the file yet:", "{n} employees are not in the file yet:") })));
-    for (const c of run.companies.filter((x) => x.held.length)) {
-      parts.push(el("div", { class: "run-company" }, el("strong", { text: c.company || t("No company") }),
-        el("ul", {}, ...c.held.map((h) => el("li", { text: `${[h.emp_no, h.name].filter(Boolean).join(" ") || t("An employee")}: ${h.reasons.map(runReason).join(" ")}` })))));
-    }
     parts.push(el("p", { class: "legend", text: t("Fix what is listed and press the button again. Each run makes the whole file again; importing it again is harmless.") }));
   } else if (run.file) {
     parts.push(el("p", { class: "legend", text: t("Every employee of the month is in the file.") }));
