@@ -1,4 +1,5 @@
-"""Payroll by company: what still needs the user ("Needs you"), for one company and for the month overview.
+"""Payroll by company: what still needs the user ("Needs you"), for step 3's list of companies and employees and
+for step 2's files.
 
 Pure functions over a plan and its calculated results. Nothing here reads a file, and nothing here does arithmetic:
 the figures and the problems come from payroll.py, and this module only sorts them into what the user sees.
@@ -134,7 +135,7 @@ _NOT_IN_MILLION = "is not in the Million employee list"       # payroll.month_ru
 def company_view(company: str, plan: dict, results: list[dict], company_of: list[str], million: list[dict] | None,
                  offers: dict[str, dict], held: dict[str, list[str]], file_items: list[dict],
                  settings: dict | None = None, layout_items: list[dict] | None = None) -> dict:
-    """Everything the company screen shows for ``company`` ("" = employees with no company).
+    """What needs the user in ``company`` ("" = employees with no company), its employees and its settings.
     ``company_of``: each employee's company, in the plan's order. ``held``: {employee id: reasons} for everyone the
     month file would hold back (payroll.month_run). An employee held back for a reason that no item names gets a
     "held" item with those reasons, so the screen never says Ready for someone the file would leave out.
@@ -175,7 +176,7 @@ _STATUS_ORDER = {"needs": 0, "ready": 1, "million": 1, "none": 2}
 
 
 def overview(views: list[dict], known: list[str]) -> dict:
-    """The month overview: one row per company view, plus the companies in ``known`` that have nothing this month
+    """One row per company view, plus the companies in ``known`` that have nothing this month
     ("none"). Companies that need the user come first, then the ready ones, then the empty ones; by name inside each
     group, with "no company" last in its group."""
     rows = [{"company": v["company"], "employees": len(v["employees"]), "status": v["status"], "needs": v["needs"],

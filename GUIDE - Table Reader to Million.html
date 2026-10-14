@@ -57,72 +57,89 @@ Tested on 9 October 2026 with two client companies (6 employees): every figure a
 </ol>
 If one of them is missing, Million skips that employee <b>without any warning</b>, or says that no record was updated.</div>
 
-<h2>A. Read the time cards in Table Reader</h2>
+<h2>A. Steps 1 and 2: read the time cards and check them</h2>
+<div class="ok"><b>Table Reader has three steps, with their buttons at the top of every page:</b> <b>1 Upload</b>,
+<b>2 Check reading</b>, <b>3 Payroll</b>. Each page also has buttons to the next step.</div>
 <ol>
   <li>Open <b>Table Reader</b>. If it asks, press <b>Sign in</b> (top right) and sign in to Claude.</li>
-  <li>Drop the scans or photos (PDF, JPG or PNG) on the page, and choose the <b>company</b> they belong to.</li>
-  <li>Wait until each file shows <b>Finished</b>.</li>
-  <li>Open each file and check every <b>yellow cell</b> against the picture. Type the right value, or leave it empty if it really cannot be read.</li>
+  <li><b>1 Upload</b>: drop the scans or photos (PDF, JPG or PNG) on the page. They are listed under <b>Just added</b>;
+      choose the <b>company</b> of a file there if it has none. Wait until each file shows <b>Finished</b>, then press
+      <b>Check them →</b>.</li>
+  <li><b>2 Check reading</b>: the files are listed on the left (choose the <b>Month</b> and the <b>Company</b> above
+      the list); the file you click is on the right, its picture beside the table. Check every <b>yellow cell</b>
+      against the picture: type the right value, or leave it empty if it really cannot be read.
+      <b>Next file with yellow cells →</b> takes you on.</li>
+  <li>When a file needs something for the payroll, a box <b>This file needs you</b> is shown above its table:
+    <ul>
+      <li><b>whose card is this?</b>: click the employee it belongs to, or <b>New employee</b> (or <b>Not a time card</b>).</li>
+      <li><b>which month is this for?</b>: <b>It is for …</b>, or <b>Not a time card</b>.</li>
+      <li><b>a card layout Table Reader does not know</b>: press <b>Check the columns</b> and say once what each column
+          means (Claude can suggest it), or <b>It is right as it is</b>.</li>
+      <li><b>which company is this for?</b>: type the company's name and press <b>Save</b>.</li>
+    </ul></li>
+  <li>At the bottom of a file, <b>See … in payroll →</b> opens its employee, and <b>Go to payroll for … →</b> opens step 3.</li>
 </ol>
 <p class="small">Table Reader never guesses. A day whose date, hours or IN/OUT time is still yellow is left out of the payroll and listed under "Please check".</p>
 
-<h2>B. Prepare the payroll in Table Reader</h2>
-<div class="ok"><b>Payroll opens on the list of companies of the month.</b> Each company shows what still needs you
-(<b>Needs you</b>): cells to check on a card, a card with no owner, a file with no month or no company, an Employee No.
-to accept. Click a company, clear its list, and it turns <b>Ready</b> by itself.</div>
+<h2>B. Step 3: prepare the payroll</h2>
+<div class="ok"><b>3 Payroll lists the month's employees, company by company, on the left.</b> <b>!</b> marks an employee
+who still needs you, <b>✓</b> one who is ready. Click an employee to see them on the right; click a company's name for the
+company. "<b>… files need you in step 2 →</b>" at the top takes you to the files that still need something.</div>
 <h3>B0. Give Table Reader Million's employee list (once, and again after adding employees in Million)</h3>
 <ol>
   <li>In Million: <span class="path">Employee tab &gt; Employee</span>, <kbd>Alt</kbd>+<kbd>P</kbd> (Print).</li>
   <li>Click <b>Employment Listing</b> (or leave <b>Payroll Information</b> selected: both work), <kbd>Alt</kbd>+<kbd>P</kbd> (Print), then <b>Excel</b>.</li>
   <li>Choose <b>File</b>, <kbd>Alt</kbd>+<kbd>O</kbd> (OK). Million does not ask where to save: it writes
       <code>rptempepmlist.xls</code> (Payroll Information: <code>rptemppsnlist.xls</code>) into its company folder (on this laptop <code>C:\million\Payroll\mycompany</code>).</li>
-  <li>In Table Reader: <b>Payroll</b> &gt; <b>Import employee list from Million</b>, and choose that file.</li>
+  <li>In Table Reader: <b>3 Payroll</b> &gt; <b>Import employee list from Million</b>, and choose that file.</li>
 </ol>
 <p class="small">Table Reader keeps only the Employee No. and the name. From then on every Employee No. box offers Million's list,
 and before the Million file is made Table Reader checks each number and name against it.</p>
 <h3>B1. The month</h3>
 <ol>
-  <li>Press <b>Payroll</b> (top bar). It opens on last month; <b>&lt;</b> and <b>&gt;</b> change the month.</li>
+  <li>Press <b>3 Payroll</b> (top bar). It opens on last month; <b>&lt;</b> and <b>&gt;</b> change the month.</li>
   <li>Press <b>Month settings</b>. Click each <b>public holiday</b> until it is yellow (white = working day, grey = rest day),
       and check the two rules:
     <ul>
       <li><b>Normal hours in a working day</b> (overtime starts after this).</li>
       <li><b>Break taken off IN/OUT time cards</b> (1 hour unless you change it).</li>
     </ul></li>
-  <li>A company with other hours or another calendar: open the company and press <b>Company settings</b>.</li>
+  <li>A company with other hours or another calendar: click the company's name and press <b>Company settings</b>.</li>
 </ol>
-<h3>B2. A company</h3>
+<h3>B2. An employee</h3>
 <ol>
-  <li>Click a company. The cards of the month have already joined their employees by themselves: one employee per
-      worker, with every card of that worker.</li>
-  <li>Go through <b>Needs you</b>, item by item:
+  <li>The cards of the month have already joined their employees by themselves: one employee per worker, with every card
+      of that worker. Step 3 opens on the first employee who needs you.</li>
+  <li>At the top, <b>Needs you</b> lists what is left for this employee:
     <ul>
       <li><b>cells to check on the card</b>: press <b>Look</b>. The lines the payroll could not use are shown beside the
           card's picture; check them, then press <b>Accept</b>.</li>
-      <li><b>whose card is this?</b>: click the employee it belongs to, or <b>New employee</b>.</li>
       <li><b>Million has Employee No. … for …</b>: press <b>Use …</b> if it is the same person.</li>
-      <li><b>a card layout Table Reader does not know</b>: press <b>Check the columns</b> and say once what each column
-          means (Claude can suggest it), or <b>It is right as it is</b>.</li>
-      <li><b>Employee No. to fix</b>, <b>days that do not add up</b>, <b>no time card yet</b>: press <b>Open employee</b>.</li>
+      <li><b>Employee No. to fix</b>, <b>days that do not add up</b>, <b>no time card yet</b>: fix it in the window below.</li>
     </ul></li>
-  <li><b>Open employee</b>, or a click on an employee in the list, opens that employee in a new tab: Employee No., Name,
-      every figure (type over one to use your own; <b>Worked out: … – use it</b> brings the worked-out one back), the
-      <b>Allowance &amp; Deduction</b> tab, "Please check" and "Day by day". The employee's cards are listed at the top:
-      <b>Move to</b> another employee, or <b>Take off</b>. Changes are saved by themselves.</li>
+  <li>Below are the employee's cards (<b>Check this card →</b> opens it in step 2; <b>Move to</b> another employee, or
+      <b>Take off</b>) and the Edit Payroll window: Employee No., Name, every figure (type over one to use your own;
+      <b>Worked out: … – use it</b> brings the worked-out one back), the <b>Allowance &amp; Deduction</b> tab, "Please check"
+      and "Day by day". Changes are saved by themselves.</li>
   <li><b>Employee No.</b>: type it exactly as in Million, or pick it from the list the box offers (B0). It is remembered
       for the following months.
       For a new worker, when the name read on the card is the whole name of exactly one employee in Million's list, Table Reader fills the number in by itself and writes <b>From Million's list (same name)</b> beside it: check it, and change it if this is another person.
       A new worker with no Employee No. anywhere gets a <b>new number</b> by itself: the first 7 letters of the company's name and the next number, for example <code>MAJUJAY001</code> for the first employee of MAJU JAYA. Million does not know a new number yet: create the employee in Million with exactly this number (D2) before you import, or type the number Million already has for this person.</li>
-  <li><b>New in Million</b> (top of the company screen) lists the employees whose number Million does not have yet.
+  <li><b>Next needing you ›</b> takes you to the next employee who still needs you; <b>‹ Previous</b> goes back one.</li>
+</ol>
+<h3>B3. A company</h3>
+<ol>
+  <li>Click a company's name in the list. Its panel shows <b>Company settings</b>, what the company itself needs, and the
+      <b>Pay preview</b>: each employee's pay basis, Basic Rate and the pay they should get (a check for you, Million still
+      does the real calculation). <b>Add employee</b> adds an employee by hand.</li>
+  <li><b>New in Million</b> (top of the company's panel) lists the employees whose number Million does not have yet.
       <b>Copy all</b> copies their numbers and names, to paste into Excel. Create them in Million (D2), then import Million's
       employee list again (B0).</li>
-  <li>The <b>Pay preview</b> tab shows each employee's pay basis, Basic Rate and the pay they should get: a check for you,
-      Million still does the real calculation. <b>Add employee</b> under the list adds an employee by hand.</li>
 </ol>
 
 <h2>C. Make the month's Million file</h2>
 <ol>
-  <li>On the month page press <b>Make the month's Million file (all companies)</b>. Table Reader first shows what the file
+  <li>In <b>3 Payroll</b> press <b>Make the month's Million file (all companies)</b>. Table Reader first shows what the file
       would hold: who goes in, company by company, and who is not in it yet, with the reason.</li>
   <li>Press <b>Make the file</b>, or <b>Not now</b> to fix things first. The file is called
       <code>Payroll 2026-09 (Million).xls</code> and is kept in <span class="path">Documents &gt; Table Reader &gt; payroll</span>.</li>
@@ -131,10 +148,10 @@ and before the Million file is made Table Reader checks each number and name aga
 </ol>
 <div class="wide"><table>
   <tr><th>Not in the file yet, because</th><th>What it means</th><th>What to do</th></tr>
-  <tr><td>"Employee No. is empty" / "is used for … employees"</td><td>Million goes by the Employee No.: without one, or with one shared, it cannot tell who is who.</td><td>Open the company: the item <b>Employee No. to fix</b>.</td></tr>
+  <tr><td>"Employee No. is empty" / "is used for … employees"</td><td>Million goes by the Employee No.: without one, or with one shared, it cannot tell who is who.</td><td>In <b>3 Payroll</b>, the employee's item <b>Employee No. to fix</b>.</td></tr>
   <tr><td>"… is not in the Million employee list"</td><td>Million does not know this Employee No. and would skip it silently.</td><td><b>New in Million</b>: create the employee in Million (D2) and import the employee list again (B0). Or correct the Employee No.</td></tr>
-  <tr><td>"In Million Payroll, Employee No. … is …"</td><td>The number belongs to someone with another name in Million, who would get the figures.</td><td>Check the Employee No. in the employee view.</td></tr>
-  <tr><td>"Marked INCOMPLETE: …"</td><td>Some days could not be worked out.</td><td>Open the company and clear its <b>Needs you</b> list.</td></tr>
+  <tr><td>"In Million Payroll, Employee No. … is …"</td><td>The number belongs to someone with another name in Million, who would get the figures.</td><td>Check the Employee No. in the employee's window.</td></tr>
+  <tr><td>"Marked INCOMPLETE: …"</td><td>Some days could not be worked out.</td><td>In <b>3 Payroll</b>, clear the employee's <b>Needs you</b> list (and their files in step 2).</td></tr>
   <tr><td>"… could not be saved. If it is open in Excel…"</td><td>The earlier file is open in Excel.</td><td>Close it in Excel, make the file again.</td></tr>
 </table></div>
 

@@ -5,10 +5,11 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 **To continue, paste this into the new session:**
 
-> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 23), then let's continue.
+> Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 24), then let's continue.
 
-Stage 4 is complete: Part B (session 23) is merged into `pdf-text` and the app rebuilt (14 Oct). Not pushed; the
-`download` branch and the PDF guide are not updated yet (each needs your OK).
+Session 24 rearranged the app into three steps (Upload, Check reading, Payroll) on branch `three-steps`: **not
+merged, not pushed, app not rebuilt**. Merging, rebuilding, pushing, the `download` branch and the PDF guide each
+need your OK.
 
 ---
 
@@ -101,6 +102,12 @@ workers are not in that month's payroll, so there was nothing to update. Details
 
   Real September data: all 84 employees identical, 8 ready / 76 held as before. Reviewed: 3 important and 7 minor
   findings fixed. Waiting for the user: push / `download` branch / PDF guide. Details: PROGRESS.md 23.
+- **Session 24 (2026-10-14): three steps built on branch `three-steps` (from `pdf-text`), not merged, not pushed, app
+  not rebuilt:** 1 Upload (Just added) → 2 Check reading (files list, the file with "This file needs you", columns in
+  place) → 3 Payroll (companies and employees in one list, the employee or company on the right), step buttons at the
+  top, same tab. New requests `/people` and `/files`; the company screen's two requests are gone. Real September data:
+  87 employees identical, 9 ready / 78 held, same file problems. Click-throughs in `tools/clickthrough/`. Details:
+  PROGRESS.md 24.
 - **Still open:** September itself is Processed and still lacks the two workers (un-process / re-create: the user
   decides). October holds September figures as test data — clear or overwrite before the real October payroll.
 - Built in session 9: the warning before download when an Employee No. is not in `employees.txt` (which now lists
@@ -122,10 +129,10 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | Payroll from **IN/OUT time cards** | **Done (session 9).** OUT − IN − break (1 h, box next to Normal hours); several pairs added up, no break. 4 points to confirm with the user: PROGRESS.md session 9. |
 | Payroll from **month grids** ("Name \| 1 … 31", many workers per sheet) | **Done (session 7).** Each worker's row is offered separately; unclear marks are reported. |
 | **Million import file (.xls)** for the office | **Done (session 7).** Since session 11 one file for the whole month ("Make the month's Million file", summary first since session 21); the per-company "Download Million file (.xls)" went with the old page (session 23). |
-| Company-first payroll (sessions 18-23) | Month overview → company screen (Needs you, employees, Pay preview, New in Million) → employee view. The old payroll page (section 2 "tick the files", "Add employees from files", Results with First/Next) is removed on `employee-view` (session 23). |
-| Browser check | Click-throughs in headless Edge on made-up data since session 19 (scripted, scratch only). Nobody has looked at the new screens with their eyes on a real card yet. |
+| Three steps (session 24, branch `three-steps`) | 1 Upload → 2 Check reading (files, and each file's problems for the payroll) → 3 Payroll (companies and employees in one list; employee or company on the right). Replaces the month overview, company screen and the separate Look / Layout pages of sessions 18-23. |
+| Browser check | Click-throughs in headless Edge on made-up data, in the repo since session 24 (`tools/clickthrough/`, `sh tools/clickthrough/run.sh <scenario>`). Nobody has looked at the new screens with their eyes on a real card yet. |
 
-Tests: **549 pass** on `employee-view` (530 on `pdf-text`) (`.venv\Scripts\python -m pytest -q`; a worktree without its own `.venv` can use the main folder's). Package rebuilt in session 23 (14 Oct, with Part B). Sessions up to 22 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed); session 23 merged into `pdf-text` too. The `download` branch still has the build of 12 Oct.
+Tests: **554 pass** on `three-steps` (549 on `pdf-text`) (`.venv\Scripts\python -m pytest -q`; a worktree without its own `.venv` can use the main folder's). Package rebuilt in session 23 (14 Oct, with Part B). Sessions up to 22 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed); session 23 merged into `pdf-text` too; session 24 on `three-steps` only. The `download` branch still has the build of 12 Oct.
 
 ## 2. Git / GitHub
 

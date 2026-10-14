@@ -436,7 +436,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
 
     # ------------------------------------------------------------------------------------- payroll by company
     def month_state(month: str) -> dict:
-        """The month opened (open_month) and worked out once, for the overview and the company screen."""
+        """The month opened (open_month) and worked out once, for step 3 (people) and step 2 (files)."""
         plan, docs, gone, added, numbered = open_month(month)
         results = payroll_view(plan, docs, gone)["results"]
         company_of_doc = {d["id"]: d["company"] for d in docs}
@@ -479,8 +479,8 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         """{company: items} for the finished files that need the user in ``month``: a card of the month that is on no
         employee ("unplaced"), and a file with no month that is on no employee in any month ("month").
         Also {company: other files}, on no employee in ``month``: set aside as "not a time card" ("month": "none"), or
-        read as another month and on no employee there. They do not need the user (not items); the company screen
-        lists them folded, so a mistaken "Not a time card" or a month read wrongly can be put right.
+        read as another month and on no employee there. They do not need the user (not items); step 2 shows
+        them on the file, so a mistaken "Not a time card" or a month read wrongly can be put right.
         Also {file id: its month} (None when it has none) for every finished file with a company."""
         chosen, index = plans.load_file_months(), read_auto_index() or {}
         out: dict[str, list[dict]] = {}
@@ -512,43 +512,6 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
             elif found is None and chosen.get(d["id"]) != "none" and cards:
                 out.setdefault(d["company"], []).append({"kind": "month", "doc": d["id"], "name": d["name"], "why": why})
         return out, other, months
-
-    def view_of(state: dict, company: str) -> dict:
-        view = companies.company_view(company, state["plan"], state["results"], state["company_of"], state["million"],
-                                      state["offers"], state["held"], state["files"].get(company, []),
-                                      payroll.settings_view(state["plan"], company) if company else None,
-                                      state["layouts"].get(company, []))
-        return {**view, "other_files": state["other"].get(company, [])}
-
-    @app.get("/api/payroll/{month}/companies")
-    def payroll_companies(month: str):
-        """The month overview: one row per company with what still needs the user."""
-        state = month_state(month)
-        loose = [d for d in state["docs"] if not d["company"]]
-        names = set(state["company_of"]) | set(state["files"]) | ({""} if loose else set())
-        views = [view_of(state, c) for c in names]
-        for v in views:
-            if v["company"] == "" and loose:
-                v["status"], v["needs"] = "needs", v["needs"] + len(loose)      # files waiting for a company
-        known = sorted({j["company"] for j in store.list_jobs() if j.get("company")})
-        return {"month": month, **companies.overview(views, known), "checked_with_million": state["million"] is not None,
-                "settings": payroll.settings_view(state["plan"], "")["default"],
-                "added_by_themselves": state["added"], "numbered": state["numbered"]}
-
-    @app.get("/api/payroll/{month}/company")
-    def payroll_company(month: str, name: str = ""):
-        """One company's screen: its "Needs you" items, its employees with their main figures. ``name`` "" = the
-        employees and finished files that have no company yet."""
-        state = month_state(month)
-        view = view_of(state, name)
-        doc_names = {d["id"]: d["name"] for d in state["docs"]}
-        for item in view["items"]:
-            if "cards" in item:
-                item["cards"] = [{"id": c, "name": doc_names.get(c, "")} for c in item["cards"]]
-        view["month"] = month
-        if name == "":
-            view["files"] = [{"id": d["id"], "name": d["name"]} for d in state["docs"] if not d["company"]]
-        return view
 
     def step_views(state: dict) -> tuple[list[dict], dict[str, list[dict]]]:
         """Each company's view without its files' items (step 3), and every file's problems (step 2)."""
@@ -655,7 +618,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
     def look_panel(month: str, employee: str = ""):
         """The one-look panel of one employee: each of their cards with the lines the calculation could not use, and
         every cell it read there as it is now. Accepting goes through PUT /api/jobs/{id}/cells ("via": "look").
-        Changes nothing: the month was opened by the company screen this comes from."""
+        Changes nothing: the month was opened by step 3, where this comes from."""
         plan = plans.load(month)
         person = next((e for e in plan["employees"] if e["id"] == employee), None)
         if person is None:
@@ -836,7 +799,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
 
     @app.get("/api/payroll/{month}/employee/{employee_id}")
     def get_employee(month: str, employee_id: str):
-        """The employee view. Reads the plan as saved; changes nothing (the month was opened by the company screen)."""
+        """The employee view. Reads the plan as saved; changes nothing (the month was opened by step 3)."""
         return employee_view(month, plans.load(month), employee_id)
 
     @app.put("/api/payroll/{month}/employee/{employee_id}")

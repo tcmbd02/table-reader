@@ -1476,3 +1476,8 @@ def test_the_employee_view_says_which_cards_follow_a_confirmed_layout(tmp_path):
         assert [k["mapped"] for k in c.get(f"/api/payroll/{month}/employee/{who}").json()["cards"]] == [False]
         c.put("/api/layouts", json={"doc": item["doc"], "page": item["page"], "columns": report_2_map()})
         assert [k["mapped"] for k in c.get(f"/api/payroll/{month}/employee/{who}").json()["cards"]] == [True]
+
+
+def test_the_company_screens_requests_are_gone(client):
+    assert client.get("/api/payroll/2026-09/companies").status_code == 404
+    assert client.get("/api/payroll/2026-09/company", params={"name": ""}).status_code == 404

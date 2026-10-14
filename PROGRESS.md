@@ -1,5 +1,41 @@
 # Progress log
 
+## Session 24 - 2026-10-14 - Three steps: Upload, Check reading, Payroll
+The user asked for one workflow of three pages with buttons between them. Spec
+`docs/superpowers/specs/2026-10-14-three-step-workflow-design.md`, plan `docs/superpowers/plans/2026-10-14-three-step-workflow.md`
+(8 tasks, built in this session). Branch `three-steps` (from `pdf-text`): **not merged, not pushed, app not rebuilt.**
+554 tests pass; Malay checks pass (0 missing, 0 not translated).
+- **The page:** three step buttons at the top (**1 Upload**, **2 Check reading** with the number of yellow cells left,
+  **3 Payroll** with the number of things that need the user) replace the Payroll link. Everything opens in the same
+  tab; each step remembers in this tab where the user was (sessionStorage, safe when refused).
+- **1 Upload:** the drop box, the Inbox / Tables folders, and **Just added** (files added in this tab and every file
+  being read), then **Check them →**.
+- **2 Check reading:** files on the left (Company and Month filters; "All months" shows yellow cells only), the file on
+  the right with **This file needs you** above its table (whose card, which month, unknown card layout, no company, set
+  aside / another month), the column choice opened in place (`#/check/<file>/columns/<page>`), and **Next file with
+  yellow cells →**, **See … in payroll →**, **Go to payroll for … →**.
+- **3 Payroll:** the month bar as before; the month's companies and employees in one list (search, ! / ✓); an employee
+  on the right with their Needs you, cards (**Check this card →**), the Edit Payroll window, **‹ Previous** /
+  **Next needing you ›**, and Look in place (`.../e/<id>/look`); a company heading shows its settings, pay preview, Add
+  employee and New in Million.
+- **Server:** `GET /api/payroll/{month}/people` (step 3) and `GET /api/payroll/{month}/files` (step 2), built from the
+  same month workings; the job list carries each file's cells to check (cached on the files' size and time: 0.01 s for
+  63 real files). `GET .../companies` and `.../company` are gone; old addresses (`#/doc/…`, `.../look/…`,
+  `.../layout/…`, `.../old`) open the matching new place.
+- **Removed:** the start page's Recent files, the month overview, the company screen, the separate Look and Layout
+  pages, new tabs (`static/companies.js` → `people.js`, `layout.js` → `columns.js`, new `upload.js`, `check.js`,
+  `steps.js`).
+- **A company's status in step 3 no longer counts its files' problems** (they are in step 2; the company says "N files
+  need you in step 2").
+- **Click-throughs** now live in `tools/clickthrough/` (made-up data; `sh tools/clickthrough/run.sh <scenario>`; needs
+  dev-only `websockets`): `upload_page`, `check_page`, `check_reading` (with `SLOW_FILE=1`), `people_page`,
+  `employee_page` — all "No problems". The harness never counted failed checks before (it was imported twice); fixed.
+- **Real September data (copies, counts only, deleted):** 87 employees' figures identical before and after, the month
+  file 9 ready / 78 held both times, and the same file problems (29 cards on nobody, 3 unknown layouts).
+- **Guides:** both long guides (sections A-C) and the quick guide's text rewritten for the three steps. The PDF and its
+  pictures were not regenerated (needs the user's OK).
+- Rulings taken during the build are listed in the session's final message.
+
 ## Session 23 - 2026-10-14 - Stage 4 Part B: the employee view, the pay preview tab, Add employee; the old page removed
 Built on branch `employee-view` (from `pdf-text` after Part C), Tasks 4-10 of
 `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`. **Merged into `pdf-text` and the app rebuilt on the
