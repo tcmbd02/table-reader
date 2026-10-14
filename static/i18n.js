@@ -54,6 +54,8 @@ const MS = {
   "Next needing you ›": "Seterusnya yang perlukan anda ›",
   "Nobody else needs you": "Tiada orang lain perlukan anda",
   "Search name or Employee No.": "Cari nama atau No. Pekerja",
+  "Showing only {company} (the Company chosen in step 2).": "Hanya {company} ditunjukkan (Syarikat yang dipilih dalam langkah 2).",
+  "Show all companies": "Tunjukkan semua syarikat",
   "Take this card off the employee? It goes back to step 2 as a card whose employee is not known.": "Tanggalkan kad ini daripada pekerja? Ia kembali ke langkah 2 sebagai kad yang pekerjanya tidak diketahui.",
   "Payroll": "Gaji",
   "Quit Table Reader": "Tutup Table Reader",

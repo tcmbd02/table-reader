@@ -21,6 +21,15 @@ async def scenario(page, downloads):
     # the month bar's Million file summary opens
     await page.ev("document.getElementById('mo-run').click(); T.until(() => !document.getElementById('mo-run-result').hidden, 'summary')")
     expect("summary shown", "Million file" in await page.ev("document.getElementById('mo-run-result').textContent"), True)
+    # step 2's Company chooser also filters step 3: step 3 says so and can show everyone again
+    await page.goto(f"{BASE}/#/check")
+    await page.ev("T.until(() => document.getElementById('company-filter'), 'chooser'); T.set('company-filter', 'A & B (M)'); T.sleep(300)")
+    await page.ev("document.getElementById('step-payroll').click()")
+    await page.ev("T.until(() => !document.getElementById('pp-filter').hidden, 'filter line', 6000)")
+    expect("only A & B listed", await page.ev("T.text('#pp-list .side-head strong')"), "A & B (M)")
+    await page.ev("T.click('Show all companies'); T.sleep(300)")
+    expect("everyone again", "MAJU JAYA" in await page.ev("T.text('#pp-list .side-head strong')"), True)
+    expect("line gone", await page.ev("document.getElementById('pp-filter').hidden"), True)
     # an empty month
     await page.goto(f"{BASE}/#/payroll/2026-03")
     await page.ev("T.until(() => !document.getElementById('pp-empty').hidden, 'empty month')")

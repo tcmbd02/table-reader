@@ -29,6 +29,10 @@ function showStep(step) {
   for (const [id, s] of [["upload", "upload"], ["check", "check"], ["people", "payroll"]]) $(id).hidden = s !== step;
 }
 
+// A step entered from another step asks the server again (what it had may have changed meanwhile: a file finished, a
+// card was placed, an employee was made); moving inside a step uses what it has and refreshes it.
+let lastStep = null;
+
 function route() {
   const hash = location.hash;
   for (const [re, to] of OLD_ADDRESSES) {
@@ -39,17 +43,22 @@ function route() {
   const ck = hash.match(/^#\/check(?:\/([^/]+)(?:\/columns\/(\d+)(?:\/h\/([^/]+))?)?)?$/);
   const pp = hash.match(/^#\/payroll(?:\/(\d{4}-\d{2})(?:\/e\/([^/]+)(\/look)?|\/c\/(.*))?)?$/);
   if (ck && typeof showCheck === "function") {
+    const entering = lastStep !== "check";
+    lastStep = "check";
     showStep("check");
     if (ck[1]) remember("place.check", hash);
     showCheck(ck[1] ? decodeURIComponent(ck[1]) : null,
-      ck[2] ? { page: Number(ck[2]), hours: ck[3] ? decodeURIComponent(ck[3]) : null } : null);
+      ck[2] ? { page: Number(ck[2]), hours: ck[3] ? decodeURIComponent(ck[3]) : null } : null, entering);
   } else if (pp && typeof showPeople === "function") {
+    const entering = lastStep !== "payroll";
+    lastStep = "payroll";
     showStep("payroll");
     if (pp[1]) setWorkMonth(pp[1]);
     if (pp[2] || pp[4] !== undefined) remember("place.payroll", hash);
     showPeople(pp[1] || workMonth(), { employee: pp[2] ? decodeURIComponent(pp[2]) : null, look: Boolean(pp[3]),
-      company: pp[4] !== undefined ? decodeURIComponent(pp[4]) : null });
+      company: pp[4] !== undefined ? decodeURIComponent(pp[4]) : null }, entering);
   } else {
+    lastStep = "upload";
     showStep("upload");
     showUpload();
   }

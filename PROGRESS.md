@@ -29,11 +29,19 @@ The user asked for one workflow of three pages with buttons between them. Spec
   need you in step 2").
 - **Click-throughs** now live in `tools/clickthrough/` (made-up data; `sh tools/clickthrough/run.sh <scenario>`; needs
   dev-only `websockets`): `upload_page`, `check_page`, `check_reading` (with `SLOW_FILE=1`), `people_page`,
-  `employee_page` — all "No problems". The harness never counted failed checks before (it was imported twice); fixed.
+  `employee_page`, `cross_steps` — all "No problems". The harness never counted failed checks before (it was imported twice); fixed.
 - **Real September data (copies, counts only, deleted):** 87 employees' figures identical before and after, the month
   file 9 ready / 78 held both times, and the same file problems (29 cards on nobody, 3 unknown layouts).
 - **Guides:** both long guides (sections A-C) and the quick guide's text rewritten for the three steps. The PDF and its
   pictures were not regenerated (needs the user's OK).
+- **Review** (one fresh reviewer, whole branch): "with fixes", 0 critical, 4 important, 9 minor. Fixed, each with a
+  click-through that failed first: a step entered from another step asks the server again (a file left while being
+  read showed its progress for ever; "See … in payroll" after placing a card on a new employee opened someone else);
+  "… need you in step 2 →" puts step 2 back on the month (not "All months") and opens the first file with something
+  to settle (the company's button: that company, Company chooser set to it); what joined by itself and new Employee
+  Nos. are kept from step 2's opening of the month and said in step 3; step 3 says when step 2's Company chooser
+  filters its list ("Show all companies"); the Month list is no longer rebuilt every 4 s. New scenario `cross_steps`.
+  Seven minor findings left (listed in the session's final message).
 - Rulings taken during the build are listed in the session's final message.
 
 ## Session 23 - 2026-10-14 - Stage 4 Part B: the employee view, the pay preview tab, Add employee; the old page removed

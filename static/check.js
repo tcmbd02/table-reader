@@ -247,16 +247,24 @@ async function ckLoad() {
     const [jobs, files] = await Promise.all([api("GET", "/api/jobs"),
       ckAll ? Promise.resolve(null) : api("GET", `/api/payroll/${month}/files`)]);
     ckJobs = jobs; ckFiles = files;
-    if (files) stepBadge("payroll", files.needs);
+    if (files) {
+      stepBadge("payroll", files.needs);
+      keepMonthNote(files.month, files.added_by_themselves, files.numbered);   // step 3 says it
+    }
     ckError("");
   } catch (e) { ckError(e.message); ckJobs = ckJobs || []; }
   ckDrawList();
 }
 
+// The Month list, drawn again only when what it offers changes (so an open list is not closed under the user).
+let ckMonthSignature = "";
 function ckDrawMonth() {
   const base = defaultPayrollMonth();
   const months = [shiftMonth(base, 1), ...Array.from({ length: 12 }, (_, k) => shiftMonth(base, -k))];
   if (!months.includes(workMonth())) months.unshift(workMonth());
+  const signature = JSON.stringify([months, ckAll, workMonth()]);
+  if (signature === ckMonthSignature) return;
+  ckMonthSignature = signature;
   $("ck-month").replaceChildren(el("option", { value: "all", text: t("All months"), selected: ckAll }),
     ...months.map((m) => el("option", { value: m, text: monthTitle(m), selected: !ckAll && m === workMonth() })));
 }
@@ -275,17 +283,22 @@ function ckDrawList() {
   refreshCheckBadge(ckJobs);
 }
 
-async function showCheck(id, columns) {
-  const stale = !ckJobs || (!ckAll && (!ckFiles || ckFiles.month !== workMonth())) || (id && !ckJobs.some((j) => j.id === id));
+// ``entering``: step 2 was not on the screen just before (everything is asked again, also the file shown last time).
+async function showCheck(id, columns, entering = false) {
+  const stale = entering || !ckJobs || (!ckAll && (!ckFiles || ckFiles.month !== workMonth())) || (id && !ckJobs.some((j) => j.id === id));
   if (stale) await ckLoad(); else ckDrawList();
   $("ck-empty").hidden = true;
   if (!id) {                                       // no file in the address: the first that needs the user, else the first
     const shown = ckJobs.filter(ckFilter);
-    const first = shown.find(ckNeeds) || shown[0];
+    // step 3's "… need you in step 2 →": the first file with something to settle, not one with only yellow cells
+    const problem = recall("check.want") ? shown.find((j) => ckItems(j.id).some((i) => i.kind !== "other")) : null;
+    forget("check.want");
+    const first = problem || shown.find(ckNeeds) || shown[0];
     if (first) location.replace(`#/check/${encodeURIComponent(first.id)}`); else ckShowEmpty();
     return;
   }
   if (!ckJobs.some((j) => j.id === id)) { forget("place.check"); location.replace("#/check"); return; }
+  if (entering && id === currentId) currentDoc = null;      // it may have finished, or been corrected in step 3
   if (id !== currentId || !currentDoc) await openDoc(id); else ckDrawFile();
   if (columns) showLayout(id, columns.page, columns.hours); else $("layout").hidden = true;
 }

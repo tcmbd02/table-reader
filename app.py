@@ -545,7 +545,8 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
     @app.get("/api/payroll/{month}/files")
     def payroll_files(month: str):
         """Step 2: each file's problems in ``month``, the month each finished file is for, the employees each file's
-        cards are on, the employees of each company (for "whose card is this?") and how many things step 3 has."""
+        cards are on, the employees of each company (for "whose card is this?"), how many things step 3 has, and what
+        opening the month did by itself (as GET .../people says it)."""
         state = month_state(month)
         views, problems = step_views(state)
         plan = state["plan"]
@@ -557,7 +558,9 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         for e, company in zip(plan["employees"], state["company_of"]):
             choices.setdefault(company, []).append({"id": e["id"], "name": e["name"], "emp_no": e["emp_no"]})
         return {"month": month, "files": problems, "months": state["months"], "employees": on, "choices": choices,
-                "needs": sum(v["needs"] for v in views)}
+                "needs": sum(v["needs"] for v in views),
+                # opening the month here (step 2 usually does it first): what joined by itself, for step 3 to say
+                "added_by_themselves": state["added"], "numbered": state["numbered"]}
 
     @app.post("/api/payroll/{month}/place")
     async def place_card(month: str, request: Request):

@@ -12,6 +12,7 @@ let coCompany = null;        // the company whose panel is open
 let coView = null;           // its row of ppView
 let ppChain = Promise.resolve();
 let ppTimer = null;
+let ppNotes = [];             // what opening the month did by itself, shown in this visit (monthNotes)
 
 function companyHash(month, company) { return `#/payroll/${month}/c/${encodeURIComponent(company)}`; }
 function employeeHash(month, id) { return `#/payroll/${month}/e/${encodeURIComponent(id)}`; }
@@ -34,15 +35,18 @@ function companyStatus(r) {
 
 function everyone() { return ppView ? ppView.companies.flatMap((r) => r.employees) : []; }
 
-async function showPeople(month, sel) {
+// ``entering``: step 3 was not on the screen just before (the month is asked again, and its notes are taken).
+async function showPeople(month, sel, entering = false) {
   const other = month !== moMonth;
   moMonth = month; ppSel = sel;
   $("mo-title").textContent = t("Payroll {month}", { month: monthTitle(moMonth) });
   if (other) { $("mo-run-result").hidden = true; $("mo-settings").hidden = true; }
+  if (other || entering) ppNotes = takeMonthNotes(month);
   moError("");
-  if (!ppView || ppView.month !== month) await ppLoad();
+  const fresh = entering || !ppView || ppView.month !== month;
+  if (fresh) await ppLoad();
   else { ppDraw(); ppRefreshSoon(); }
-  ppShowSelection();
+  await ppShowSelection(fresh);
 }
 
 // The month from the server again (one request after the other, so an older answer never draws over a newer one).
@@ -52,7 +56,9 @@ function ppLoad() {
     if (month !== moMonth) return;
     try {
       const view = await api("GET", `/api/payroll/${month}/people`);
-      if (month === moMonth) { ppView = view; ppDraw(); }
+      if (month !== moMonth) return;
+      if (view.added_by_themselves || view.numbered) ppNotes.push({ added: view.added_by_themselves, numbered: view.numbered });
+      ppView = view; ppDraw();
     } catch (e) { moError(e.message); }
   });
   return ppChain;
@@ -63,14 +69,14 @@ function loadCompany() { return ppLoad(); }          // settings.js and paytable
 function ppDraw() {
   if (!ppView) return;
   const v = ppView;
-  const info = [addedByThemselves(v.added_by_themselves), v.numbered ? newNumbersText(v.numbered) : ""].filter(Boolean).join(" ");
+  const info = monthNotesText(ppNotes);
   $("mo-info").hidden = !info; $("mo-info").textContent = info;
   $("mo-total").replaceChildren(
     t("{a} of {b} employees ready.", { a: v.ready_employees, b: v.employees }) + " ",
     v.checked_with_million ? "" : t("The Employee Nos. are not being checked against Million: import Million's employee list.") + " ",
     v.files_needing ? el("button", { type: "button", class: "link",
       text: tn(v.files_needing, "{n} file needs you in step 2 →", "{n} files need you in step 2 →"),
-      onclick: () => { location.hash = "#/check"; } }) : "");
+      onclick: () => toFileProblems() }) : "");
   $("mo-csv").disabled = !v.employees;
   stepBadge("payroll", v.companies.reduce((n, r) => n + r.needs, 0));
   ppDrawList();
@@ -100,18 +106,44 @@ function ppDrawList() {
       el("span", { class: e.status === "needs" ? "pill check" : "pill good",
         text: e.status === "needs" ? "!" : e.status === "million" ? t("Waiting for Million") : "✓" }))))))));
   $("pp-none").hidden = rows.length > 0 || !ppView.companies.length;
+  // the Company chosen in step 2 filters this list too: say so, and let it show everyone again
+  $("pp-filter").hidden = !companyFilter;
+  if (companyFilter) {
+    const showAll = () => {
+      companyFilter = "";
+      try { localStorage.setItem("companyFilter", ""); } catch (_) { /* private window */ }
+      companySignature = "";
+      ppDrawList(); if (!$("employee").hidden) ppDrawWalk();
+    };
+    $("pp-filter").replaceChildren(t("Showing only {company} (the Company chosen in step 2).",
+      { company: companyFilter === NO_COMPANY ? t("(no company)") : companyFilter }) + " ",
+    el("button", { type: "button", class: "link", text: t("Show all companies"), onclick: showAll }));
+  }
+}
+
+// "… need you in step 2 →": step 2 on the working month (not "All months"), on the first file with something to
+// settle; for a company's button that company's files, with the Company chooser set to it (else every company).
+function toFileProblems(company) {
+  remember("checkAll", ""); ckAll = false; ckFiles = null;
+  companyFilter = company === undefined ? "" : company === "" ? NO_COMPANY : company;
+  try { localStorage.setItem("companyFilter", companyFilter); } catch (_) { /* private window */ }
+  companySignature = "";
+  remember("check.want", "1");
+  location.hash = "#/check";
 }
 
 function ppShowPane(which) {
   for (const id of ["company", "employee", "look", "pp-empty"]) $(id).hidden = id !== which;
 }
 
-// What the address chose, or else the first employee who needs the user (or the first one).
-function ppShowSelection() {
+// What the address chose, or else the first employee who needs the user (or the first one). ``fresh``: ppView was
+// just asked for; an employee or company not in an older one is looked for again before it counts as gone.
+async function ppShowSelection(fresh) {
   if (!ppView) return;
   const sel = ppSel;
   const gone = (sel.employee && !everyone().some((e) => e.id === sel.employee))
     || (sel.company !== null && !ppView.companies.some((r) => r.company === sel.company));
+  if (gone && !fresh) { await ppLoad(); if (ppSel === sel) await ppShowSelection(true); return; }
   if (gone) { forget("place.payroll"); location.replace(`#/payroll/${moMonth}`); return; }
   if (!sel.employee && sel.company === null) {
     const order = ppOrder();
@@ -223,7 +255,7 @@ function drawCompany() {
     items.push(el("li", { class: "need" }, el("strong", { text: tn(coView.files_needing,
       "{n} file of this company needs you in step 2.", "{n} files of this company need you in step 2.") }),
     el("div", { class: "need-buttons" }, el("button", { type: "button", class: "primary", text: t("Go to step 2 →"),
-      onclick: () => { location.hash = "#/check"; } }))));
+      onclick: () => toFileProblems(coCompany) }))));
   }
   $("co-items").replaceChildren(items.length ? el("ol", { class: "needs" }, ...items)
     : el("p", { class: "muted", text: t("Nothing needs you here.") }));

@@ -27,7 +27,7 @@ mode = {"card": month_card, "slow": False}
 
 def reader(image):
     if mode["slow"]:
-        time.sleep(4)
+        time.sleep(10)
     return mode["card"](image)
 
 
@@ -70,7 +70,7 @@ if fresh:
 if os.environ.get("SLOW_FILE"):
     def slow():
         mode["slow"] = True
-        store.create_job("SLOW MAJU JAYA ALI SEPT.png", png())
+        store.create_job(f"MAJU JAYA SLOW SEPT {YEAR}.png", png())
     threading.Timer(2, slow).start()
 
 import uvicorn  # noqa: E402

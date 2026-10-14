@@ -1481,3 +1481,19 @@ def test_the_employee_view_says_which_cards_follow_a_confirmed_layout(tmp_path):
 def test_the_company_screens_requests_are_gone(client):
     assert client.get("/api/payroll/2026-09/companies").status_code == 404
     assert client.get("/api/payroll/2026-09/company", params={"name": ""}).status_code == 404
+
+
+def test_step_2_tells_what_joined_by_itself_when_it_opens_the_month_first(tmp_path):
+    """In the three steps, step 2 usually opens the month first: what joined by itself and the new Employee Nos. are
+    not lost, they come back from GET /files (for the page to carry to step 3)."""
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"MAJU JAYA ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "MAJU JAYA", "MAJU JAYA")
+        month = f"{YEAR}-09"
+        files = c.get(f"/api/payroll/{month}/files").json()             # read after the app started: joins now
+        assert files["added_by_themselves"]["added"] == [{"name": "ALI", "cards": 1}]
+        assert files["added_by_themselves"]["new_numbers"] == 1 and files["numbered"] == 0   # ALI got a new number
+        again = c.get(f"/api/payroll/{month}/files").json()
+        assert again["added_by_themselves"] is None and again["numbered"] == 0     # once only

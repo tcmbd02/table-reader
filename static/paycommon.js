@@ -60,6 +60,20 @@ function newNumbersText(n) {
     "{n} employees without an Employee No. were given new ones (the company's first 7 letters and a number). Create those employees in Million with these numbers before you import.");
 }
 
+// What opening a month did by itself (files that joined, new Employee Nos.). The server says it once, to whichever step
+// opened the month (step 2 usually does it first), so it is kept in this tab until step 3 shows it.
+function monthNotes(month) {
+  try { const list = JSON.parse(recall(`notes.${month}`) || "[]"); return Array.isArray(list) ? list : []; } catch (_) { return []; }
+}
+function keepMonthNote(month, added, numbered) {
+  if (!added && !numbered) return;
+  remember(`notes.${month}`, JSON.stringify([...monthNotes(month), { added, numbered }].slice(-10)));
+}
+function takeMonthNotes(month) { const list = monthNotes(month); forget(`notes.${month}`); return list; }
+function monthNotesText(notes) {
+  return notes.flatMap((n) => [addedByThemselves(n.added), n.numbered ? newNumbersText(n.numbered) : ""]).filter(Boolean).join(" ");
+}
+
 function employeeNoHint(fromMillion, newNumbers) {
   const parts = [];
   if (newNumbers) parts.push(newNumbersText(newNumbers));
