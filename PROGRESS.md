@@ -3,8 +3,9 @@
 ## Session 24 - 2026-10-14 - Three steps: Upload, Check reading, Payroll
 The user asked for one workflow of three pages with buttons between them. Spec
 `docs/superpowers/specs/2026-10-14-three-step-workflow-design.md`, plan `docs/superpowers/plans/2026-10-14-three-step-workflow.md`
-(8 tasks, built in this session). Branch `three-steps` (from `pdf-text`): **not merged, not pushed, app not rebuilt.**
-554 tests pass; Malay checks pass (0 missing, 0 not translated).
+(8 tasks, built in this session). Branch `three-steps` (from `pdf-text`), **merged into `pdf-text` and the app
+rebuilt on the user's OK (local, not pushed; `download` branch and PDF guide not updated).**
+555 tests pass; Malay checks pass (0 missing, 0 not translated).
 - **The page:** three step buttons at the top (**1 Upload**, **2 Check reading** with the number of yellow cells left,
   **3 Payroll** with the number of things that need the user) replace the Payroll link. Everything opens in the same
   tab; each step remembers in this tab where the user was (sessionStorage, safe when refused).

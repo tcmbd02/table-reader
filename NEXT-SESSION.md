@@ -7,9 +7,8 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 
 > Read NEXT-SESSION.md (section 0 first) and PROGRESS.md (sessions 9 to 24), then let's continue.
 
-Session 24 rearranged the app into three steps (Upload, Check reading, Payroll) on branch `three-steps`: **not
-merged, not pushed, app not rebuilt**. Merging, rebuilding, pushing, the `download` branch and the PDF guide each
-need your OK.
+Session 24 rearranged the app into three steps (Upload, Check reading, Payroll): **merged into `pdf-text` and the app
+rebuilt (14 Oct) on the user's OK; not pushed.** Pushing, the `download` branch and the PDF guide each need your OK.
 
 ---
 
@@ -102,8 +101,8 @@ workers are not in that month's payroll, so there was nothing to update. Details
 
   Real September data: all 84 employees identical, 8 ready / 76 held as before. Reviewed: 3 important and 7 minor
   findings fixed. Waiting for the user: push / `download` branch / PDF guide. Details: PROGRESS.md 23.
-- **Session 24 (2026-10-14): three steps built on branch `three-steps` (from `pdf-text`), not merged, not pushed, app
-  not rebuilt:** 1 Upload (Just added) → 2 Check reading (files list, the file with "This file needs you", columns in
+- **Session 24 (2026-10-14): three steps, merged into `pdf-text` (local, not pushed) and the app rebuilt on the
+  user's OK:** 1 Upload (Just added) → 2 Check reading (files list, the file with "This file needs you", columns in
   place) → 3 Payroll (companies and employees in one list, the employee or company on the right), step buttons at the
   top, same tab. New requests `/people` and `/files`; the company screen's two requests are gone. Real September data:
   87 employees identical, 9 ready / 78 held, same file problems. Click-throughs in `tools/clickthrough/`. Details:
@@ -132,7 +131,7 @@ workers are not in that month's payroll, so there was nothing to update. Details
 | Three steps (session 24, branch `three-steps`) | 1 Upload → 2 Check reading (files, and each file's problems for the payroll) → 3 Payroll (companies and employees in one list; employee or company on the right). Replaces the month overview, company screen and the separate Look / Layout pages of sessions 18-23. |
 | Browser check | Click-throughs in headless Edge on made-up data, in the repo since session 24 (`tools/clickthrough/`, `sh tools/clickthrough/run.sh <scenario>`). Nobody has looked at the new screens with their eyes on a real card yet. |
 
-Tests: **554 pass** on `three-steps` (549 on `pdf-text`) (`.venv\Scripts\python -m pytest -q`; a worktree without its own `.venv` can use the main folder's). Package rebuilt in session 23 (14 Oct, with Part B). Sessions up to 22 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed); session 23 merged into `pdf-text` too; session 24 on `three-steps` only. The `download` branch still has the build of 12 Oct.
+Tests: **555 pass** on `pdf-text` (`.venv\Scripts\python -m pytest -q`; a worktree without its own `.venv` can use the main folder's). Package rebuilt in session 24 (14 Oct, with the three steps). Sessions up to 22 are committed on `pdf-text` (PR #2, base `main`, not merged; local commits not pushed); session 23 merged into `pdf-text` too; session 24 merged into `pdf-text` too. The `download` branch still has the build of 12 Oct.
 
 ## 2. Git / GitHub
 
