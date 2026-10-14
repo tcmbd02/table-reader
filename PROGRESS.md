@@ -1,5 +1,58 @@
 # Progress log
 
+## Session 22 - 2026-10-14 - Stage 4 Part C: conversion (what Claude reads correctly now reaches Million's fields)
+Built on branch `conversion` (from `pdf-text`), **local, not merged, app not rebuilt**. 519 tests pass; Malay checks
+pass. Plan: `docs/superpowers/plans/2026-10-14-company-first-payroll-stage-4.md`, Tasks 11-17.
+- **The hours column is never a money or minutes column** (`pick_columns`): "TOTAL (RM)" and "E/Out(Min)" were taken as
+  the daily hours. A column named exactly for hours (WHrs, Total, Jumlah) is preferred. A column the user chose still
+  wins.
+- **The user's rules:**
+  - an OUT with no am/pm that is earlier than a morning IN is afternoon (8.00 / 5.00 -> 17:00, said in Day by day);
+    an OUT with am, a night shift, or OUT = IN stay unclear;
+  - "530 pm" is a clock time;
+  - SA on a Saturday and SU on a Sunday in a month grid mean not worked; elsewhere they stay unclear.
+- **Month grids whose day columns carry the weekday** ("1 / TUE", "1 Tuesday", Malay "1 Sel") are grids. Found by the
+  real-data proof: such a sheet was read as a time card, with the "No." column taken as dates.
+- **Layout maps** (`payroll.py`: `layout_signature`, `valid_layout_map`, `_layout_columns`, `columns_read`,
+  `map_as_read`; `layouts.py`; `PayrollStore.load_layouts` / `save_layouts`, `payroll\layouts.json`):
+  - For a card layout Table Reader does not know, the user says once what each column means: date, hours, IN, OUT,
+    several clock times in one cell, lateness, early departure, overtime 1.0 / 1.5 / 2.0 / 3.0, not used. Figures can
+    be in hours or minutes.
+  - The map is kept for every company and month with the same headings.
+  - Mapped figures go to Million's fields like the clock report's (added up as written, no normal-hours overtime rule
+    on those days).
+  - Several clock times in one cell are paired in order; an odd number is reported.
+- **Claude's suggestion** (`layouts.suggest`, `ocr.ask_text`): text only.
+  - Claude sees the headings and up to 5 rows with every value reduced to its shape: digits as 9, letters as A, apart
+    from marks and time words (PH, OFF, am, OT...). Never names or figures.
+  - The answer is checked like the user's map and used only after Save.
+  - Claude is asked only when the user presses "Ask Claude".
+- **Company screen:** a "Needs you" item, "a card layout Table Reader does not know", appears once per unconfirmed
+  layout. It needs a column the calculation does not read that holds figures in 3 rows or more (row numbers and codes
+  such as "No." and "Emp. No." do not count). Grids and the Shift Details report are never asked about. Its buttons:
+  **Check the columns** (the panel: per column how it is written, what it means and its unit, Ask Claude, Save) and
+  **It is right as it is** (today's reading kept, the rest not used).
+- **Real September data** (copy, counts only, no layout confirmed yet):
+  - 6 employees changed and 78 are identical. Causes: hours column 2, SA/SU 2, afternoon OUT 1, "530 pm" 1.
+  - Unclear or unreadable problem lines 309 -> 262. Complete employees 40 -> 42.
+  - With every Employee No. known, 39 would go into the file (was 37).
+  - 4 layouts would be asked about: the second clock report (two heading variants) and two other clock-system
+    exports; one of them splits overtime into norm / rest / holiday / off, which the roles cannot express yet.
+  - The clock report now reads its WHrs; where its pages repeat days with different hours, that is reported instead
+    of reading 0.
+- **Clicked through** in the app's browser pane on made-up data, with Claude's answer replaced by a fixed one: the
+  item, the panel on today's reading, Ask Claude preselecting, one role changed, Save (OT 1.5 0 -> 60, item gone),
+  "It is right as it is" on another layout. Not looked at by eye.
+- **Open for the user:**
+  - one real Claude call to check the suggestion on the clock report (it uses their plan; also proves the CLI accepts
+    `--tools ""`);
+  - with an OT column mapped, Sunday work no longer counts as "Rest day" days (the report's own OT is trusted, as
+    with the Shift Details report): is that right for these reports?
+  - roles for overtime on rest days and holidays as days;
+  - should the payroll CSV buttons ask about "Needs checking" employees.
+- A test (`test_company_can_be_set_and_is_listed`) failed once in a full run and passed in every run after: a timing
+  flake in an upload test, not payroll code.
+
 ## Session 21b - 2026-10-14 - Why read cards do not reach Million; Part C (conversion) added to the plan
 The user: Claude reads the tables well, but some data is not converted into the file Million imports. Measured on a copy
 of the real September data (counts only, scripts in the session scratchpad, copies deleted afterwards):
