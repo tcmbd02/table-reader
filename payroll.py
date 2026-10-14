@@ -547,6 +547,50 @@ def place_card(plan: dict, candidate: dict, employee_id: str | None, new_id: Cal
     return employee
 
 
+# What the employee view may change, one key at a time (the values are checked by validate_plan afterwards). Cards
+# move through place_card / take_off_card, never by sending a list, so a stale view cannot undo another tab's move.
+EMPLOYEE_KEYS = ("emp_no", "name", "hours_column", "overrides", "entries", "zakat", "levy", "message",
+                 "pay_basis", "basic_rate")
+EMPLOYEE_GONE = "This employee is no longer in the payroll of this month. Go back to the company and open it again."
+
+
+def _employee(plan: dict, employee_id: str) -> dict:
+    person = next((e for e in plan["employees"] if e["id"] == employee_id), None)
+    if person is None:
+        raise OcrError("EMPLOYEE_NOT_FOUND", EMPLOYEE_GONE)
+    return person
+
+
+def change_employee(plan: dict, employee_id: str, changes: dict) -> dict:
+    """Set only the keys in ``changes`` on one employee (in place) and return the employee: what another tab changed
+    on the same employee meanwhile stays."""
+    if not isinstance(changes, dict) or any(key not in EMPLOYEE_KEYS for key in changes):
+        raise OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+    person = _employee(plan, employee_id)
+    person.update(changes)
+    return person
+
+
+def take_off_card(plan: dict, ref: str) -> str | None:
+    """Take the card ``ref`` off whichever employee has it; that employee's id, or None when nobody has it."""
+    for person in plan["employees"]:
+        if ref in person["jobs"]:
+            person["jobs"].remove(ref)
+            return person["id"]
+    return None
+
+
+def remove_employee(plan: dict, employee_id: str) -> None:
+    plan["employees"].remove(_employee(plan, employee_id))
+
+
+def add_employee(plan: dict, new_id: str, company: str) -> dict:
+    """An empty employee typed in by hand (no card yet), appended to the plan."""
+    person = new_employee(new_id, "", [], company, None, {})
+    plan["employees"].append(person)
+    return person
+
+
 NEW_NO_LETTERS = 7      # how much of the company name starts an Employee No. made by Table Reader
 
 

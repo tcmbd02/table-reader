@@ -604,8 +604,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
         plan = plans.load(month)
         person = next((e for e in plan["employees"] if e["id"] == employee), None)
         if person is None:
-            raise OcrError("EMPLOYEE_NOT_FOUND", "This employee is no longer in the payroll of this month. Go back to "
-                                                 "the company and open it again.")
+            raise OcrError("EMPLOYEE_NOT_FOUND", payroll.EMPLOYEE_GONE)
         files = {j["id"]: j for j in store.list_jobs()}
         company = payroll.employee_company(person, {i: j["company"] for i, j in files.items()})
         load_pages, _ = page_loader()

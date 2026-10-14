@@ -1683,3 +1683,51 @@ def test_as_is_keeps_the_users_hours_column():
 
 def test_a_cell_with_several_clock_times_holds_figures():
     assert payroll.is_figure_text("07:58 12:01 13:02 17:05")
+
+
+def _two_people():
+    plan = payroll.default_plan("2026-09")
+    plan["employees"] = [payroll.new_employee("e1", "ALI", ["job1"], "MAJU JAYA", None, {}),
+                         payroll.new_employee("e2", "SITI", [], "MAJU JAYA", None, {})]
+    plan["employees"][0].update(emp_no="MJ1", overrides={"ot_1_5": 2.0})
+    return plan
+
+
+def test_change_employee_sets_only_the_keys_given():
+    plan = _two_people()
+    person = payroll.change_employee(plan, "e1", {"name": "ALI B"})
+    assert person is plan["employees"][0]
+    assert (person["name"], person["emp_no"], person["overrides"]) == ("ALI B", "MJ1", {"ot_1_5": 2.0})
+
+
+@pytest.mark.parametrize("changes", [{"jobs": []}, {"id": "x"}, {"company": "BINA"}])
+def test_change_employee_refuses_a_key_it_does_not_know(changes):
+    with pytest.raises(ocr.OcrError) as error:
+        payroll.change_employee(_two_people(), "e1", changes)
+    assert error.value.code == "BAD_PAYROLL"
+
+
+def test_an_unknown_employee_cannot_be_changed_or_removed():
+    plan = _two_people()
+    for act in (lambda: payroll.change_employee(plan, "gone", {"name": "X"}), lambda: payroll.remove_employee(plan, "gone")):
+        with pytest.raises(ocr.OcrError) as error:
+            act()
+        assert error.value.code == "EMPLOYEE_NOT_FOUND"
+        assert str(error.value) == payroll.EMPLOYEE_GONE
+    payroll.remove_employee(plan, "e2")
+    assert [e["id"] for e in plan["employees"]] == ["e1"]
+
+
+def test_take_off_card_returns_whose_it_was():
+    plan = _two_people()
+    assert payroll.take_off_card(plan, "job1") == "e1"
+    assert plan["employees"][0]["jobs"] == []
+    assert payroll.take_off_card(plan, "job1") is None
+
+
+def test_add_employee_is_empty_and_valid():
+    plan = _two_people()
+    person = payroll.add_employee(plan, "e3", "BINA")
+    assert person is plan["employees"][-1]
+    assert (person["emp_no"], person["name"], person["jobs"], person["pay_basis"]) == ("", "", [], "monthly")
+    assert payroll.validate_plan(plan, {"job1"})["employees"][-1]["company"] == "BINA"
