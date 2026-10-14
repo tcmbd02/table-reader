@@ -11,8 +11,10 @@ async def scenario(page, downloads):
     zul = next(j["id"] for j in jobs if "ZUL" in j["name"])
     await page.goto(f"{BASE}/#/doc/{zul}")
     expect("old file address becomes step 2's", await page.ev("decodeURIComponent(location.hash)"), f"#/check/{zul}")
-    await page.goto(f"{BASE}/#/payroll/2026-09/look/e1")
-    expect("old Look address", await page.ev("location.hash"), "#/payroll/2026-09/e/e1/look")
+    people = await page.ev("fetch('/api/payroll/2026-09/people').then((r) => r.json())")
+    someone = people["companies"][0]["employees"][0]["id"]
+    await page.goto(f"{BASE}/#/payroll/2026-09/look/{someone}")
+    expect("old Look address", await page.ev("location.hash"), f"#/payroll/2026-09/e/{someone}/look")
     await page.goto(f"{BASE}/#/payroll/2026-09/layout/{zul}/1/h/Total")
     expect("old layout address", await page.ev("decodeURIComponent(location.hash)"), f"#/check/{zul}/columns/1/h/Total")
     await page.ev("Storage.prototype.setItem = () => { throw new Error('refused'); }; "

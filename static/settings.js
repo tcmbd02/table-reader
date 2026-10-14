@@ -1,7 +1,7 @@
 "use strict";
 // Month and company settings: normal hours, break and calendar. One editor, used by "Month settings" on the month
-// overview (the month's default) and by "Company settings" on a company screen (follow the default, or its own set).
-// Loaded after companies.js and uses its state (moMonth, moOver, coCompany, coView) and helpers; look.js comes last.
+// bar of step 3 (the month's default) and by "Company settings" in a company's panel (follow the default, or its own
+// set). Loaded after people.js and uses its state (moMonth, ppView, coCompany, coView) and helpers.
 
 // The editor works on a copy; nothing is saved until Save is pressed. values() gives what is on the screen now.
 function settingsEditor(month, start) {
@@ -49,8 +49,8 @@ function settingsEditor(month, start) {
 function openMonthSettings() {
   const box = $("mo-settings");
   if (!box.hidden) { box.hidden = true; return; }
-  if (!moOver) return;
-  const editor = settingsEditor(moMonth, moOver.settings);
+  if (!ppView) return;
+  const editor = settingsEditor(moMonth, ppView.settings);
   const save = el("button", { type: "button", class: "primary", text: t("Save") });
   const cancel = el("button", { type: "button", text: t("Cancel"), onclick: () => { box.hidden = true; } });
   save.addEventListener("click", async () => {
@@ -58,7 +58,7 @@ function openMonthSettings() {
     try {
       await api("PUT", `/api/payroll/${moMonth}/settings`, editor.values());
       box.hidden = true; moError("");
-      drawMonth(await api("GET", `/api/payroll/${moMonth}/companies`));
+      await ppLoad();
     } catch (e) { moError(e.message); save.disabled = false; }
   });
   box.replaceChildren(el("h3", { text: t("Settings for {month}", { month: monthTitle(moMonth) }) }),

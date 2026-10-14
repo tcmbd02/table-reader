@@ -43,7 +43,8 @@ def test_page_is_served(client):
     assert client.get("/app.js").status_code == 200 and client.get("/app.css").status_code == 200
 
 
-SCRIPTS = ["i18n.js", "app.js", "paycommon.js", "upload.js", "check.js", "columns.js", "steps.js"]       # grows with Tasks 5-7
+SCRIPTS = ["i18n.js", "app.js", "paycommon.js", "upload.js", "check.js", "columns.js", "people.js",
+           "paytable.js", "settings.js", "steps.js"]       # grows with Tasks 5-7
 
 
 def test_browser_must_not_keep_an_old_script_after_an_update(client):

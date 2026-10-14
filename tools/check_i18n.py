@@ -60,12 +60,12 @@ for m in re.finditer(r'(title|aria-label)="([^"]+)"[^>]*data-t-(?:title|aria)', 
 # words looked up through variables
 used += ["January", "Sun", "Working day", "benefit", "leave", "allowance", "deduction", "Day", "Type", "Hours written", "Note",
          "Clear", "Change the language",
-         # companies.js: item heads, employee statuses and table heads
+         # people.js: item heads, employee statuses and table heads
          "{name}: cells to check on the card", "{name}: days that do not add up",
          "{name}: Table Reader cannot work out the days", "{name}: no time card yet",
          "{name}: not ready for the Million file", "Waiting for Million", "Needs you", "Ready", "Employee No.", "Name",
          "Days Worked", "OT 1.5 (hours)", "Rest day (days)", "Status",
-         # layout.js: what a column can mean, and its unit
+         # columns.js: what a column can mean, and its unit
          "Date", "Hours worked that day", "Clock in (IN)", "Clock out (OUT)", "Several clock times in one cell",
          "Lateness", "Early departure", "Overtime 1.0", "Overtime 1.5", "Overtime 2.0", "Overtime 3.0", "Not used",
          "hours", "minutes", "—"]

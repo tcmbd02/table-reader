@@ -1,19 +1,10 @@
 "use strict";
-// The company screen's Pay preview tab (each employee's pay basis, Basic Rate and the pay they give, worked out by the
+// The company panel's Pay preview table (each employee's pay basis, Basic Rate and the pay they give, worked out by the
 // server) and its "Add employee". Basis and rate are saved one key at a time through the employee view's endpoint.
-// Loaded after companies.js and employee.js and uses their helpers (moMonth, coCompany, coError, openInNewTab, ...).
+// Loaded after people.js and uses its helpers (moMonth, coCompany, coError, employeeHash, ...).
 
 let ptRows = [];                     // what the server last sent (GET /pay?company=)
 let ptChain = Promise.resolve();     // the saves, one after the other
-
-function showCompanyTab(which) {
-  const pay = which === "pay";
-  $("co-employees-tab").hidden = pay; $("co-pay").hidden = !pay;
-  for (const [id, on] of [["co-tab-employees", !pay], ["co-tab-pay", pay]]) {
-    $(id).classList.toggle("active", on); $(id).setAttribute("aria-selected", String(on));
-  }
-  if (pay) loadPayTable();
-}
 
 async function loadPayTable() {
   const month = moMonth, company = coCompany;
@@ -92,22 +83,17 @@ function fillPayTable(host) {
   host.querySelectorAll(".d-sum").forEach((td, k) => { td.textContent = DAILY_COLUMNS[k][2] ? fmt(sums[k]) : ""; });
 }
 
-$("co-tab-employees").addEventListener("click", () => showCompanyTab("employees"));
-$("co-tab-pay").addEventListener("click", () => showCompanyTab("pay"));
 $("co-pay-download").addEventListener("click", () => ptChain.then(() =>
   downloadFile(`/api/payroll/${moMonth}/basic-pay?company=${encodeURIComponent(coCompany)}`, coError)));
 
-// An employee typed in by hand: in this company (a new Employee No. from its name), opened in a new tab. The tab is
-// opened at the click, so the browser does not take it for a pop-up.
+// An employee typed in by hand, in this company (a new Employee No. from its name), opened right away.
 $("co-add").addEventListener("click", async () => {
   const button = $("co-add"), month = moMonth;
-  const tab = window.open("about:blank", "_blank");
   button.disabled = true;
   try {
     const { employee } = await api("POST", `/api/payroll/${month}/employee`, { company: coCompany });
-    const hash = `#/payroll/${month}/e/${encodeURIComponent(employee)}`;
-    if (tab) tab.location.href = location.pathname + hash; else openInNewTab(hash);
-    coError(""); await loadCompany();
-  } catch (e) { if (tab) tab.close(); coError(e.message); }
+    coError(""); ppView = null;                  // step 3 asks the server again, so the list has the new employee
+    location.hash = employeeHash(month, employee);
+  } catch (e) { coError(e.message); }
   finally { button.disabled = false; }
 });
