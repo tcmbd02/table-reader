@@ -55,8 +55,11 @@ async def scenario(page, downloads):
     expect("leave lines", await page.ev("!!document.querySelector('#em-pay table.lines')"), True)
     await page.ev("T.click('Needs checking', document.getElementById('em-pay'))")
     expect("Needs checking opens To fix", await page.ev("document.querySelector('#em-tabs [aria-selected=true]').dataset.pane"), "fix")
-    await page.ev("document.querySelector('#em-tabs [data-pane=pay]').click(); T.set('ew-name', 'MEI TABS'); document.querySelector('#em-tabs [data-pane=cards]').click()")
-    await page.ev("T.sleep(1200)")
+    # sent when the tab changes, not 500 ms later when the typing timer would have sent it anyway
+    waiting = await page.ev("document.querySelector('#em-tabs [data-pane=pay]').click(); T.set('ew-name', 'MEI TABS'); "
+                            "document.querySelector('#em-tabs [data-pane=cards]').click(); Object.keys(emTimers).length")
+    expect("typed then tab: sent at once", waiting, 0)
+    await page.ev("emChain")
     after = await page.ev(f"fetch('/api/payroll/{M}/employee/{mei}').then((r) => r.json())")
     expect("typed then tab: saved", after["employee"]["name"], "MEI TABS")
     # notes that are not things to fix (leave marked on the card, cards no longer listed) are under To fix too
