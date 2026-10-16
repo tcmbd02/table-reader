@@ -1,5 +1,21 @@
 # Progress log
 
+## Session 25 - 2026-10-16 - Push, `download` branch, and the yellow-cell question before payroll
+- On the user's OK: `pdf-text` pushed (24c, 24d and their notes, 6 commits; diff scanned, made-up names only), and the
+  `download` branch updated with the 14 Oct build that has them (8b1b984; the zip checked against the code first; HTML
+  guides copied; the PDF guide is still the old one).
+- Asked by the user: in **2 Check reading**, going to payroll while yellow cells are left asks "There are still yellow
+  cells. Are you sure you want to go to payroll?" (OK goes on, Cancel stays). Branch `yellow-confirm` (from `pdf-text`),
+  **not merged, app not rebuilt.** The user's rulings: the cells that count are those of the files in step 2's list
+  (the number on the "2 Check reading" button), asked once a visit to step 2. All three ways ask: **Go to payroll for …
+  →**, **See … in payroll →** and the **3 Payroll** step button when pressed in step 2. Since a yes always leaves step 2
+  (and coming back is a new visit), "once a visit" is the same as asking each time step 2 is left for payroll; no flag.
+- `ckLeaveForPayroll()` in `check.js`, used by the two buttons and by `steps.js`; one Malay entry; one line in both guides.
+- Click-through `yellow_confirm` (new, `YELLOW_FILE=1`: `serve.py` then adds MAJU JAYA MEI with one yellow cell): No
+  stays and Yes goes for all three ways, asked from a file without yellow cells while another in the list has some, not
+  asked after the cell is accepted. It fails on the old code (10 problems). `check_page`, `cross_steps`,
+  `check_reading` (`SLOW_FILE=1`), `upload_page`: no problems. 558 tests pass; Malay checks pass.
+
 ## Session 24d - 2026-10-14 - Export…: what, format, companies, one file or one per company
 Asked by the user: the "Download payroll CSV" and "Make the month's Million file" buttons as one customisable export.
 Branch `export` (from `pdf-text`), **merged into `pdf-text` and the app rebuilt on the user's OK (not pushed; `download`

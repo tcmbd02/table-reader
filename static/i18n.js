@@ -37,6 +37,7 @@ const MS = {
   "No other file needs checking": "Tiada fail lain perlu disemak",
   "See {name} in payroll →": "Lihat {name} dalam gaji →",
   "Go to payroll for {month} →": "Pergi ke gaji {month} →",
+  "There are still yellow cells. Are you sure you want to go to payroll?": "Masih ada sel kuning. Adakah anda pasti mahu pergi ke gaji?",
   "Nothing here yet. Add files in step 1.": "Belum ada apa-apa di sini. Tambah fail dalam langkah 1.",
   "No files for {month}. Choose “All months” to see every file.": "Tiada fail untuk {month}. Pilih “Semua bulan” untuk melihat semua fail.",
   " Go to step 1 to add a corrected file.": " Pergi ke langkah 1 untuk menambah fail yang dibetulkan.",

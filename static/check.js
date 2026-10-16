@@ -341,9 +341,16 @@ function ckDrawFoot(j) {
     el("button", { type: "button", text: next ? t("Next file with yellow cells →") : t("No other file needs checking"),
       disabled: !next, onclick: () => { location.hash = `#/check/${encodeURIComponent(next.id)}`; } }),
     ...people.map((p) => el("button", { type: "button", text: t("See {name} in payroll →", { name: p.name || t("An employee") }),
-      onclick: () => { location.hash = `#/payroll/${month}/e/${encodeURIComponent(p.id)}`; } })),
+      onclick: () => { if (ckLeaveForPayroll()) location.hash = `#/payroll/${month}/e/${encodeURIComponent(p.id)}`; } })),
     el("button", { type: "button", class: "primary", text: t("Go to payroll for {month} →", { month: monthTitle(month) }),
-      onclick: () => { location.hash = `#/payroll/${month}`; } }));
+      onclick: () => { if (ckLeaveForPayroll()) location.hash = `#/payroll/${month}`; } }));
+}
+
+// Going to payroll while the files in the list still have yellow cells (the number on "2 Check reading") asks first;
+// yes goes on. (Once a visit to step 2: a yes leaves it, and coming back is a new visit.)
+function ckLeaveForPayroll() {
+  if (!ckJobs || !ckJobs.filter(ckFilter).some((j) => j.cells_to_check > 0)) return true;
+  return confirm(t("There are still yellow cells. Are you sure you want to go to payroll?"));
 }
 
 // Do something about the file, then draw the list and the file again from the server.

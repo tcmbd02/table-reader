@@ -68,6 +68,7 @@ function route() {
 for (const [step, first] of [["upload", "#/"], ["check", "#/check"], ["payroll", "#/payroll"]]) {
   $(`step-${step}`).addEventListener("click", (e) => {
     e.preventDefault();
+    if (step === "payroll" && lastStep === "check" && typeof ckLeaveForPayroll === "function" && !ckLeaveForPayroll()) return;
     let to = step === "upload" ? first : recall(`place.${step}`) || first;
     if (step === "payroll" && !to.startsWith(`#/payroll/${workMonth()}/`)) to = `#/payroll/${workMonth()}`;
     if (location.hash === to) route(); else location.hash = to;

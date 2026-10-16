@@ -1,6 +1,6 @@
 """Server for click-throughs, on made-up data: MAJU JAYA (ALI, SITI on day cards; ZUL on a confirmed card layout; AMIN
 on an August card) and A & B (M) (SITI). With SLOW_FILE set, one more file is added after the start and takes a few
-seconds to read.
+seconds to read; with YELLOW_FILE set, MAJU JAYA MEI's card has one yellow cell (day 9).
 
 python serve.py <repo> <home> <port>   (a fresh <home> is seeded first)"""
 import io
@@ -20,7 +20,7 @@ from PIL import Image  # noqa: E402
 
 import app as app_module  # noqa: E402
 from jobs import Jobs, default_root  # noqa: E402
-from tests.test_app import month_card, report_2_card, report_2_map, YEAR  # noqa: E402
+from tests.test_app import day_9_unclear, month_card, report_2_card, report_2_map, YEAR  # noqa: E402
 
 mode = {"card": month_card, "slow": False}
 
@@ -49,6 +49,9 @@ if fresh:
     with TestClient(application, base_url="http://localhost") as c:
         for name in (f"MAJU JAYA ALI SEPT {YEAR}.png", f"MAJU JAYA SITI SEPT {YEAR}.png", f"MAJU JAYA AMIN AUG {YEAR}.png"):
             add(c, store, name)
+        if os.environ.get("YELLOW_FILE"):
+            mode["card"] = day_9_unclear
+            add(c, store, f"MAJU JAYA MEI SEPT {YEAR}.png")
         mode["card"] = report_2_card
         add(c, store, f"MAJU JAYA ZUL SEPT {YEAR}.png")
         mode["card"] = month_card
