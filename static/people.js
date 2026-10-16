@@ -38,10 +38,14 @@ function everyone() { return ppView ? ppView.companies.flatMap((r) => r.employee
 // ``entering``: step 3 was not on the screen just before (the month is asked again, and its notes are taken).
 async function showPeople(month, sel, entering = false) {
   const other = month !== moMonth;
+  const before = ppSel;
   moMonth = month; ppSel = sel;
   $("mo-title").textContent = t("Payroll {month}", { month: monthTitle(moMonth) });
   if (other) { $("mo-run-result").hidden = true; $("mo-settings").hidden = true; $("mo-export").hidden = true; }
   if (other || entering) ppNotes = takeMonthNotes(month);
+  else if ((before.employee || before.company !== null) && (sel.employee !== before.employee || sel.company !== before.company)) {
+    ppNotes = []; $("mo-run-result").hidden = true;      // the messages at the top are said once: another one opened
+  }
   moError("");
   const fresh = entering || !ppView || ppView.month !== month;
   if (fresh) await ppLoad();
@@ -70,7 +74,8 @@ function ppDraw() {
   if (!ppView) return;
   const v = ppView;
   const info = monthNotesText(ppNotes);
-  $("mo-info").hidden = !info; $("mo-info").textContent = info;
+  $("mo-info").hidden = !info;
+  $("mo-info").replaceChildren(...(info ? [closeX(() => { ppNotes = []; $("mo-info").hidden = true; }), info] : []));
   $("mo-total").replaceChildren(
     t("{a} of {b} employees ready.", { a: v.ready_employees, b: v.employees }) + " ",
     v.checked_with_million ? "" : t("The Employee Nos. are not being checked against Million: import Million's employee list.") + " ",

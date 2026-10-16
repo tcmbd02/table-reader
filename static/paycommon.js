@@ -134,6 +134,11 @@ function heldNodes(run) {
 }
 
 // One Million file for the whole month: everyone who can go in, and for the others the reason, company by company.
+// The × that closes a message at the top of a screen.
+function closeX(onclose) {
+  return el("button", { type: "button", class: "banner-close", text: "×", title: t("Close"), "aria-label": t("Close"), onclick: onclose });
+}
+
 function showMonthRun(run, box) {
   const withFile = run.companies.filter((c) => c.ready).length;
   const files = run.files || (run.file ? [run.file] : []);
@@ -143,7 +148,7 @@ function showMonthRun(run, box) {
       : run.every !== false
         ? tn(run.ready, "Million file made for the whole month: {name}, with {n} employee from {c}.", "Million file made for the whole month: {name}, with {n} employees from {c}.", { name: files[0], c })
         : tn(run.ready, "Million file made: {name}, with {n} employee from {c}.", "Million file made: {name}, with {n} employees from {c}.", { name: files[0], c });
-  const parts = [el("strong", { text: head })];
+  const parts = [closeX(() => { box.hidden = true; }), el("strong", { text: head })];
   if (files.length > 1) parts.push(el("p", { class: "legend", text: t("They are saved in {folder}. Back up Million, then import each file.", { folder: run.folder }) }));
   else if (files.length && run.every !== false) parts.push(el("p", { class: "legend", text: t("It is saved in {folder}. Back up Million, then import this one file: it covers every company.", { folder: run.folder }) }));
   else if (files.length) parts.push(el("p", { class: "legend", text: t("It is saved in {folder}. Back up Million, then import this file.", { folder: run.folder }) }));

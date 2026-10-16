@@ -19,6 +19,14 @@
   (`dist\Table Reader\` and the zip, 16 Oct 08:26; the built `check.js` has the question). Starting the rebuilt
   `Table Reader.exe` from the session was refused by Windows: "An Application Control policy has blocked this file"
   (not tried again, no setting changed). The app was not running before the build.
+- From the user's use (screenshot): step 3's "Million file made…" and "Added by themselves…" stayed on top while other
+  companies were edited (only another month hid them). Branch `closable-notes` (from `pdf-text`), **not merged, app not
+  rebuilt:** both have a × and close when another employee or company is opened (not when step 3 opens its first
+  employee by itself). New Employee Nos. are still under the company's New in Million. Click-through `closable_notes`
+  (new; 2 problems on the old code); `export`, `people_page`, `employee_page`, `cross_steps`, `add_card`, `rest_days`,
+  `check_reading`: no problems. 558 tests pass.
+- Staff feedback (for the next step, mock-ups first): fewer words, more icons and features, one thing at a time with
+  little scrolling.
 
 ## Session 24d - 2026-10-14 - Export…: what, format, companies, one file or one per company
 Asked by the user: the "Download payroll CSV" and "Make the month's Million file" buttons as one customisable export.
