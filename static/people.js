@@ -319,8 +319,10 @@ $("mo-million-file").addEventListener("change", async () => {
 });
 
 // ------------------------------------------------------------------------------------------------ the company panel
+let coPane = null;           // the company's tab shown: "fix", "pay" or "new" (null: chosen when it is drawn)
+
 function showCompany(company) {
-  if (company !== coCompany) { $("co-million").hidden = true; coError(""); }
+  if (company !== coCompany) { coPane = null; coError(""); }
   coCompany = company;
   drawCompany();
   if (company) loadPayTable();
@@ -331,18 +333,33 @@ function drawCompany() {
     || { company: coCompany, status: "none", needs: 0, waiting: 0, items: [], employees: [], million_new: [], files_needing: 0 };
   $("co-title").textContent = `${coCompany || t("(no company)")} - ${monthTitle(moMonth)}`;
   $("co-status").textContent = companyStatus(coView);
-  for (const id of ["co-settings-open", "co-export", "co-pay"]) $(id).hidden = !coCompany;   // files with no company: none
-  const items = coView.items.map(itemNode);
+  for (const id of ["co-settings-open", "co-export"]) $(id).hidden = !coCompany;   // files with no company: none
+  const items = coView.items.map((i) => itemNode(i, { short: true }));
   if (coView.files_needing) {
-    items.push(el("li", { class: "need" }, el("strong", { text: tn(coView.files_needing,
-      "{n} file of this company needs you in step 2.", "{n} files of this company need you in step 2.") }),
-    el("div", { class: "need-buttons" }, el("button", { type: "button", class: "primary", text: t("Go to step 2 →"),
-      onclick: () => toFileProblems(coCompany) }))));
+    items.push(el("li", { class: "need short" }, el("div", { class: "need-head" }, icon("file-spreadsheet"),
+      el("strong", { text: tn(coView.files_needing, "{n} file of this company needs you in step 2.", "{n} files of this company need you in step 2.") }),
+      el("div", { class: "need-buttons" }, el("button", { type: "button", class: "primary", text: t("Go to step 2 →"),
+        onclick: () => toFileProblems(coCompany) })))));
   }
   $("co-items").replaceChildren(items.length ? el("ol", { class: "needs" }, ...items)
-    : el("p", { class: "muted", text: t("Nothing needs you here.") }));
+    : el("p", { class: "nothing" }, icon("circle-check"), " ", t("Nothing needs you here.")));
   $("co-export").disabled = !coView.employees.length;
   drawMillionNew();
+  drawCompanyTabs(items.length);
+}
+
+// The company's tabs: To fix, Pay preview (not for files with no company) and New in Million (only when Million lacks
+// some of its employees). It opens on To fix when there is something to fix, else on Pay preview.
+function drawCompanyTabs(toFix) {
+  const panes = [["fix", "alert-triangle", t("To fix"), "co-items", toFix]];
+  if (coCompany) panes.push(["pay", "cash", t("Pay preview"), "co-pay", null]);
+  if (coView.million_new.length) panes.push(["new", "user-plus", t("New in Million"), "co-million", coView.million_new.length]);
+  if (!coPane || !panes.some(([key]) => key === coPane)) coPane = toFix || !coCompany ? "fix" : "pay";
+  $("co-tabs").replaceChildren(...panes.map(([key, name, label, , count]) => el("button", { type: "button", role: "tab",
+    class: "tab" + (key === coPane ? " on" : ""), "data-pane": key, "aria-selected": String(key === coPane),
+    onclick: () => { coPane = key; drawCompanyTabs(toFix); } }, icon(name), " ", label,
+  count !== null ? el("span", { class: "count", text: String(count) }) : null)));
+  for (const id of ["co-items", "co-pay", "co-million"]) $(id).hidden = !panes.some(([key, , , pid]) => pid === id && key === coPane);
 }
 
 // Do something for an item, then draw the month again from the server (and the employee, when one is open).
@@ -443,10 +460,7 @@ async function copyText(button, text) {
 
 function drawMillionNew() {
   const list = coView.million_new, panel = $("co-million");
-  $("co-million-open").hidden = !list.length;
-  $("co-million-open").textContent = tn(list.length, "New in Million: {n} employee", "New in Million: {n} employees");
-  if (!list.length) panel.hidden = true;
-  if (panel.hidden) return;
+  if (!list.length) { panel.replaceChildren(); return; }
   const rows = list.map((m) => {
     const copy = el("button", { type: "button", text: t("Copy") });
     copy.addEventListener("click", () => copyText(copy, m.emp_no));
@@ -454,18 +468,20 @@ function drawMillionNew() {
   });
   const all = el("button", { type: "button", class: "primary", text: t("Copy all") });
   all.addEventListener("click", () => copyText(all, list.map((m) => `${m.emp_no}\t${m.name}`).join("\n")));   // two columns in Excel
-  const close = el("button", { type: "button", text: t("Close"), onclick: () => { panel.hidden = true; } });
   panel.replaceChildren(
     el("h3", { text: tn(list.length, "{company}: {n} employee Million does not have yet", "{company}: {n} employees Million does not have yet",
       { company: coCompany || t("(no company)") }) }),
     el("table", { class: "daytable companies" },
       el("tr", {}, el("th", { text: t("Employee No.") }), el("th", { text: t("Name") }), el("th")), ...rows),
     el("p", { class: "legend", text: t("Create them in Million with exactly these numbers, then export Million's employee list and import it on the month page.") }),
-    el("p", { class: "legend", text: t("To export the list in Million Payroll: Employee > Print > Employment Listing > Print > Excel > File. The file is rptempepmlist.xls in Million's company folder (for example C:\\million\\Payroll\\mycompany).") }),
-    el("div", { class: "need-buttons" }, all, close));
+    el("details", {}, el("summary", { text: t("How to export the list in Million") }),
+      el("p", { class: "legend", text: t("To export the list in Million Payroll: Employee > Print > Employment Listing > Print > Excel > File. The file is rptempepmlist.xls in Million's company folder (for example C:\\million\\Payroll\\mycompany).") })),
+    el("div", { class: "need-buttons" }, all));
 }
 
-$("co-million-open").addEventListener("click", () => { $("co-million").hidden = !$("co-million").hidden; drawMillionNew(); });
+iconize($("co-settings-open"), "calendar-cog", t("Company settings"));
+$("co-pay").prepend(el("div", { class: "pane-head" }, el("strong", { text: t("Pay preview") }),
+  iconButton("info-circle", t("What Million Payroll should pay each employee before EPF, SOCSO and tax, worked out with Million's own overtime tables. The pay basis and Basic Rate come from Million's employee list (import its “Payroll Information” report); type a rate to use another. This is a check for you: Million still does the real calculation."), { class: "info" })));
 $("co-export").replaceChildren(icon("download"), " ", t("Export"));
 $("co-export").addEventListener("click", () => openExport(coCompany));
 

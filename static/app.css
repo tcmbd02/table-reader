@@ -357,3 +357,6 @@ button.pill { cursor: pointer; font: inherit; font-size: .85rem; }
 @media (max-width: 900px) { .pw-groups { grid-template-columns: 1fr; } }
 .info-notes { list-style: none; margin: 8px 0 0; padding: 0; color: var(--muted); font-size: .92rem; }
 .info-notes li { margin: 4px 0; }
+.pane-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.pane-head .info { border: none; background: none; color: var(--muted); padding: 0 4px; }
+#co-body > .card { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; border-top: 0; }

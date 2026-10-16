@@ -121,20 +121,20 @@
         <div class="doc-bar">
           <h2 id="co-title"></h2>
           <div class="doc-actions"><span id="co-status" class="muted" aria-live="polite"></span>
-            <button id="co-million-open" type="button" hidden></button>
-            <button id="co-export" type="button" data-t>Export…</button>
-            <button id="co-settings-open" type="button" data-t>Company settings</button></div>
+            <button id="co-settings-open" type="button" data-t>Company settings</button>
+            <button id="co-export" type="button" data-t>Export…</button></div>
         </div>
         <div id="co-error" class="banner error" hidden></div>
-        <section id="co-million" class="card" hidden></section>
-        <section class="card"><h3 data-t>Needs you</h3><div id="co-items"></div></section>
-        <section id="co-pay" class="card">
-          <h3 data-t>Pay preview</h3>
-          <p class="legend" data-t>What Million Payroll should pay each employee before EPF, SOCSO and tax, worked out with Million's own overtime tables. The pay basis and Basic Rate come from Million's employee list (import its “Payroll Information” report); type a rate to use another. This is a check for you: Million still does the real calculation.</p>
-          <div id="co-pay-table"></div>
-          <div class="need-buttons"><button id="co-pay-download" type="button" data-t>Download the pay table (CSV)</button>
-            <button id="co-add" type="button" data-t>Add employee</button></div>
-        </section>
+        <div id="co-tabs" class="tabs" role="tablist"></div>
+        <div id="co-body">
+          <section id="co-items" class="card" role="tabpanel" hidden></section>
+          <section id="co-pay" class="card" role="tabpanel" hidden>
+            <div id="co-pay-table"></div>
+            <div class="need-buttons"><button id="co-pay-download" type="button" data-t>Download the pay table (CSV)</button>
+              <button id="co-add" type="button" data-t>Add employee</button></div>
+          </section>
+          <section id="co-million" class="card" role="tabpanel" hidden></section>
+        </div>
       </div>
       <div id="employee" hidden>
         <div class="doc-bar"><h2 id="em-title"></h2>

@@ -599,6 +599,8 @@ const MS = {
   "Make the file": "Buat fail",
   "Not now": "Bukan sekarang",
   // New in Million (a company's employees Million does not have yet)
+  "New in Million": "Baharu dalam Million",
+  "How to export the list in Million": "Cara mengeksport senarai dalam Million",
   "New in Million: {n} employee": "Baharu dalam Million: {n} pekerja",
   "New in Million: {n} employees": "Baharu dalam Million: {n} pekerja",
   "{company}: {n} employee Million does not have yet": "{company}: {n} pekerja yang belum ada dalam Million",
