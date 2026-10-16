@@ -98,7 +98,8 @@ and before the Million file is made Table Reader checks each number and name aga
 <h3>B1. The month</h3>
 <ol>
   <li>Press <b>3 Payroll</b> (top bar). It opens on last month; <b>&lt;</b> and <b>&gt;</b> change the month.</li>
-  <li>Press <b>Month settings</b>. Click each <b>public holiday</b> until it is yellow (white = working day, grey = rest day),
+  <li>Press <b>Month settings</b>. <b>Rest days every week</b> has Sunday ticked; tick another day (for example Saturday)
+      to make every one of those days a rest day at once. Click each <b>public holiday</b> until it is yellow (white = working day, grey = rest day),
       and check the two rules:
     <ul>
       <li><b>Normal hours in a working day</b> (overtime starts after this).</li>
@@ -140,12 +141,17 @@ and before the Million file is made Table Reader checks each number and name aga
 
 <h2>C. Make the month's Million file</h2>
 <ol>
-  <li>In <b>3 Payroll</b> press <b>Make the month's Million file (all companies)</b>. Table Reader first shows what the file
-      would hold: who goes in, company by company, and who is not in it yet, with the reason.</li>
+  <li>In <b>3 Payroll</b> press <b>Export…</b> and choose <b>Million import file</b>. Keep <b>All companies</b> ticked,
+      or tick the companies you want; with several, choose <b>One file with all of them</b> or <b>One file per company</b>.
+      Press <b>Export</b>. Table Reader first shows what the file would hold: who goes in, company by company, and who is
+      not in it yet, with the reason.</li>
   <li>Press <b>Make the file</b>, or <b>Not now</b> to fix things first. The file is called
       <code>Payroll 2026-09 (Million).xls</code> and is kept in <span class="path">Documents &gt; Table Reader &gt; payroll</span>.</li>
-  <li>Import that one file in Million (D4): one import for every company. Fix what is listed, make the file again and
-      import it again; importing again is harmless.</li>
+  <li>Import that one file in Million (D4): one import for every company (one file per company: import each). Fix what
+      is listed, make the file again and import it again; importing again is harmless.</li>
+  <li>To check the figures in Excel first: <b>Export…</b> &gt; <b>Payroll table</b>, as <b>CSV</b> or <b>Excel .xls</b>,
+      for all or some companies (one file per company downloads as one .zip). In a company's panel, <b>Export…</b> starts
+      with only that company ticked.</li>
 </ol>
 <div class="wide"><table>
   <tr><th>Not in the file yet, because</th><th>What it means</th><th>What to do</th></tr>
@@ -214,7 +220,7 @@ file showed the file's figures (for example 25 / 1 / 21), and employees who were
       before the import is set back to 0 unless it is also in Table Reader. Import first, then type the extras, or type them in Table Reader.</li>
   <li>Employees who are <b>not in the file</b> are not changed, so companies can be imported one after another into the same month.</li>
   <li>Importing the same file again is harmless: it writes the same figures.</li>
-  <li>Use only the <b>.xls</b> file from "Make the month's Million file". Million's CSV import ignores the column settings.</li>
+  <li>Use only the Million import file (<b>.xls</b>) from <b>Export…</b>. Million's CSV import ignores the column settings.</li>
   <li><b>Basic Rate</b>, director fee and back pay are not on a time card: keep them in Million.</li>
   <li>The columns of the file follow Million's <span class="path">File Format Setting</span> (inside the Import window). If someone changes that setting, the file no longer fits: tell whoever looks after Table Reader.</li>
 </ul>
