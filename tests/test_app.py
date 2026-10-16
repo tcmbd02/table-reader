@@ -60,7 +60,8 @@ def test_the_page_has_the_three_steps(client):
         assert f'id="{id_}"' in html
     assert html.index('<main id="upload"') < html.index('<main id="check"') < html.index('<main id="people"')
     for gone in ('id="home"', 'id="month"', 'id="nav-payroll"', 'id="back"', 'id="mo-back"', 'id="co-back"',
-                 'id="em-back"', 'id="co-tab-employees"', 'id="recent-none"', "companies.js", "layout.js"):
+                 'id="em-back"', 'id="co-tab-employees"', 'id="recent-none"', "companies.js", "layout.js",
+                 'id="mo-export"', 'id="mo-run-result"', 'id="mo-info"', 'id="mo-settings"', 'id="co-settings"'):
         assert gone not in html, gone
     # the parts that move into the steps keep their ids: the file view and the column choice in step 2, the month bar,
     # company panel, employee view and Look panel in step 3
@@ -69,7 +70,7 @@ def test_the_page_has_the_three_steps(client):
     for id_ in ("doc", "pages", "download", "ck-files", "ck-month", "ck-needs", "ck-foot", "layout", "ly-save",
                 "company-box"):
         assert f'id="{id_}"' in check, id_
-    for id_ in ("mo-export-open", "mo-export", "mo-settings-open", "co-export", "pp-list", "pp-search", "company", "co-pay", "co-add",
+    for id_ in ("mo-export-open", "popup", "bell-open", "bell-list", "mo-settings-open", "co-export", "pp-list", "pp-search", "company", "co-pay", "co-add",
                 "co-million", "employee", "em-needs", "em-cards", "em-window", "em-walk", "look", "lk-accept"):
         assert f'id="{id_}"' in people, id_
 
