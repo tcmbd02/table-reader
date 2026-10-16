@@ -138,11 +138,16 @@
       </div>
       <div id="employee" hidden>
         <div class="doc-bar"><h2 id="em-title"></h2>
-          <div class="doc-actions"><span id="em-save" class="muted" aria-live="polite"></span></div></div>
+          <div class="doc-actions"><span id="em-save" class="muted" aria-live="polite"></span>
+            <span class="menu-wrap"><button id="em-more" type="button"></button><div id="em-menu" class="menu" hidden></div></span></div></div>
         <div id="em-error" class="banner error" hidden></div>
-        <section id="em-needs" class="card" hidden></section>
-        <section id="em-cards" class="card" hidden></section>
-        <section class="card"><div id="em-window"></div></section>
+        <div id="em-tabs" class="tabs" role="tablist"></div>
+        <div id="em-body">
+          <section id="em-needs" class="card" role="tabpanel" hidden></section>
+          <section id="em-cards" class="card" role="tabpanel" hidden></section>
+          <section id="em-hours" class="card" role="tabpanel" hidden></section>
+          <section id="em-pay" class="card" role="tabpanel" hidden><div id="em-window"></div></section>
+        </div>
         <div id="em-walk" class="need-buttons foot"></div>
         <datalist id="em-million-list"></datalist>
       </div>

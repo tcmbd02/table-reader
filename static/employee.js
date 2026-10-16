@@ -11,6 +11,7 @@ let emMonth = null;         // the month ("2026-09")
 let emId = null;            // the employee's id
 let emView = null;          // what the server last sent (GET / PUT /employee/<id>)
 let emTab = "basic";        // the tab of the window that is open
+let emPane = null;          // the tab of the employee shown: "fix", "cards", "hours" or "pay" (null: emPickPane chooses)
 const emPending = {};       // key -> value sent or about to be sent, shown until the server's answer has it
 const emTimers = {};        // key -> timer of a text box waiting for the user to stop typing
 let emChain = Promise.resolve();      // the requests, one after the other
@@ -27,7 +28,7 @@ async function showEmployee(month, id) {
   if (emView && (month !== emMonth || id !== emId)) await emFlush();     // what was typed for the last one goes first
   emMonth = month;
   emId = id;
-  emView = null; emTab = "basic";
+  emView = null; emTab = "basic"; emPane = null;
   for (const k of Object.keys(emTimers)) { clearTimeout(emTimers[k]); delete emTimers[k]; }
   for (const k of Object.keys(emPending)) delete emPending[k];
   $("em-title").textContent = monthTitle(emMonth);
@@ -140,50 +141,92 @@ function emDraw() {
   const e = emPerson();
   $("em-title").textContent = `${e.name || t("An employee")} - ${emView.company || t("(no company)")} - ${monthTitle(emMonth)}`;
   $("em-million-list").replaceChildren(...(emView.million || []).map((x) => el("option", { value: x.emp_no, label: x.name })));
+  if (!emPane) emPane = emPickPane(ppItemsOf(emId).length > 0);
   emKeepFocus(() => { emDrawCards(); emDrawWindow(); });
-  ppDrawEmployeeNeeds(); ppDrawWalk();
+  ppDrawEmployeeNeeds(); ppDrawWalk(); emDrawTabs();
+}
+
+// ------------------------------------------------------------------------------------------------ the four tabs
+const EM_PANES = [["fix", "alert-triangle", "To fix", "em-needs"], ["cards", "id", "Cards", "em-cards"],
+  ["hours", "clock", "Hours", "em-hours"], ["pay", "cash", "Pay", "em-pay"]];
+
+// An employee with something to fix opens on To fix; another on the tab chosen last in this browser tab (Pay at first).
+function emPickPane(hasItems) {
+  if (hasItems) return "fix";
+  const last = recall("em.tab");
+  return ["cards", "hours", "pay"].includes(last) ? last : "pay";
+}
+
+function emShowPane(name) {
+  if (name !== emPane) emFlush();                    // what was typed goes before the tab changes
+  emPane = name;
+  if (name !== "fix") remember("em.tab", name);
+  emDrawTabs();
+}
+
+function emDrawTabs() {
+  if (!emView || !emPane) return;
+  const counts = { fix: ppItemsOf(emId).length, cards: emView.cards.length };
+  $("em-tabs").replaceChildren(...EM_PANES.map(([key, name, label]) => el("button", { type: "button", role: "tab",
+    class: "tab" + (key === emPane ? " on" : ""), "data-pane": key, "aria-selected": String(key === emPane),
+    onclick: () => emShowPane(key) }, icon(name), " ", t(label), key in counts ? el("span", { class: "count", text: String(counts[key]) }) : null)));
+  for (const [key, , , id] of EM_PANES) $(id).hidden = key !== emPane;
 }
 
 // ------------------------------------------------------------------------------------------- the employee's cards
 function emDrawCards() {
   const e = emPerson();
   const cards = emView.cards.map((card) => {
-    const target = el("select", { "aria-label": t("Move to"), id: `em-to-${card.ref}` },
-      ...emView.others.map((o) => el("option", { value: o.id, text: [o.emp_no, o.name].filter(Boolean).join(" ") || t("An employee") })),
-      el("option", { value: "", text: t("A new employee") }));
-    const move = el("button", { type: "button", text: t("Move") });
-    move.addEventListener("click", () => emAct(move, () => api("POST", emUrl("/place"),
-      { ref: card.ref, employee: target.value || null, move: true, from: emId })));
-    const off = el("button", { type: "button", text: t("Take off") });
-    off.addEventListener("click", () => {
+    const off = iconButton("x", t("Take off"), { onclick: () => {
       if (!confirm(t("Take this card off the employee? It goes back to step 2 as a card whose employee is not known."))) return;
       emAct(off, () => api("POST", emUrl("/take-off"), { ref: card.ref, from: emId }));
-    });
-    return el("li", { class: "need" }, el("strong", { text: card.name || card.doc }),
-      card.mapped ? el("p", { class: "legend", text: t("Read with the saved card layout: the Hours column list does not apply to this card.") }) : null,
-      el("div", { class: "need-buttons" },
-        el("button", { type: "button", text: t("Check this card →"), onclick: () => { location.hash = `#/check/${encodeURIComponent(card.doc)}`; } }),
-        el("label", {}, t("Move to"), target), move, off));
+    } });
+    return el("li", { class: "card-row" }, icon("photo"),
+      el("div", { class: "card-name" }, el("strong", { text: card.name || card.doc }),
+        card.mapped ? el("p", { class: "legend", text: t("Read with the saved card layout: the Hours column list does not apply to this card.") }) : null),
+      iconButton("eye", t("Check this card"), { onclick: () => { location.hash = `#/check/${encodeURIComponent(card.doc)}`; } }),
+      iconButton("arrows-exchange", t("Move to"), { onclick: () => emMovePopup(card) }), off);
   });
   const columns = emView.result.columns || [];
-  const colSel = el("select", { id: "em-hours", "aria-label": t("Column with the daily hours") },
-    el("option", { value: "", text: t("Automatic (the Total column; the IN/OUT times on days it is empty)") }),
-    ...columns.map((c) => el("option", { value: c, text: c, selected: e.hours_column === c })));
+  const colSel = el("select", { id: "em-hours-column", "aria-label": t("Column with the daily hours"),
+    title: t("Automatic (the Total column; the IN/OUT times on days it is empty)") },
+  el("option", { value: "", text: t("Automatic") }),
+  ...columns.map((c) => el("option", { value: c, text: c, selected: e.hours_column === c })));
   colSel.addEventListener("change", () => emSend({ hours_column: colSel.value || null }));
-  const remove = el("button", { type: "button", text: t("Remove employee") });
+  $("em-cards").replaceChildren(
+    cards.length ? el("ul", { class: "card-rows" }, ...cards) : el("p", { class: "muted", text: t("This employee has no time card yet.") }),
+    ...[emAddCardRow(e)].filter(Boolean),             // replaceChildren would write a missing one as "null"
+    el("div", { class: "need-buttons small" }, el("label", {}, icon("table"), " ", t("Hours from:"), " ", colSel)));
+  emDrawMenu();
+}
+
+// "Move to": another employee of the company, or a new one, in a pop-up.
+function emMovePopup(card) {
+  const target = el("select", { "aria-label": t("Move to") },
+    ...emView.others.map((o) => el("option", { value: o.id, text: [o.emp_no, o.name].filter(Boolean).join(" ") || t("An employee") })),
+    el("option", { value: "", text: t("A new employee") }));
+  const move = el("button", { type: "button", class: "primary", text: t("Move") });
+  move.addEventListener("click", () => {
+    const to = target.value || null;
+    closePopup();
+    emAct(null, () => api("POST", emUrl("/place"), { ref: card.ref, employee: to, move: true, from: emId }));
+  });
+  openPopup({ title: t("Move to"), icon: "arrows-exchange", body: [el("p", { text: card.name || card.doc }), target],
+    buttons: [el("button", { type: "button", text: t("Cancel"), onclick: closePopup }), move] });
+}
+
+// The More menu (…): Remove employee.
+function emDrawMenu() {
+  const remove = el("button", { type: "button", class: "danger", text: t("Remove employee") });
   remove.addEventListener("click", () => {
+    $("em-menu").hidden = true;
     if (!confirm(t("Remove this employee from the payroll? Their documents are not deleted."))) return;
     const back = `#/payroll/${emMonth}`;
     remove.disabled = true;
     emFlush().then(() => api("DELETE", emEmployeeUrl())).then(() => { forget("place.payroll"); ppView = null; location.hash = back; })
       .catch((err) => { emFail(err); remove.disabled = false; });
   });
-  $("em-cards").replaceChildren(
-    el("h3", { text: t("Time cards of this employee") }),
-    cards.length ? el("ol", { class: "needs" }, ...cards) : el("p", { class: "muted", text: t("This employee has no time card yet.") }),
-    ...[emAddCardRow(e)].filter(Boolean),             // replaceChildren would write a missing one as "null"
-    el("div", { class: "need-buttons" }, el("label", {}, t("Hours column"), colSel), remove));
-  $("em-cards").hidden = false;
+  $("em-menu").replaceChildren(remove);
 }
 
 // "Add a time card": any card of the employee's company that is not theirs (GET /employee/<id> lists them). One on
@@ -448,3 +491,8 @@ $("employee").addEventListener("change", (ev) => { if (ev.target.dataset && ev.t
 
 // a tab closed or left right after typing: what is still waiting goes now
 document.addEventListener("visibilitychange", () => { if (document.hidden && !$("employee").hidden) emFlush(); });
+
+iconize($("em-more"), "dots", t("More"));
+$("em-more").addEventListener("click", (ev) => { ev.stopPropagation(); $("em-menu").hidden = !$("em-menu").hidden; });
+$("em-menu").addEventListener("click", (ev) => ev.stopPropagation());
+document.addEventListener("click", () => { $("em-menu").hidden = true; });

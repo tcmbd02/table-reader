@@ -14,14 +14,15 @@ async def scenario(page, downloads):
     await page.goto(f"{BASE}/#/payroll/{M}/e/{ali}")
     await page.ev("T.until(() => document.querySelector('#em-window .pw-title'), 'window drawn')")
     expect("walk buttons", "Previous" in await page.ev("T.text('#em-walk button')"), True)
-    expect("card button", "Check this card →" in await page.ev("T.text('#em-cards button')"), True)
+    expect("card button", "Check this card" in await page.ev("T.text('#em-cards button')"), True)
     # typing in the name and leaving at once (before the 500 ms wait ends) keeps what was typed (Review Focus 3)
     await page.ev("T.set('ew-name', 'ALI BIN TEST'); document.getElementById('step-check').click(); T.sleep(1500)")
     after = await page.ev(f"fetch('/api/payroll/{M}/employee/{ali}').then((r) => r.json())")
     expect("typed name saved", after["employee"]["name"], "ALI BIN TEST")
     # the card button opens the file in step 2
     await page.goto(f"{BASE}/#/payroll/{M}/e/{ali}")
-    await page.ev("T.until(() => document.querySelector('#em-cards button'), 'cards'); T.click('Check this card →')")
+    await page.ev("T.until(() => document.querySelector('#em-tabs [data-pane=cards]'), 'tabs')")
+    await page.ev("document.querySelector('#em-tabs [data-pane=cards]').click(); T.click('Check this card')")
     await page.ev("T.sleep(300)")
     expect("card in step 2", await page.ev("location.hash.startsWith('#/check/')"), True)
     # Previous goes to the employee before in the list

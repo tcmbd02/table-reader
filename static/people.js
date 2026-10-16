@@ -368,8 +368,12 @@ const ITEM_HEADS = {
   held: "{name}: not ready for the Million file",
 };
 
-// One thing that needs the user about an employee or a company (the files' are in step 2).
-function itemNode(item) {
+const ITEM_ICONS = { look: "eye", days: "calendar", column: "table", nocard: "id", held: "clock-pause",
+  settings: "calendar-cog", offer: "users", empno: "id" };
+
+// One thing that needs the user about an employee or a company (the files' are in step 2). ``short``: an icon and the
+// title with the buttons; the longer sentences folded under More.
+function itemNode(item, { short = false } = {}) {
   const name = item.employee ? employeeName(item.employee) : "";
   const buttons = [];
   let head = "", details = [];
@@ -403,6 +407,12 @@ function itemNode(item) {
     details = [item.why === "empty" ? t("It is empty. Type it exactly as in Million Payroll.")
       : item.why === "shared" ? t("Employee No. {no} is used for {n} employees. Each employee needs their own.", { no: item.emp_no, n: item.count })
         : t("In Million Payroll, Employee No. {no} is {million}.", { no: item.emp_no, million: item.million_name })];
+  }
+  if (short) {
+    return el("li", { class: "need short" },
+      el("div", { class: "need-head" }, icon(ITEM_ICONS[item.kind] || "alert-triangle"), el("strong", { text: head }),
+        el("div", { class: "need-buttons" }, ...buttons)),
+      details.length ? el("details", {}, el("summary", { text: t("More") }), ...details.map((d) => el("p", { class: "legend", text: d }))) : null);
   }
   return el("li", { class: "need" }, el("strong", { text: head }),
     ...details.map((d) => el("p", { class: "legend", text: d })), el("div", { class: "need-buttons" }, ...buttons));
@@ -461,11 +471,16 @@ $("co-export").addEventListener("click", () => openExport(coCompany));
 
 // ------------------------------------------------------------------------------------------------ the open employee
 // Their "Needs you", and Previous / Next needing you (the employee view itself is employee.js).
+function ppItemsOf(id) {
+  const e = everyone().find((x) => x.id === id);
+  return e ? e.items : [];
+}
+
 function ppDrawEmployeeNeeds() {
-  const e = everyone().find((x) => x.id === ppSel.employee);
-  const items = e ? e.items : [];
-  $("em-needs").hidden = !items.length;
-  $("em-needs").replaceChildren(el("h3", { text: t("Needs you") }), el("ol", { class: "needs" }, ...items.map(itemNode)));
+  const items = ppItemsOf(ppSel.employee);
+  $("em-needs").replaceChildren(items.length ? el("ol", { class: "needs" }, ...items.map((i) => itemNode(i, { short: true })))
+    : el("p", { class: "nothing" }, icon("circle-check"), " ", t("Nothing to fix")));
+  if (typeof emDrawTabs === "function") emDrawTabs();
 }
 
 function ppDrawWalk() {
@@ -476,6 +491,6 @@ function ppDrawWalk() {
   $("em-walk").replaceChildren(
     el("button", { type: "button", text: t("‹ Previous"), disabled: !prev,
       onclick: () => { location.hash = employeeHash(moMonth, prev.id); } }),
-    el("button", { type: "button", class: "primary", text: next ? t("Next needing you ›") : t("Nobody else needs you"),
+    el("button", { type: "button", class: "primary", text: next ? t("Next to fix ›") : t("Nobody else needs you"),
       disabled: !next, onclick: () => { location.hash = employeeHash(moMonth, next.id); } }));
 }

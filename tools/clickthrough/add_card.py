@@ -12,6 +12,7 @@ async def scenario(page, downloads):
     ali, siti = ids[("MAJU JAYA", "ALI")], ids[("MAJU JAYA", "SITI")]
     await page.goto(f"{BASE}/#/payroll/{M}/e/{ali}")
     await page.ev("T.until(() => document.getElementById('em-add'), 'add a time card', 6000)")
+    await page.ev("document.querySelector('#em-tabs [data-pane=cards]').click()")
     offered = await page.ev("[...document.querySelectorAll('#em-add option')].map((o) => o.textContent)")
     groups = await page.ev("[...document.querySelectorAll('#em-add optgroup')].map((g) => g.label)")
     print("  offered:", offered, "groups:", groups)
