@@ -81,94 +81,105 @@ seterusnya.</div>
           nyatakan sekali apa maksud setiap lajur (Claude boleh mencadangkannya), atau <b>Ia betul seperti sekarang</b>.</li>
       <li><b>untuk syarikat manakah ini?</b>: taip nama syarikat dan tekan <b>Simpan</b>.</li>
     </ul></li>
-  <li>Di bahagian bawah fail, <b>Lihat … dalam gaji →</b> membuka pekerjanya, dan <b>Pergi ke gaji … →</b> membuka langkah 3.</li>
+  <li>Di bahagian bawah fail, <b>Lihat … dalam gaji →</b> membuka pekerjanya, dan <b>Pergi ke gaji … →</b> membuka langkah 3. Jika fail dalam senarai masih ada sel kuning, Table Reader bertanya dahulu sama ada anda pasti; <b>OK</b> meneruskan, <b>Cancel</b> kekal di langkah 2.</li>
 </ol>
 <p class="small">Table Reader tidak pernah meneka. Hari yang tarikh, jam atau masa IN/OUT-nya masih kuning tidak dikira dalam gaji dan disenaraikan di bawah "Sila semak".</p>
 
 <h2>B. Langkah 3: sediakan gaji</h2>
-<div class="ok"><b>3 Gaji menyenaraikan pekerja bulan itu, syarikat demi syarikat, di sebelah kiri.</b> <b>!</b> menandakan
-pekerja yang masih memerlukan anda, <b>✓</b> pekerja yang sudah sedia. Klik seorang pekerja untuk melihatnya di sebelah
-kanan; klik nama syarikat untuk syarikat itu. "<b>… fail perlukan anda dalam langkah 2 →</b>" di bahagian atas membawa anda
-ke fail yang masih memerlukan sesuatu.</div>
+<div class="ok"><b>3 Gaji menyenaraikan pekerja bulan itu, syarikat demi syarikat, di sebelah kiri.</b> Tanda amaran
+menandakan pekerja yang masih memerlukan anda, tanda betul pekerja yang sudah sedia (letakkan tetikus pada tanda itu untuk
+membacanya). Klik seorang pekerja untuk melihatnya di sebelah kanan; klik nama syarikat untuk syarikat itu. Di bawah bulan,
+"<b>4 sedia · 1 perlu dibetulkan</b>" mengiranya, dan "<b>… fail perlukan anda dalam langkah 2 →</b>" membawa anda ke fail
+yang masih memerlukan sesuatu. Butang di bahagian atas ialah gambar kecil: letakkan tetikus pada butang untuk melihat
+fungsinya.</div>
 <h3>B0. Beri Table Reader senarai pekerja Million (sekali, dan sekali lagi selepas menambah pekerja dalam Million)</h3>
 <ol>
   <li>Dalam Million: <span class="path">tab Employee &gt; Employee</span>, <kbd>Alt</kbd>+<kbd>P</kbd> (Print).</li>
   <li>Klik <b>Employment Listing</b> (atau biarkan <b>Payroll Information</b> terpilih: kedua-duanya boleh), <kbd>Alt</kbd>+<kbd>P</kbd> (Print), kemudian <b>Excel</b>.</li>
   <li>Pilih <b>File</b>, <kbd>Alt</kbd>+<kbd>O</kbd> (OK). Million tidak bertanya di mana hendak simpan: ia menulis
       <code>rptempepmlist.xls</code> (Payroll Information: <code>rptemppsnlist.xls</code>) ke dalam folder syarikatnya (pada komputer riba ini <code>C:\million\Payroll\mycompany</code>).</li>
-  <li>Dalam Table Reader: <b>3 Gaji</b> &gt; <b>Import senarai pekerja daripada Million</b> (Import employee list from Million), dan pilih fail itu.</li>
+  <li>Dalam Table Reader: <b>3 Gaji</b> &gt; butang <b>orang</b> (<b>Import senarai pekerja daripada Million</b>), dan pilih
+      fail itu. Titik kecil pada butang itu bermakna senarai itu belum diimport.</li>
 </ol>
 <p class="small">Table Reader hanya menyimpan No. Pekerja dan nama. Selepas itu setiap kotak No. Pekerja menawarkan senarai Million,
 dan sebelum fail Million dibuat, Table Reader menyemak setiap nombor dan nama dengan senarai itu.</p>
 <h3>B1. Bulan</h3>
 <ol>
   <li>Tekan <b>3 Gaji</b> (di bar atas). Ia dibuka pada bulan lepas; <b>&lt;</b> dan <b>&gt;</b> menukar bulan.</li>
-  <li>Tekan <b>Tetapan bulan</b> (Month settings). <b>Hari rehat setiap minggu</b> menanda Ahad; tandakan hari lain
-      (contohnya Sabtu) untuk menjadikan setiap hari itu hari rehat sekali gus. Klik setiap <b>cuti umum</b> sehingga ia kuning (putih = hari bekerja,
-      kelabu = hari rehat), dan semak dua peraturan:
-    <ul>
-      <li><b>Jam biasa dalam sehari bekerja</b> (kerja lebih masa bermula selepas ini).</li>
-      <li><b>Rehat yang ditolak daripada kad masa IN/OUT</b> (1 jam kecuali anda mengubahnya).</li>
-    </ul></li>
-  <li>Syarikat yang ada jam lain atau kalendar lain: klik nama syarikat itu dan tekan <b>Tetapan syarikat</b> (Company settings).</li>
+  <li><b>Loceng</b> menyimpan mesej bulan itu: kad yang masuk kepada pekerjanya dengan sendirinya, No. Pekerja baharu,
+      fail Million yang dibuat, senarai Million yang diimport. Nombor padanya mengira mesej baharu; mesej baharu juga
+      dipaparkan seketika di bawahnya. Buka <b>Lagi</b> pada mesej untuk membaca semuanya.</li>
+  <li>Tekan butang <b>kalendar</b> (<b>Tetapan bulan</b>). Ia dibuka di atas halaman. <b>Hari rehat setiap minggu</b>: Ahad
+      sudah dipilih; tekan hari lain (contohnya Sab) untuk menjadikan setiap hari itu hari rehat sekali gus. Klik setiap
+      <b>cuti umum</b> dalam kalendar sehingga ia kuning (putih = hari bekerja, kelabu = hari rehat), semak <b>Jam biasa</b>
+      (kerja lebih masa bermula selepas ini) dan <b>Rehat (jam)</b> yang ditolak daripada kad masa IN/OUT, dan tekan
+      <b>Simpan</b>.</li>
+  <li>Syarikat yang ada jam lain atau kalendar lain: klik nama syarikat itu dan tekan butang <b>kalendar</b>nya
+      (<b>Tetapan syarikat</b>).</li>
 </ol>
 <h3>B2. Seorang pekerja</h3>
 <ol>
   <li>Kad bulan itu sudah masuk kepada pekerjanya dengan sendirinya: seorang pekerja bagi setiap pekerja dalam fail, dengan
       setiap kad pekerja itu. Langkah 3 dibuka pada pekerja pertama yang memerlukan anda.</li>
-  <li>Di bahagian atas, <b>Perlukan anda</b> menyenaraikan apa yang tinggal untuk pekerja ini:
+  <li>Seorang pekerja ada empat tab. Satu dipaparkan pada satu masa: pekerja yang memerlukan anda dibuka pada
+      <b>Perlu dibetulkan</b>, yang lain pada tab yang anda gunakan terakhir.
     <ul>
-      <li><b>sel untuk disemak pada kad</b>: tekan <b>Lihat</b> (Look). Baris yang tidak dapat digunakan untuk gaji ditunjukkan
-          di sebelah gambar kad; semak, kemudian tekan <b>Terima</b> (Accept).</li>
-      <li><b>Million ada No. Pekerja … untuk …</b>: tekan <b>Guna …</b> (Use) jika orang yang sama.</li>
-      <li><b>No. Pekerja perlu dibetulkan</b>, <b>hari yang tidak sepadan</b>, <b>belum ada kad perakam waktu</b>: betulkan
-          dalam tetingkap di bawah.</li>
+      <li><b>Perlu dibetulkan</b>: apa yang tinggal untuk pekerja ini, satu baris setiap satu (<b>Lagi</b> menerangkannya).
+        <b>sel untuk disemak pada kad</b>: tekan <b>Lihat</b>, semak baris di sebelah gambar kad dan tekan <b>Terima</b>.
+        <b>Million ada No. Pekerja … untuk …</b>: tekan <b>Guna …</b> jika orang yang sama.
+        <b>No. Pekerja perlu dibetulkan</b>, <b>hari yang tidak sepadan</b>, <b>belum ada kad perakam waktu</b>: betulkan
+        dalam tab lain.</li>
+      <li><b>Kad</b>: kad pekerja itu. <b>Mata</b> membuka kad dalam langkah 2, <b>anak panah</b> memindahkannya kepada
+        pekerja lain, <b>×</b> mengeluarkannya. <b>Tambah kad perakam waktu</b> meletakkan kad lain syarikat yang sama
+        pada pekerja ini (kad yang kini pada orang lain, selepas satu soalan).</li>
+      <li><b>Jam</b>: bulan itu sebagai kalendar, dengan jam atau tanda setiap hari (kelabu = hari rehat, kuning = cuti
+        umum, merah = hari yang perlu dilihat). Klik sesuatu hari untuk melihat apa yang tertulis pada kad.</li>
+      <li><b>Gaji</b>: tetingkap Edit Payroll Million: No. Pekerja, Nama, dan setiap angka dalam tiga kumpulan (Days,
+        Overtime, Time off), dengan <b>Allowance &amp; Deduction</b> dan <b>Leave</b>. Taip di atas angka untuk
+        menggunakan angka anda sendiri; <b>Dikira: … – guna ini</b> mengembalikan angka yang dikira. Perubahan disimpan
+        dengan sendirinya.</li>
     </ul></li>
-  <li>Di bawahnya ialah kad pekerja itu (<b>Semak kad ini →</b> membukanya dalam langkah 2; <b>Pindah ke</b> (Move to)
-      pekerja lain, atau <b>Keluarkan</b> (Take off); <b>Tambah kad perakam waktu</b> (Add a time card) meletakkan kad lain syarikat yang sama
-      pada pekerja ini, termasuk kad yang kini pada orang lain, selepas satu soalan) dan tetingkap Edit Payroll: No. Pekerja, Nama, setiap angka (taip di
-      atasnya untuk menggunakan angka anda sendiri; <b>Dikira: … – guna ini</b> mengembalikan angka yang dikira), tab
-      <b>Allowance &amp; Deduction</b>, "Sila semak" dan "Hari demi hari". Perubahan disimpan dengan sendirinya.</li>
   <li><b>No. Pekerja</b>: taip tepat seperti dalam Million, atau pilih daripada senarai yang ditawarkan oleh kotak itu (B0).
       Ia diingati untuk bulan-bulan berikutnya.
       Bagi pekerja baharu, apabila nama yang dibaca pada kad sama dengan nama penuh tepat seorang pekerja dalam senarai Million, Table Reader mengisi nombor itu sendiri dan menulis <b>Daripada senarai Million (nama sama)</b> di sebelahnya: semak, dan tukar jika ini orang lain.
       Pekerja baharu yang tiada No. Pekerja di mana-mana diberi <b>nombor baharu</b> dengan sendirinya: 7 huruf pertama nama syarikat dan nombor seterusnya, contohnya <code>MAJUJAY001</code> bagi pekerja pertama MAJU JAYA. Million belum mengenali nombor baharu: cipta pekerja itu dalam Million dengan nombor yang sama (D2) sebelum mengimport, atau taip nombor yang sudah ada dalam Million untuk orang ini.</li>
-  <li><b>Seterusnya yang perlukan anda ›</b> membawa anda ke pekerja seterusnya yang masih memerlukan anda;
-      <b>‹ Sebelumnya</b> kembali seorang.</li>
+  <li><b>Seterusnya untuk dibetulkan ›</b> membawa anda ke pekerja seterusnya yang masih memerlukan anda;
+      <b>‹ Sebelumnya</b> kembali seorang. Butang <b>…</b> di sebelah nama ada <b>Buang pekerja</b>.</li>
 </ol>
 <h3>B3. Sebuah syarikat</h3>
 <ol>
-  <li>Klik nama sebuah syarikat dalam senarai. Panelnya menunjukkan <b>Tetapan syarikat</b>, apa yang diperlukan oleh
-      syarikat itu sendiri, dan <b>Pratonton gaji</b> (Pay preview): asas gaji, Basic Rate dan gaji yang sepatutnya diterima
-      setiap pekerja (semakan untuk anda, Million tetap membuat pengiraan sebenar). <b>Tambah pekerja</b> (Add employee)
-      menambah pekerja secara manual.</li>
-  <li><b>Baharu dalam Million</b> (New in Million, di bahagian atas panel syarikat) menyenaraikan pekerja yang nombornya
-      belum ada dalam Million. <b>Salin semua</b> (Copy all) menyalin nombor dan nama mereka, untuk ditampal dalam Excel.
-      Cipta mereka dalam Million (D2), kemudian import semula senarai pekerja Million (B0).</li>
+  <li>Klik nama sebuah syarikat dalam senarai. Ia ada tab sendiri: <b>Perlu dibetulkan</b> (apa yang diperlukan oleh
+      syarikat itu sendiri), <b>Pratonton gaji</b> (asas gaji, Basic Rate dan gaji yang sepatutnya diterima setiap
+      pekerja: semakan untuk anda, Million tetap membuat pengiraan sebenar; <b>Tambah pekerja</b> menambah pekerja secara
+      manual) dan, jika perlu, <b>Baharu dalam Million</b>.</li>
+  <li><b>Baharu dalam Million</b> menyenaraikan pekerja yang nombornya belum ada dalam Million. <b>Salin semua</b> menyalin
+      nombor dan nama mereka, untuk ditampal dalam Excel. Cipta mereka dalam Million (D2), kemudian import semula senarai
+      pekerja Million (B0).</li>
 </ol>
 
 <h2>C. Buat fail Million bulan ini</h2>
 <ol>
-  <li>Dalam <b>3 Gaji</b>, tekan <b>Eksport…</b> (Export) dan pilih <b>Fail import Million</b>. Biarkan <b>Semua
-      syarikat</b> ditanda, atau tandakan syarikat yang dikehendaki; jika beberapa, pilih <b>Satu fail untuk semuanya</b>
-      atau <b>Satu fail bagi setiap syarikat</b>. Tekan <b>Eksport</b>. Table Reader terlebih dahulu menunjukkan isi fail
-      itu: siapa yang masuk, mengikut syarikat, dan siapa yang belum masuk, berserta sebabnya.</li>
-  <li>Tekan <b>Buat fail</b> (Make the file), atau <b>Bukan sekarang</b> (Not now) untuk membetulkan dahulu. Nama fail
-      ialah <code>Payroll 2026-09 (Million).xls</code> dan ia disimpan dalam
-      <span class="path">Documents &gt; Table Reader &gt; payroll</span>.</li>
+  <li>Dalam <b>3 Gaji</b>, tekan <b>Eksport</b>. Ia dibuka di atas halaman. Pilih <b>Fail Million</b>. Biarkan <b>Semua</b>
+      syarikat, atau tekan syarikat yang dikehendaki; jika beberapa, pilih <b>Satu fail</b> atau <b>Satu setiap
+      syarikat</b>. Tekan <b>Eksport</b>. Table Reader terlebih dahulu menunjukkan isi fail itu: siapa yang masuk, mengikut
+      syarikat, dan siapa yang ditahan (bukanya untuk melihat sebabnya).</li>
+  <li>Tekan <b>Buat fail</b>, atau <b>Kembali</b> untuk menukar pilihan. Nama fail ialah
+      <code>Payroll 2026-09 (Million).xls</code> dan ia disimpan dalam
+      <span class="path">Documents &gt; Table Reader &gt; payroll</span>; loceng memberitahunya, dan <b>Buka folder</b>
+      padanya membuka folder itu.</li>
   <li>Import satu fail itu dalam Million (D4): satu import untuk setiap syarikat (satu fail bagi setiap syarikat: import
       setiap fail). Betulkan perkara yang disenaraikan, buat fail itu semula dan import semula; mengimport semula tidak
       memudaratkan.</li>
-  <li>Untuk menyemak angka dalam Excel dahulu: <b>Eksport…</b> &gt; <b>Jadual gaji</b>, sebagai <b>CSV</b> atau <b>Excel
-      .xls</b>, untuk semua atau beberapa syarikat (satu fail bagi setiap syarikat dimuat turun sebagai satu .zip). Dalam
-      panel syarikat, <b>Eksport…</b> bermula dengan hanya syarikat itu ditanda.</li>
+  <li>Untuk menyemak angka dalam Excel dahulu: <b>Eksport</b> &gt; <b>Jadual gaji</b>, sebagai <b>CSV</b> atau
+      <b>Excel</b>, untuk semua atau beberapa syarikat (satu fail bagi setiap syarikat dimuat turun sebagai satu .zip).
+      <b>Eksport</b> pada syarikat bermula dengan hanya syarikat itu dipilih.</li>
 </ol>
 <div class="wide"><table>
   <tr><th>Belum masuk dalam fail, kerana</th><th>Maksudnya</th><th>Apa yang perlu dibuat</th></tr>
-  <tr><td>"No. Pekerja kosong" / "digunakan untuk … pekerja"</td><td>Million mengikut No. Pekerja: tanpa nombor, atau dengan nombor yang dikongsi, ia tidak tahu siapa.</td><td>Dalam <b>3 Gaji</b>, perkara <b>No. Pekerja perlu dibetulkan</b> pada pekerja itu.</td></tr>
+  <tr><td>"No. Pekerja kosong" / "digunakan untuk … pekerja"</td><td>Million mengikut No. Pekerja: tanpa nombor, atau dengan nombor yang dikongsi, ia tidak tahu siapa.</td><td>Dalam <b>3 Gaji</b>, tab <b>Perlu dibetulkan</b> pekerja itu: <b>No. Pekerja perlu dibetulkan</b>.</td></tr>
   <tr><td>"… tiada dalam senarai pekerja Million"</td><td>Million tidak mengenali No. Pekerja ini dan akan melangkaunya secara senyap.</td><td><b>Baharu dalam Million</b>: cipta pekerja itu dalam Million (D2) dan import semula senarai pekerja (B0). Atau betulkan No. Pekerja.</td></tr>
-  <tr><td>"Dalam Million Payroll, No. Pekerja … ialah …"</td><td>Nombor itu milik orang yang berlainan nama dalam Million, yang akan menerima angka tersebut.</td><td>Semak No. Pekerja dalam tetingkap pekerja itu.</td></tr>
-  <tr><td>"Ditanda INCOMPLETE (belum lengkap): …"</td><td>Ada hari yang tidak dapat dikira.</td><td>Dalam <b>3 Gaji</b>, selesaikan senarai <b>Perlukan anda</b> pekerja itu (dan failnya dalam langkah 2).</td></tr>
+  <tr><td>"Dalam Million Payroll, No. Pekerja … ialah …"</td><td>Nombor itu milik orang yang berlainan nama dalam Million, yang akan menerima angka tersebut.</td><td>Semak No. Pekerja dalam tab <b>Gaji</b> pekerja itu.</td></tr>
+  <tr><td>"Ditanda INCOMPLETE (belum lengkap): …"</td><td>Ada hari yang tidak dapat dikira.</td><td>Dalam <b>3 Gaji</b>, selesaikan tab <b>Perlu dibetulkan</b> pekerja itu (dan failnya dalam langkah 2).</td></tr>
   <tr><td>"… tidak dapat disimpan. Jika ia sedang dibuka dalam Excel…"</td><td>Fail yang terdahulu sedang dibuka dalam Excel.</td><td>Tutup fail itu dalam Excel, buat fail itu semula.</td></tr>
 </table></div>
 
@@ -230,7 +241,7 @@ fail menunjukkan angka fail itu (contohnya 25 / 1 / 21), dan pekerja yang tiada 
       sebelum import akan kembali menjadi 0 kecuali ia juga ada dalam Table Reader. Import dahulu, kemudian taip tambahan itu, atau taipkannya dalam Table Reader.</li>
   <li>Pekerja yang <b>tiada dalam fail</b> tidak diubah, jadi syarikat boleh diimport satu demi satu ke dalam bulan yang sama.</li>
   <li>Mengimport fail yang sama sekali lagi tidak memudaratkan: ia menulis angka yang sama.</li>
-  <li>Gunakan hanya fail import Million (<b>.xls</b>) daripada <b>Eksport…</b>. Import CSV Million tidak mengikut tetapan lajur.</li>
+  <li>Gunakan hanya fail import Million (<b>.xls</b>) daripada <b>Eksport</b>. Import CSV Million tidak mengikut tetapan lajur.</li>
   <li><b>Basic Rate</b>, yuran pengarah (Director Fee) dan Back Pay tiada pada kad perakam waktu: simpan dalam Million.</li>
   <li>Lajur fail mengikut <span class="path">File Format Setting</span> dalam Million (di dalam tetingkap Import). Jika sesiapa mengubah tetapan itu, fail tidak lagi sepadan: beritahu orang yang menjaga Table Reader.</li>
 </ul>

@@ -36,4 +36,4 @@ In `Documents\Table Reader` on your PC: the files you added, your corrections an
 uploaded by Table Reader itself.
 
 ---
-Build of 14 October 2026 (3), with weekly rest days and Export... (source: branch `pdf-text`, commit 74a2a4f).
+Build of 16 October 2026, with step 3 in tabs, a message bell and pop-ups, and the yellow-cell question before payroll (source: branch `pdf-text`, commit 1e2eed9).
