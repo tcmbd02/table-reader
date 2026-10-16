@@ -136,7 +136,7 @@ function heldNodes(run) {
 // One Million file for the whole month: everyone who can go in, and for the others the reason, company by company.
 // The × that closes a message at the top of a screen.
 function closeX(onclose) {
-  return el("button", { type: "button", class: "banner-close", text: "×", title: t("Close"), "aria-label": t("Close"), onclick: onclose });
+  return iconButton("x", t("Close"), { class: "banner-close", onclick: onclose });
 }
 
 function showMonthRun(run, box) {

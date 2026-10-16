@@ -94,7 +94,9 @@ def test_the_page_can_open_the_two_folders(tmp_path, monkeypatch):
     monkeypatch.setattr(app_module.os, "startfile", opened.append, raising=False)
     store = Jobs(tmp_path / "jobs", reader=card)
     with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
-        assert c.get("/api/folders").json() == {"inbox": str(tmp_path / "Inbox"), "tables": str(tmp_path / "Tables")}
+        assert c.get("/api/folders").json() == {"inbox": str(tmp_path / "Inbox"), "tables": str(tmp_path / "Tables"),
+                                                "payroll": str(tmp_path / "payroll")}
         assert c.post("/api/folders/inbox/open").status_code == 200 and c.post("/api/folders/tables/open").status_code == 200
-        assert opened == [tmp_path / "Inbox", tmp_path / "Tables"] and (tmp_path / "Inbox").is_dir()
+        assert c.post("/api/folders/payroll/open").status_code == 200
+        assert opened == [tmp_path / "Inbox", tmp_path / "Tables", tmp_path / "payroll"] and (tmp_path / "Inbox").is_dir()
         assert c.post("/api/folders/windows/open").status_code in (400, 404)

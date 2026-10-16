@@ -1088,7 +1088,7 @@ def create_app(jobs: Jobs | None = None) -> FastAPI:
     # ------------------------------------------------------------------------------- the Inbox and Tables folders
     watcher = Inbox(store)
     app.state.inbox = watcher
-    FOLDERS = {"inbox": watcher.folder, "tables": watcher.tables}
+    FOLDERS = {"inbox": watcher.folder, "tables": watcher.tables, "payroll": plans.root}
 
     @app.get("/api/folders")
     def folders():

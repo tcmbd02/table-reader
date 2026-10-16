@@ -17,6 +17,22 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
+// An icon from static/icons.svg (Tabler Icons, MIT; tools/make_icon_sprite.py adds more).
+function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "ico"); svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `icons.svg#ti-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+// A button that shows only an icon: its words are its tooltip, and stay in it for screen readers.
+function iconButton(name, label, props = {}) {
+  return el("button", { type: "button", title: label, ...props, class: `icon-btn ${props.class || ""}`.trim() },
+    icon(name), el("span", { class: "sr-only", text: label }));
+}
+
 async function api(method, url, body) {
   const opts = { method, headers: {} };
   if (body instanceof FormData) opts.body = body;
