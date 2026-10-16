@@ -437,7 +437,8 @@ function emDrawWindow() {
   const head = el("div", { class: "pw-head" },
     el("div", { class: "pw-ids" }, empNo, idBox("ew-name", "name", "Name", t("Name as in Million Payroll"))),
     el("div", { class: "pw-month", text: `Month End Pay - ${MONTH_NAMES[m - 1]}, ${y}` }),
-    el("span", { class: r.complete ? "pill good" : "pill check", text: r.complete ? t("Complete") : t("Needs checking") }));
+    r.complete ? el("span", { class: "pill good", text: t("Complete") })
+      : el("button", { type: "button", class: "pill check", text: t("Needs checking"), title: t("To fix"), onclick: () => emShowPane("fix") }));
 
   // Basic Rate and Monthly / Daily: what is typed here counts; while no rate is typed, Million's own are shown and used
   const fromMillion = r.rate_source === "million";
@@ -451,16 +452,16 @@ function emDrawWindow() {
   const basisSel = el("select", { id: "ew-basis", class: "unit b", "aria-label": "Pay Basis", disabled: fromMillion },
     ...PAY_BASES.map(([value, label]) => el("option", { value, text: label, selected: shownBasis === value })));
   basisSel.addEventListener("change", () => emSend({ pay_basis: basisSel.value }));
-  const basic = el("div", { class: "pw-panel" },
-    el("div", { class: "pf" }, el("label", { class: "b", for: "ew-rate", text: "Basic Rate" }), rateBox, basisSel),
-    emBasicPayLine(),
-    el("div", { class: "pf" }, el("label", { text: "Director Fee" }), el("input", { disabled: true, placeholder: "—", "aria-label": "Director Fee (kept in Million Payroll)" })),
-    el("div", { class: "pf" }, el("label", { text: "Back Pay" }), el("input", { disabled: true, placeholder: "—", "aria-label": "Back Pay (kept in Million Payroll)" })),
-    el("p", { class: "legend", text: t("Basic Rate is for the pay preview; it is not sent to Million Payroll. Director Fee and Back Pay: keep them in Million Payroll.") }));
-  const days = el("div", { class: "pw-panel" },
+  const rateLine = el("div", { class: "pw-rate" },
+    el("div", { class: "pf" }, el("span", { class: "b" }, el("label", { for: "ew-rate", text: "Basic Rate" }),
+      iconButton("info-circle", t("Basic Rate is for the pay preview; it is not sent to Million Payroll. Director Fee and Back Pay: keep them in Million Payroll."), { class: "info" })),
+    rateBox, basisSel),
+    emBasicPayLine());
+  const group = (title, ...rows) => el("div", { class: "pw-group" }, el("h4", { text: title }), ...rows);
+  const days = group("Days",
     emRow("working_days", "Working Days", "", true), emRow("public_holiday", "Public Holiday", ""),
     emRow("days_worked", "Days Worked", "", true), emRow("hours_worked", "Hours of Worked", ""));
-  const time = el("div", { class: "pw-panel" },
+  const time = group("Time off",
     emRow("lateness", "Lateness", "Hour(s)"), emRow("early_departure", "Early Departure", "Hour(s)"),
     emRow("no_pay_hour", "No Pay Hour", "Hour(s)"), emRow("encashing_leave", "Encashing Leave", "Day(s)"));
 
@@ -469,29 +470,23 @@ function emDrawWindow() {
     return el("tr", {}, el("td", {}, el("label", { for: input.id, text: label })), el("td", { class: "c", text: unit }),
       el("td", { class: "n" }, input, emReset(key)));
   });
-  const otTable = el("table", { class: "pw-table" },
-    el("thead", {}, el("tr", {}, el("th", { text: "Overtime" }), el("th", { text: "Unit" }), el("th", { text: "Hrs/Days" }))),
-    el("tbody", {}, ...otRows));
-
-  const issues = r.issues.length
-    ? el("div", { class: "issues" }, el("strong", { text: t("Please check:") }), el("ul", {}, ...r.issues.map((x) => el("li", { text: tm(x.text) }))))
-    : el("p", { class: "legend", text: t("Nothing to check for this employee.") });
+  const overtime = group("Overtime", el("table", { class: "pw-table" },
+    el("thead", {}, el("tr", {}, el("th", { text: "" }), el("th", { text: "Unit" }), el("th", { text: "Hrs/Days" }))),
+    el("tbody", {}, ...otRows)));
 
   const tab = (key, text) => {
     const b = el("button", { type: "button", role: "tab", class: emTab === key ? "tab active" : "tab", "aria-selected": String(emTab === key), text });
     b.addEventListener("click", () => { emTab = key; emDraw(); });
     return b;
   };
-  const body = emTab === "allow"
-    ? emAllowanceTab()
-    : el("div", {}, el("div", { class: "pw-panels" }, basic, days, time),
-      el("div", { class: "pw-lower" }, el("div", {}, emLines("leave")), el("div", {}, otTable)),
-      el("div", { class: "pw-check" }, issues));
+  const body = emTab === "allow" ? emAllowanceTab()
+    : emTab === "leave" ? emLines("leave")
+      : el("div", {}, el("div", { class: "pw-groups" }, days, overtime, time), rateLine);
 
   $("em-window").replaceChildren(el("div", { class: "pw" },
     el("div", { class: "pw-title", text: `Edit Payroll # ${e.emp_no || "(no Employee No.)"} - ${e.name}` }),
     head, el("div", { class: "row" }, source, made),
-    el("div", { class: "pw-tabs", role: "tablist" }, tab("basic", "Basic Pay & Overtime"), tab("allow", "Allowance & Deduction")),
+    el("div", { class: "pw-tabs", role: "tablist" }, tab("basic", "Basic Pay & Overtime"), tab("allow", "Allowance & Deduction"), tab("leave", "Leave")),
     el("div", { class: "pw-body" }, body),
     el("div", { class: "pw-foot" }, el("span", { class: "muted", text: t("Changes are saved automatically.") }))));
 }

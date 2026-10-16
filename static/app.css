@@ -346,3 +346,12 @@ button.danger { color: var(--bad); }
 .cal .d.on { outline: 2px solid var(--accent); }
 #cal-note { min-height: 1.4em; }
 @media (max-width: 600px) { .figs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* the Pay tab: Million's fields in three groups, the Basic Rate line under them */
+.pw-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.pw-group h4 { margin: 0 0 6px; font-size: .95rem; }
+.pw-rate { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--panel-line, var(--line)); }
+.pw-rate .info { border: none; background: none; color: var(--muted); padding: 0 4px; }
+.pw-rate .pf { max-width: 420px; }
+button.pill { cursor: pointer; font: inherit; font-size: .85rem; }
+@media (max-width: 900px) { .pw-groups { grid-template-columns: 1fr; } }
