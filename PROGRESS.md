@@ -18,6 +18,9 @@
 - On the user's OK: `step3-tabs` merged into `pdf-text` (fast-forward, fff1f80, **not pushed**) and the app rebuilt
   (`dist\Table Reader\` and the zip, 16 Oct 10:47; the built `bell.js` has the fix). The app (nothing being read) was
   closed with its Quit before the build and started again afterwards; this time Windows let it start.
+- On the user's OK: `pdf-text` pushed (24 commits, bc328d4..1e2eed9; diff scanned, made-up names only) and the
+  `download` branch updated with this build (dcb78ff: zip checked against the code first, both HTML guides copied, README
+  build line). The PDF guide there is still the old one.
 
 ## Session 25 - 2026-10-16 - Push, `download` branch, and the yellow-cell question before payroll
 - On the user's OK: `pdf-text` pushed (24c, 24d and their notes, 6 commits; diff scanned, made-up names only), and the
