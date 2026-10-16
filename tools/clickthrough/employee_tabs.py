@@ -59,3 +59,6 @@ async def scenario(page, downloads):
     await page.ev("T.sleep(1200)")
     after = await page.ev(f"fetch('/api/payroll/{M}/employee/{mei}').then((r) => r.json())")
     expect("typed then tab: saved", after["employee"]["name"], "MEI TABS")
+    # notes that are not things to fix (leave marked on the card, cards no longer listed) are under To fix too
+    await page.ev("emView.result.issues.push({ kind: 'leave', job: null, text: 'The card marks leave on day 4. Type the leave in the Leave table if Million Payroll should count it.' }); emDraw()")
+    expect("leave note under To fix", "leave on day 4" in await page.ev("document.getElementById('em-needs').textContent"), True)

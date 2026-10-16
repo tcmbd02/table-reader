@@ -147,6 +147,14 @@ function emDraw() {
   ppDrawEmployeeNeeds(); ppDrawWalk(); emDrawTabs();
 }
 
+// What the calculation says that is not a thing to fix (leave marked on a card, cards no longer listed): under To fix.
+const INFO_ISSUES = ["leave", "removed"];
+function emInfoNotes() {
+  if (!emView || emView.employee.id !== ppSel.employee) return null;
+  const notes = emView.result.issues.filter((i) => INFO_ISSUES.includes(i.kind));
+  return notes.length ? el("ul", { class: "info-notes" }, ...notes.map((i) => el("li", {}, icon("info-circle"), " ", tm(i.text)))) : null;
+}
+
 // The Hours tab: four figures and the month as a calendar; a clicked day says how it was read (hours.js).
 let emPickedDay = null;
 function emDrawHours() {

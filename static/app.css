@@ -355,3 +355,5 @@ button.danger { color: var(--bad); }
 .pw-rate .pf { max-width: 420px; }
 button.pill { cursor: pointer; font: inherit; font-size: .85rem; }
 @media (max-width: 900px) { .pw-groups { grid-template-columns: 1fr; } }
+.info-notes { list-style: none; margin: 8px 0 0; padding: 0; color: var(--muted); font-size: .92rem; }
+.info-notes li { margin: 4px 0; }

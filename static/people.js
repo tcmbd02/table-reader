@@ -479,7 +479,8 @@ function ppItemsOf(id) {
 function ppDrawEmployeeNeeds() {
   const items = ppItemsOf(ppSel.employee);
   $("em-needs").replaceChildren(items.length ? el("ol", { class: "needs" }, ...items.map((i) => itemNode(i, { short: true })))
-    : el("p", { class: "nothing" }, icon("circle-check"), " ", t("Nothing to fix")));
+    : el("p", { class: "nothing" }, icon("circle-check"), " ", t("Nothing to fix")),
+  ...[typeof emInfoNotes === "function" ? emInfoNotes() : null].filter(Boolean));
   if (typeof emDrawTabs === "function") emDrawTabs();
 }
 
