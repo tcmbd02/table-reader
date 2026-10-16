@@ -61,8 +61,12 @@ async def scenario(page, downloads):
     await page.ev("document.body.click()")
     # the pop-up stays inside the window and scrolls inside itself (Review Focus 5)
     await open_export(page)
+    # as many companies as the real month (about 30; the made-up month has 3): 40 more chips in the list
+    await page.ev("const chips = document.querySelector('#popup .chips'); for (let i = 1; i <= 40; i++) "
+                  "chips.append(el('label', { class: 'chip' }, el('input', { type: 'checkbox' }), el('span', { text: `COMPANY ${i} SDN BHD` }))); 'ok'")
     expect("never taller than the window", await page.ev("document.getElementById('popup').getBoundingClientRect().bottom <= innerHeight"), True)
-    expect("its body scrolls", await page.ev("getComputedStyle(document.getElementById('popup-body')).overflowY"), "auto")
+    expect("its buttons on the screen", await page.ev("document.getElementById('popup-foot').getBoundingClientRect().bottom <= innerHeight"), True)
+    expect("its body scrolls", await page.ev("(() => { const b = document.getElementById('popup-body'); return b.scrollHeight > b.clientHeight; })()"), True)
     await page.ev("closePopup()")
     # Export from a company's panel: only that company ticked
     await page.ev(f"location.hash = '#/payroll/{M}/c/' + encodeURIComponent('A & B (M)')")
