@@ -12,7 +12,6 @@ let coCompany = null;        // the company whose panel is open
 let coView = null;           // its row of ppView
 let ppChain = Promise.resolve();
 let ppTimer = null;
-let ppNotes = [];             // what opening the month did by itself, shown in this visit (monthNotes)
 
 function companyHash(month, company) { return `#/payroll/${month}/c/${encodeURIComponent(company)}`; }
 function employeeHash(month, id) { return `#/payroll/${month}/e/${encodeURIComponent(id)}`; }
@@ -42,9 +41,10 @@ async function showPeople(month, sel, entering = false) {
   moMonth = month; ppSel = sel;
   $("mo-title").textContent = t("Payroll {month}", { month: monthTitle(moMonth) });
   if (other) { $("mo-run-result").hidden = true; $("mo-export").hidden = true; }
-  if (other || entering) ppNotes = takeMonthNotes(month);
+  bellDraw(month);
+  if (other || entering) takeMonthNotes(month).forEach((n) => bellAdd(month, noteMessage(n)));   // what step 2 kept for it
   else if ((before.employee || before.company !== null) && (sel.employee !== before.employee || sel.company !== before.company)) {
-    ppNotes = []; $("mo-run-result").hidden = true;      // the messages at the top are said once: another one opened
+    $("mo-run-result").hidden = true;                    // the message at the top is said once: another one opened
   }
   moError("");
   const fresh = entering || !ppView || ppView.month !== month;
@@ -61,7 +61,7 @@ function ppLoad() {
     try {
       const view = await api("GET", `/api/payroll/${month}/people`);
       if (month !== moMonth) return;
-      if (view.added_by_themselves || view.numbered) ppNotes.push({ added: view.added_by_themselves, numbered: view.numbered });
+      if (view.added_by_themselves || view.numbered) bellAdd(month, noteMessage({ added: view.added_by_themselves, numbered: view.numbered }));
       ppView = view; ppDraw();
     } catch (e) { moError(e.message); }
   });
@@ -73,9 +73,6 @@ function loadCompany() { return ppLoad(); }          // settings.js and paytable
 function ppDraw() {
   if (!ppView) return;
   const v = ppView;
-  const info = monthNotesText(ppNotes);
-  $("mo-info").hidden = !info;
-  $("mo-info").replaceChildren(...(info ? [closeX(() => { ppNotes = []; $("mo-info").hidden = true; }), info] : []));
   $("mo-total").replaceChildren(
     t("{a} of {b} employees ready.", { a: v.ready_employees, b: v.employees }) + " ",
     v.checked_with_million ? "" : t("The Employee Nos. are not being checked against Million: import Million's employee list.") + " ",
@@ -295,8 +292,13 @@ $("mo-million-file").addEventListener("change", async () => {
   if (!file) return;
   const form = new FormData();
   form.append("file", file);
-  try { await api("POST", "/api/million/employees", form); await ppLoad(); }
-  catch (e) { moError(e.message); }
+  const month = moMonth;
+  try {
+    const list = await api("POST", "/api/million/employees", form);
+    bellAdd(month, { icon: "users", line: tn(list.employees.length, "Employee list imported · {n} employee", "Employee list imported · {n} employees") });
+    moError("");
+    await ppLoad();
+  } catch (e) { moError(e.message); }
 });
 
 // ------------------------------------------------------------------------------------------------ the company panel

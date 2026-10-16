@@ -70,6 +70,19 @@ function keepMonthNote(month, added, numbered) {
   remember(`notes.${month}`, JSON.stringify([...monthNotes(month), { added, numbered }].slice(-10)));
 }
 function takeMonthNotes(month) { const list = monthNotes(month); forget(`notes.${month}`); return list; }
+// The same, in one short line for the bell: "AMIN added · 1 card · 1 new Employee No."
+function noteLine(note) {
+  const info = note.added || { added: [], joined: [], skipped: [], unnamed: [], no_month: [], new_numbers: 0 };
+  const parts = info.added.map((a) => `${t("{name} added", { name: a.name })} · ${tn(a.cards, "{n} card", "{n} cards")}`);
+  if (info.joined.length) parts.push(tn(info.joined.reduce((n, a) => n + a.cards, 0), "{n} card joined", "{n} cards joined"));
+  if (info.skipped.length) parts.push(tn(info.skipped.length, "{n} file left out", "{n} files left out"));
+  if (info.unnamed.length) parts.push(tn(info.unnamed.length, "{n} row without a clear name", "{n} rows without a clear name"));
+  if (info.no_month.length) parts.push(tn(info.no_month.length, "{n} file without a month", "{n} files without a month"));
+  const numbers = (info.new_numbers || 0) + (note.numbered || 0);
+  if (numbers) parts.push(tn(numbers, "{n} new Employee No.", "{n} new Employee Nos."));
+  return parts.join(" · ");
+}
+
 function monthNotesText(notes) {
   return notes.flatMap((n) => [addedByThemselves(n.added), n.numbered ? newNumbersText(n.numbered) : ""]).filter(Boolean).join(" ");
 }

@@ -97,6 +97,8 @@
     <div class="doc-actions">
       <button id="mo-prev" type="button" aria-label="Month before" data-t-aria>&lt;</button>
       <button id="mo-next" type="button" aria-label="Month after" data-t-aria>&gt;</button>
+      <span class="bell-wrap"><button id="bell-open" type="button"></button><span id="bell-count" class="badge bell-count" hidden></span>
+        <div id="bell-list" class="bell-list" hidden></div><div id="bell-toast" class="bell-toast" role="status" aria-live="polite" hidden></div></span>
       <button id="mo-settings-open" type="button" data-t>Month settings</button>
       <button id="mo-million-import" type="button" data-t>Import employee list from Million</button>
       <input id="mo-million-file" type="file" accept=".xls" hidden>
@@ -104,7 +106,6 @@
     </div>
   </div>
   <div id="mo-error" class="banner error" hidden></div>
-  <div id="mo-info" class="banner info" hidden></div>
   <div id="mo-run-result" class="banner info" hidden></div>
   <section id="mo-export" class="card" hidden></section>
   <p id="mo-total" class="legend"></p>
@@ -183,6 +184,7 @@
 <script src="i18n.js"></script>
 <script src="app.js"></script>
 <script src="paycommon.js"></script>
+<script src="bell.js"></script>
 <script src="upload.js"></script>
 <script src="check.js"></script>
 <script src="columns.js"></script>

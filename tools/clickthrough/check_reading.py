@@ -30,6 +30,7 @@ async def scenario(page, downloads):
     expect("list shows it finished", "Reading" in await page.ev("T.text('#ck-files .side-item.on')"), False)
     # step 2 opened the month when the file finished: step 3 says what joined by itself
     await page.ev("document.getElementById('step-payroll').click()")
-    await page.ev("T.until(() => !document.getElementById('mo-info').hidden, 'note in step 3', 6000)")
-    print("  note:", await page.ev("document.getElementById('mo-info').textContent"))
-    expect("note names the new worker", "SLOW" in await page.ev("document.getElementById('mo-info').textContent"), True)
+    await page.ev("T.until(() => !document.getElementById('bell-count').hidden, 'a message in the bell', 6000)")
+    await page.ev("T.click('Messages')")
+    print("  note:", await page.ev("T.text('#bell-list .msg-line')"))
+    expect("note names the new worker", "SLOW" in await page.ev("T.text('#bell-list .msg-line')"), True)
