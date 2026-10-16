@@ -6,6 +6,15 @@ async def scenario(page, downloads):
     await page.goto(f"{BASE}/#/payroll/2026-09")
     await page.ev("T.until(() => location.hash.includes('/e/'), 'an employee is chosen')")
     expect("step 3 on", await page.ev("document.getElementById('step-payroll').classList.contains('on')"), True)
+    # the month bar is icons with their words as tooltips; one short status line; the list's marks are icons
+    expect("month bar is icons", await page.ev("[...document.querySelectorAll('#people > .doc-bar .icon-btn')].map((b) => b.title)"),
+           ["Month before", "Month after", "Messages", "Month settings", "Import employee list from Million"])
+    view = await page.ev("fetch('/api/payroll/2026-09/people').then((r) => r.json())")
+    fix = sum(1 for r in view["companies"] for e in r["employees"] if e["status"] == "needs")
+    expect("status line", await page.ev("T.text('#mo-total .stat')"), f"{view['ready_employees']} ready | {fix} to fix")
+    expect("ready shown as a tick", await page.ev("!!document.querySelector('#pp-list .side-item use[href$=\"circle-check\"]')"), True)
+    expect("word kept as tooltip", await page.ev("[...document.querySelectorAll('#pp-list .side-item .pill')].find((p) => p.querySelector('use[href$=\"circle-check\"]')).title"), "Ready")
+    expect("not checked with Million: a dot on the list button", await page.ev("!!document.querySelector('#people > .doc-bar .warn-dot')"), True)
     heads = await page.ev("T.text('#pp-list .side-head strong')")
     print("  companies:", heads)
     expect("A & B (M) listed", "A & B (M)" in heads, True)

@@ -299,3 +299,12 @@ label.choice input:focus-visible + span, label.chip input:focus-visible + span, 
 .export-two { gap: 24px; flex-wrap: wrap; }
 .summary ul { margin: 4px 0 8px; padding-left: 20px; }
 .bell-list details p { white-space: pre-line; }
+
+/* step 3's status line, the list's marks, the dot on Million's list button */
+#mo-total { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.stat.good, .pill.good .ico, .side-head .marks.ready { color: var(--ok); }
+.side-item .pill { display: inline-flex; align-items: center; padding: 2px 6px; }
+.side-head .marks { display: inline-flex; align-items: center; gap: 2px; }
+.side-head .marks.needs { color: var(--warn-line); }
+#mo-million-import { position: relative; }
+.warn-dot { position: absolute; top: 3px; right: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn-line); }

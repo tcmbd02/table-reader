@@ -33,6 +33,14 @@ function iconButton(name, label, props = {}) {
     icon(name), el("span", { class: "sr-only", text: label }));
 }
 
+// An existing button of the page shown as an icon only (its listeners stay).
+function iconize(button, name, label) {
+  button.classList.add("icon-btn");
+  button.title = label;
+  button.removeAttribute("aria-label");
+  button.replaceChildren(icon(name), el("span", { class: "sr-only", text: label }));
+}
+
 // The pop-up (one at a time, over the page): a title with its icon, a ×, the body and the buttons. Esc and × close it.
 let popupClosed = null;
 function openPopup({ title, icon: name, body, buttons = [], onClose }) {

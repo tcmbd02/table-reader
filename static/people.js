@@ -32,6 +32,14 @@ function companyStatus(r) {
   return parts.filter(Boolean).join(" · ");
 }
 
+// A company's line in the list: its status as an icon and a number (the words are the tooltip).
+function companyMarks(r) {
+  const mark = r.status === "needs" ? [icon("alert-triangle"), ` ${r.needs}`] : r.status === "million" ? [icon("clock-pause")]
+    : r.status === "none" ? [] : [icon("circle-check")];
+  const step2 = r.files_needing ? [` · ${tn(r.files_needing, "{n} file in step 2", "{n} files in step 2")}`] : [];
+  return el("small", { class: `marks ${r.status}`, title: companyStatus(r) }, ...mark, ...step2);
+}
+
 function everyone() { return ppView ? ppView.companies.flatMap((r) => r.employees) : []; }
 
 // ``entering``: step 3 was not on the screen just before (the month is asked again, and its notes are taken).
@@ -68,13 +76,20 @@ function loadCompany() { return ppLoad(); }          // settings.js and paytable
 function ppDraw() {
   if (!ppView) return;
   const v = ppView;
+  const toFix = everyone().filter((e) => e.status === "needs").length;
   $("mo-total").replaceChildren(
-    t("{a} of {b} employees ready.", { a: v.ready_employees, b: v.employees }) + " ",
-    v.checked_with_million ? "" : t("The Employee Nos. are not being checked against Million: import Million's employee list.") + " ",
+    el("span", { class: "stat good" }, icon("circle-check"), " ", t("{n} ready", { n: v.ready_employees })),
+    el("span", { class: "stat check" }, icon("alert-triangle"), " ", t("{n} to fix", { n: toFix })),
     v.files_needing ? el("button", { type: "button", class: "link",
       text: tn(v.files_needing, "{n} file needs you in step 2 →", "{n} files need you in step 2 →"),
       onclick: () => toFileProblems() }) : "");
   $("mo-export-open").disabled = !v.employees;
+  // not checked against Million's own list: a dot on the button that imports it, the sentence as its tooltip
+  $("mo-million-import").querySelector(".warn-dot")?.remove();
+  if (!v.checked_with_million) {
+    $("mo-million-import").append(el("span", { class: "warn-dot", "aria-hidden": "true",
+      title: t("The Employee Nos. are not being checked against Million: import Million's employee list.") }));
+  }
   stepBadge("payroll", v.companies.reduce((n, r) => n + r.needs, 0));
   ppDrawList();
   if (!$("company").hidden) drawCompany();
@@ -95,13 +110,14 @@ function ppDrawList() {
   $("pp-list").replaceChildren(...rows.map((r) => el("div", { class: "pp-company" },
     el("button", { type: "button", class: "side-head" + (ppSel.company === r.company && !ppSel.employee ? " on" : ""),
       onclick: () => { location.hash = companyHash(moMonth, r.company); } },
-    el("strong", { text: r.company || t("(no company)") }), el("small", { text: companyStatus(r) })),
+    el("strong", { text: r.company || t("(no company)") }), companyMarks(r)),
     el("ul", { class: "side-list" }, ...r.shown.map((e) => el("li", {},
       el("button", { type: "button", class: "side-item" + (ppSel.employee === e.id ? " on" : ""),
         onclick: () => { location.hash = employeeHash(moMonth, e.id); } },
       el("span", { class: "name", text: [e.emp_no, e.name].filter(Boolean).join(" ") || t("An employee") }),
       el("span", { class: e.status === "needs" ? "pill check" : "pill good",
-        text: e.status === "needs" ? "!" : e.status === "million" ? t("Waiting for Million") : "✓" }))))))));
+        title: e.status === "needs" ? t("Needs you") : e.status === "million" ? t("Waiting for Million") : t("Ready") },
+      icon(e.status === "needs" ? "alert-triangle" : e.status === "million" ? "clock-pause" : "circle-check")))))))));
   $("pp-none").hidden = rows.length > 0 || !ppView.companies.length;
   // the Company chosen in step 2 filters this list too: say so, and let it show everyone again
   $("pp-filter").hidden = !companyFilter;
@@ -154,6 +170,10 @@ async function ppShowSelection(fresh) {
 }
 
 // ------------------------------------------------------------------------------------------------ the month bar
+iconize($("mo-prev"), "chevron-left", t("Month before"));
+iconize($("mo-next"), "chevron-right", t("Month after"));
+iconize($("mo-settings-open"), "calendar-cog", t("Month settings"));
+iconize($("mo-million-import"), "users", t("Import employee list from Million"));
 $("mo-prev").addEventListener("click", () => { location.hash = `#/payroll/${shiftMonth(moMonth, -1)}`; });
 $("mo-next").addEventListener("click", () => { location.hash = `#/payroll/${shiftMonth(moMonth, 1)}`; });
 $("pp-to-upload").addEventListener("click", () => { location.hash = "#/"; });
