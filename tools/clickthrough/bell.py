@@ -30,6 +30,18 @@ async def scenario(page, downloads):
     expect("kept", await page.ev("document.querySelectorAll('#bell-list .msg').length"), 1)
     await page.ev("document.querySelector('#bell-list .msg .icon-btn[title=\"Close\"]').click()")
     expect("× removes it", await page.ev("document.querySelectorAll('#bell-list .msg').length"), 0)
+    # a file without a month is in the server's note on every load until a month is chosen: said once, not on each
+    # refresh (and not again after its × either)
+    await page.ev("window._api = api; api = async (m, u, b) => { const r = await _api(m, u, b); if (/\\/people$/.test(u)) "
+                  "r.added_by_themselves = { added: [], joined: [], skipped: [], unnamed: [], from_million: 0, new_numbers: 0, "
+                  "no_month: [{ name: 'card.jpg', why: 'no date' }] }; return r; }")
+    await page.ev("ppLoad().then(() => ppLoad()).then(() => ppLoad())")
+    await page.ev("T.until(() => document.querySelectorAll('#bell-list .msg').length > 0, 'the note', 4000)")
+    expect("said once", await page.ev("document.querySelectorAll('#bell-list .msg').length"), 1)
+    await page.ev("document.querySelector('#bell-list .msg .icon-btn[title=\"Close\"]').click()")
+    await page.ev("ppLoad().then(() => ppLoad())")
+    expect("not said again after ×", await page.ev("document.querySelectorAll('#bell-list .msg').length"), 0)
+    await page.ev("api = window._api")
     # storage refused (Review Focus 3): still shown in this visit
     await page.ev("Storage.prototype.setItem = () => { throw new Error('refused'); }")
     await page.ev(f"bellAdd('{M}', {{ icon: 'users', line: 'Employee list imported', detail: '' }})")

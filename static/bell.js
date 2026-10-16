@@ -31,6 +31,21 @@ function noteMessage(note) {
   return { icon: "file-plus", line: noteLine(note), detail: monthNotesText([note]) };
 }
 
+// The server says some notes on every load until the user acts (a file without a month): each one is said once in
+// this tab, also after its × (bell-said.<month>, kept in memory too when the tab's storage refuses it).
+const bellSaid = {};
+function bellNote(month, note) {
+  const msg = noteMessage(note), key = `${msg.line}\n${msg.detail}`;
+  if (!bellSaid[month]) {
+    try { const list = JSON.parse(recall(`bell-said.${month}`) || "[]"); bellSaid[month] = Array.isArray(list) ? list : []; }
+    catch (_) { bellSaid[month] = []; }
+  }
+  if (bellSaid[month].includes(key)) return;
+  bellSaid[month] = [...bellSaid[month], key].slice(-50);
+  remember(`bell-said.${month}`, JSON.stringify(bellSaid[month]));
+  bellAdd(month, msg);
+}
+
 function bellToast(msg) {
   const toast = $("bell-toast");
   toast.replaceChildren(icon(msg.icon), " ", msg.line);

@@ -48,7 +48,7 @@ async function showPeople(month, sel, entering = false) {
   moMonth = month; ppSel = sel;
   $("mo-title").textContent = t("Payroll {month}", { month: monthTitle(moMonth) });
   bellDraw(month);
-  if (other || entering) takeMonthNotes(month).forEach((n) => bellAdd(month, noteMessage(n)));   // what step 2 kept for it
+  if (other || entering) takeMonthNotes(month).forEach((n) => bellNote(month, n));   // what step 2 kept for it
   moError("");
   const fresh = entering || !ppView || ppView.month !== month;
   if (fresh) await ppLoad();
@@ -64,7 +64,7 @@ function ppLoad() {
     try {
       const view = await api("GET", `/api/payroll/${month}/people`);
       if (month !== moMonth) return;
-      if (view.added_by_themselves || view.numbered) bellAdd(month, noteMessage({ added: view.added_by_themselves, numbered: view.numbered }));
+      if (view.added_by_themselves || view.numbered) bellNote(month, { added: view.added_by_themselves, numbered: view.numbered });
       ppView = view; ppDraw();
     } catch (e) { moError(e.message); }
   });
