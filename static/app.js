@@ -46,10 +46,14 @@ function openPopup({ title, icon: name, body, buttons = [], onClose }) {
   if (typeof box.showModal === "function") box.showModal(); else box.setAttribute("open", "");
   box.scrollTop = 0; $("popup-body").scrollTop = 0;
 }
+// Emptied here and not on the "close" event, which comes later and would empty a pop-up opened straight after.
 function closePopup() {
   const box = $("popup");
   if (!box || !box.open) return;
+  const done = popupClosed; popupClosed = null;
   if (typeof box.close === "function") box.close(); else box.removeAttribute("open");
+  $("popup-body").replaceChildren(); $("popup-foot").replaceChildren();
+  if (done) done();
 }
 function popupOpen() { return Boolean($("popup") && $("popup").open); }
 // An error inside the pop-up, at the top of its body ("" takes it away).
@@ -62,11 +66,7 @@ function setupPopup() {
   const box = $("popup");
   $("popup-close").replaceWith(iconButton("x", t("Close"), { id: "popup-close", class: "popup-x", onclick: closePopup }));
   box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); closePopup(); } });
-  box.addEventListener("close", () => {
-    $("popup-body").replaceChildren(); $("popup-foot").replaceChildren();
-    const done = popupClosed; popupClosed = null;
-    if (done) done();
-  });
+
 }
 
 async function api(method, url, body) {

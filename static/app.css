@@ -278,3 +278,24 @@ label.wd input:focus-visible + span { outline: 2px solid var(--accent); outline-
 .bell-list details { margin: 2px 0 0 26px; font-size: .9rem; }
 .bell-toast { position: absolute; top: calc(100% + 6px); right: 0; z-index: 19; white-space: nowrap; max-width: 70vw;
   overflow: hidden; text-overflow: ellipsis; background: var(--text); color: var(--bg); padding: 6px 12px; border-radius: 8px; }
+
+/* Export's choices: two large cards, company chips, two-way switches */
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0; }
+label.choice, label.chip, label.seg { position: relative; cursor: pointer; }
+label.choice input, label.chip input, label.seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+label.choice span { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; text-align: center; }
+label.choice span .ico { width: 1.6em; height: 1.6em; }
+label.choice small { color: var(--muted); }
+label.choice input:checked + span { border: 2px solid var(--accent); padding: 9px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+label.chip span { display: inline-block; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; }
+label.chip input:checked + span, label.seg input:checked + span { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.segs { display: inline-flex; }
+label.seg span { display: inline-block; padding: 4px 12px; border: 1px solid var(--line); }
+label.seg:first-child span { border-radius: 6px 0 0 6px; }
+label.seg:last-child span { border-radius: 0 6px 6px 0; border-left: 0; }
+label.seg input:disabled + span, label.chip input:disabled + span { opacity: .45; cursor: default; }
+label.choice input:focus-visible + span, label.chip input:focus-visible + span, label.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+.export-two { gap: 24px; flex-wrap: wrap; }
+.summary ul { margin: 4px 0 8px; padding-left: 20px; }
+.bell-list details p { white-space: pre-line; }

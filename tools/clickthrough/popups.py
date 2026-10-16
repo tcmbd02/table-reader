@@ -16,6 +16,12 @@ async def scenario(page, downloads):
     await page.ev("T.click('Month settings'); T.until(() => document.getElementById('popup').open, 'open again')")
     await page.ev("T.click('Close', document.getElementById('popup')); T.sleep(200)")
     expect("× closes", await page.ev("document.getElementById('popup').open"), False)
+    # closed and opened again at once: the new pop-up keeps what it shows
+    await page.ev("T.click('Month settings')")
+    await page.ev("T.until(() => document.getElementById('popup').open, 'open for reopen')")
+    await page.ev("closePopup(); T.click('Month settings'); T.sleep(300)")
+    expect("reopened pop-up not emptied", await page.ev("!!document.querySelector('#popup input[data-weekday]')"), True)
+    await page.ev("closePopup()")
     # Save: Saturday as a weekly rest day is saved, and the pop-up closes
     await page.ev("T.click('Month settings'); T.until(() => document.getElementById('popup').open, 'open for save')")
     await page.ev("document.querySelector('#popup input[data-weekday=\"6\"]').click(); T.click('Save', document.getElementById('popup'))")

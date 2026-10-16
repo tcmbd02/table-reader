@@ -37,15 +37,10 @@ function everyone() { return ppView ? ppView.companies.flatMap((r) => r.employee
 // ``entering``: step 3 was not on the screen just before (the month is asked again, and its notes are taken).
 async function showPeople(month, sel, entering = false) {
   const other = month !== moMonth;
-  const before = ppSel;
   moMonth = month; ppSel = sel;
   $("mo-title").textContent = t("Payroll {month}", { month: monthTitle(moMonth) });
-  if (other) { $("mo-run-result").hidden = true; $("mo-export").hidden = true; }
   bellDraw(month);
   if (other || entering) takeMonthNotes(month).forEach((n) => bellAdd(month, noteMessage(n)));   // what step 2 kept for it
-  else if ((before.employee || before.company !== null) && (sel.employee !== before.employee || sel.company !== before.company)) {
-    $("mo-run-result").hidden = true;                    // the message at the top is said once: another one opened
-  }
   moError("");
   const fresh = entering || !ppView || ppView.month !== month;
   if (fresh) await ppLoad();
@@ -166,102 +161,103 @@ $("pp-search").addEventListener("input", () => { ppDrawList(); if (!$("employee"
 $("pp-search").placeholder = t("Search name or Employee No.");
 $("pp-search").setAttribute("aria-label", t("Search name or Employee No."));
 
-// The Million file: first what it would hold and who is held back, then made on "Make the file" (worked out again
-// then, so something fixed in between is in it). ``params``: the companies and split chosen in Export...
+// The Million file's summary inside the Export pop-up: who goes in (by company) and who is held back and why (folded).
 function personText(p) { return [p.emp_no, p.name].filter(Boolean).join(" ") || t("An employee"); }
 
-function showMonthSummary(run, month, params) {
-  const box = $("mo-run-result");
+function summaryNodes(run) {
   const going = run.companies.filter((c) => c.ready);
-  const holds = run.every ? ["The month's Million file would hold {n} employee from {c}.", "The month's Million file would hold {n} employees from {c}."]
-    : ["The Million file would hold {n} employee from {c}.", "The Million file would hold {n} employees from {c}."];
-  const parts = [el("strong", { text: run.ready
-    ? tn(run.ready, holds[0], holds[1], { c: tn(going.length, "{n} company", "{n} companies") })
-    : t("No employee is ready for the month's Million file yet.") })];
+  const nodes = [el("p", {}, el("strong", { text: run.ready
+    ? t("Going in: {n} · held back: {h}", { n: run.ready, h: run.held })
+    : t("No employee is ready for the Million file yet.") }))];
   if (going.length) {
-    parts.push(el("ul", {}, ...going.map((c) => el("li", {}, el("strong", { text: `${c.company || t("No company")}: ` }),
+    nodes.push(el("ul", { class: "run-going" }, ...going.map((c) => el("li", {}, el("strong", { text: `${c.company || t("No company")}: ` }),
       c.ready_people.map(personText).join("; ")))));
   }
-  if (!run.checked_with_million) parts.push(el("p", { class: "legend", text: t("The Employee Nos. were not checked against Million: import Million's employee list first.") }));
-  parts.push(...heldNodes(run));
-  const make = el("button", { type: "button", class: "primary", text: t("Make the file"), disabled: !run.ready });
-  make.addEventListener("click", async () => {
-    make.disabled = true;
-    try { showMonthRun(await api("POST", `/api/payroll/${month}/run?${params}`), box); moError(""); }   // the summary's month
-    catch (e) { moError(e.message); make.disabled = false; }
-  });
-  const later = el("button", { type: "button", text: t("Not now"), onclick: () => { box.hidden = true; } });
-  parts.push(el("div", { class: "need-buttons" }, make, later));
-  box.replaceChildren(...parts); box.hidden = false;
-  box.scrollIntoView({ block: "nearest" });
+  if (!run.checked_with_million) nodes.push(el("p", { class: "legend", text: t("The Employee Nos. were not checked against Million: import Million's employee list first.") }));
+  if (run.held) nodes.push(el("details", {}, el("summary", { text: tn(run.held, "{n} employee held back: why", "{n} employees held back: why") }), ...heldNodes(run)));
+  return [el("div", { class: "summary" }, ...nodes)];
 }
 
-// Export...: what (the payroll table to check in Excel, or the Million import file), its format (CSV or Excel .xls; the
-// Million file is always Million's .xls), which companies (all, or the ticked ones: ``only`` ticks one) and, for several,
-// one file with all of them or one per company. The table downloads here; the Million file shows its summary first and
-// is saved in the payroll folder.
+// Export (a pop-up): what (the payroll table to check in Excel, or the Million import file), which companies (all, or
+// the ticked ones: ``only`` ticks one), its format (CSV or Excel .xls; the Million file is always Million's .xls) and,
+// for several companies, one file or one per company. The table downloads and the pop-up closes; the Million file
+// shows its summary in the pop-up first, and once made it is saved in the payroll folder and said in the bell.
 function openExport(only) {
-  const panel = $("mo-export");
-  if (!panel.hidden && only === undefined) { panel.hidden = true; return; }
+  if (!ppView) return;
+  const month = moMonth;
   const names = ppView.companies.filter((r) => r.employees.length).map((r) => r.company);
-  const radio = (group, value, label, checked) => el("label", {}, el("input", { type: "radio", name: group, value, checked }), ` ${label}`);
+  const pick = (group, value, label, checked, cls = "seg") =>
+    el("label", { class: cls }, el("input", { type: "radio", name: group, value, checked }), el("span", {}, ...[].concat(label)));
   const all = el("input", { type: "checkbox", "data-all": "1", checked: only === undefined });
   const ticks = names.map((name) => ({ name,
     box: el("input", { type: "checkbox", "data-company": name, checked: only !== undefined && name === only }) }));
-  const value = (group) => panel.querySelector(`input[name="${group}"]:checked`).value;
+  const form = el("div", { class: "export-form" },
+    el("div", { class: "choices" },
+      pick("ex-what", "table", [icon("table"), el("strong", { text: t("Payroll table") }), el("small", { text: t("to check in Excel") })], true, "choice"),
+      pick("ex-what", "million", [icon("file-spreadsheet"), el("strong", { text: t("Million file") }), el("small", { text: t("to import in Million") })], false, "choice")),
+    el("p", { class: "sec", text: t("Companies") }),
+    el("div", { class: "chips" }, el("label", { class: "chip" }, all, el("span", { text: t("All") })),
+      ...ticks.map(({ name, box }) => el("label", { class: "chip" }, box, el("span", { text: name || t("(no company)") })))),
+    el("div", { class: "row export-two" },
+      el("div", {}, el("p", { class: "sec", text: t("Format") }),
+        el("div", { class: "segs", title: t("The Million import file is always .xls, in Million's layout.") },
+          pick("ex-format", "csv", "CSV", true), pick("ex-format", "xls", "Excel", false))),
+      el("div", {}, el("p", { class: "sec", text: t("Files") }),
+        el("div", { class: "segs" }, pick("ex-split", "one", t("One file"), true), pick("ex-split", "each", t("One per company"), false)))));
+  const value = (group) => form.querySelector(`input[name="${group}"]:checked`).value;
   const chosen = () => (all.checked ? null : ticks.filter((k) => k.box.checked).map((k) => k.name));
-  const formatNote = el("span", { class: "muted", text: t("(the Million import file is always .xls, in Million's layout)") });
   const go = el("button", { type: "button", class: "primary", text: t("Export") });
+  const cancel = el("button", { type: "button", text: t("Cancel"), onclick: closePopup });
   const paint = () => {
     const million = value("ex-what") === "million";
-    panel.querySelectorAll('input[name="ex-format"]').forEach((r) => { r.disabled = million; });
-    formatNote.hidden = !million;
+    form.querySelectorAll('input[name="ex-format"]').forEach((r) => { r.disabled = million; });
     const list = chosen();
     const several = list === null ? names.length > 1 : list.length > 1;
-    panel.querySelectorAll('input[name="ex-split"]').forEach((r) => { r.disabled = !several; });
+    form.querySelectorAll('input[name="ex-split"]').forEach((r) => { r.disabled = !several; });
     go.disabled = list !== null && !list.length;
   };
   all.addEventListener("change", () => { if (all.checked) ticks.forEach((k) => { k.box.checked = false; }); });
   ticks.forEach((k) => k.box.addEventListener("change", () => { if (k.box.checked) all.checked = false; }));
+  form.addEventListener("change", paint);
   const query = () => {
     const p = new URLSearchParams();
     (chosen() || []).forEach((name) => p.append("c", name));
     p.set("split", value("ex-split"));
     return p;
   };
+  const showForm = () => { $("popup-body").replaceChildren(form); $("popup-foot").replaceChildren(cancel, go); paint(); };
+  const showSummary = (run, params) => {
+    const make = el("button", { type: "button", class: "primary", text: t("Make the file"), disabled: !run.ready });
+    make.addEventListener("click", async () => {
+      make.disabled = true;
+      try {
+        const made = await api("POST", `/api/payroll/${month}/run?${params}`);
+        closePopup(); moError("");
+        bellAdd(month, madeMessage(made));
+      } catch (e) { popupError(e.message); make.disabled = false; }
+    });
+    $("popup-body").replaceChildren(...summaryNodes(run));
+    $("popup-foot").replaceChildren(el("button", { type: "button", text: t("Back"), onclick: showForm }), make);
+  };
   go.addEventListener("click", async () => {
-    const month = moMonth, params = query();
-    if (value("ex-what") === "table") {
-      params.set("format", value("ex-format"));
-      await downloadFile(`/api/payroll/${month}/export?${params}`, moError);
-      return;
-    }
+    const params = query();
     go.disabled = true;
     try {
+      if (value("ex-what") === "table") {
+        params.set("format", value("ex-format"));
+        if (await downloadFile(`/api/payroll/${month}/export?${params}`, popupError)) closePopup();
+        return;
+      }
       const run = await api("GET", `/api/payroll/${month}/run?${params}`);
-      if (month === moMonth && !$("people").hidden) { showMonthSummary(run, month, params); moError(""); }
-    } catch (e) { if (month === moMonth) moError(e.message); }
+      if (popupOpen()) { popupError(""); showSummary(run, params); }
+    } catch (e) { popupError(e.message); }
     finally { paint(); }
   });
-  const cancel = el("button", { type: "button", text: t("Cancel"), onclick: () => { panel.hidden = true; } });
-  panel.replaceChildren(el("h3", { text: t("Export - {month}", { month: monthTitle(moMonth) }) }),
-    el("div", { class: "export-row" }, el("strong", { text: t("What:") }),
-      radio("ex-what", "table", t("Payroll table (to check in Excel)"), true),
-      radio("ex-what", "million", t("Million import file (to import in Million)"), false)),
-    el("div", { class: "export-row" }, el("strong", { text: t("Format:") }),
-      radio("ex-format", "csv", "CSV", true), radio("ex-format", "xls", t("Excel .xls"), false), formatNote),
-    el("div", { class: "export-row" }, el("strong", { text: t("Companies:") }), el("label", {}, all, ` ${t("All companies")}`),
-      ...ticks.map(({ name, box }) => el("label", {}, box, ` ${name || t("(no company)")}`))),
-    el("div", { class: "export-row" }, el("strong", { text: t("Several companies:") }),
-      radio("ex-split", "one", t("One file with all of them"), true), radio("ex-split", "each", t("One file per company"), false)),
-    el("p", { class: "legend", text: t("The payroll table downloads here; one file per company comes as one .zip. The Million import file shows who goes in first, and is saved in the payroll folder.") }),
-    el("div", { class: "need-buttons" }, go, cancel));
-  panel.addEventListener("change", paint);
+  openPopup({ title: t("Export {month}", { month: monthTitle(month) }), icon: "download", body: [form], buttons: [cancel, go] });
   paint();
-  panel.hidden = false;
-  panel.scrollIntoView({ block: "nearest" });
 }
 
+$("mo-export-open").replaceChildren(icon("download"), " ", t("Export"));
 $("mo-export-open").addEventListener("click", () => openExport());
 
 // A payroll file (CSV), fetched rather than opened as a link: when it cannot be made or saved (open in Excel, nobody
@@ -282,6 +278,7 @@ async function downloadFile(url, showError) {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 30000);
   showError("");
+  return true;
 }
 
 
@@ -439,6 +436,7 @@ function drawMillionNew() {
 }
 
 $("co-million-open").addEventListener("click", () => { $("co-million").hidden = !$("co-million").hidden; drawMillionNew(); });
+$("co-export").replaceChildren(icon("download"), " ", t("Export"));
 $("co-export").addEventListener("click", () => openExport(coCompany));
 
 // ------------------------------------------------------------------------------------------------ the open employee

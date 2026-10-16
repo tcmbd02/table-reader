@@ -146,32 +146,29 @@ function heldNodes(run) {
       el("ul", {}, ...c.held.map((h) => el("li", { text: `${[h.emp_no, h.name].filter(Boolean).join(" ") || t("An employee")}: ${h.reasons.map(runReason).join(" ")}` })))))];
 }
 
-// One Million file for the whole month: everyone who can go in, and for the others the reason, company by company.
-// The × that closes a message at the top of a screen.
-function closeX(onclose) {
-  return iconButton("x", t("Close"), { class: "banner-close", onclick: onclose });
-}
-
-function showMonthRun(run, box) {
-  const withFile = run.companies.filter((c) => c.ready).length;
+// The Million file made (POST .../run), as a bell message: one short line, and the whole story as its detail.
+function madeMessage(run) {
   const files = run.files || (run.file ? [run.file] : []);
-  const c = tn(withFile, "{n} company", "{n} companies");
-  const head = !files.length ? t("No Million file was made: no employee is ready yet.")
+  const going = run.companies.filter((c) => c.ready).map((c) => c.company || t("No company"));
+  const who = run.every !== false ? t("every company") : going.length > 2 ? tn(going.length, "{n} company", "{n} companies") : going.join(", ");
+  const line = !files.length ? t("No Million file made")
+    : run.held ? t("Million file · {who} · {n} in, {h} held", { who, n: run.ready, h: run.held })
+      : t("Million file · {who} · {n} in", { who, n: run.ready });
+  const c = tn(going.length, "{n} company", "{n} companies");
+  const detail = [!files.length ? t("No Million file was made: no employee is ready yet.")
     : files.length > 1 ? t("{n} Million files made, one per company: {names}.", { n: files.length, names: files.join("; ") })
       : run.every !== false
         ? tn(run.ready, "Million file made for the whole month: {name}, with {n} employee from {c}.", "Million file made for the whole month: {name}, with {n} employees from {c}.", { name: files[0], c })
-        : tn(run.ready, "Million file made: {name}, with {n} employee from {c}.", "Million file made: {name}, with {n} employees from {c}.", { name: files[0], c });
-  const parts = [closeX(() => { box.hidden = true; }), el("strong", { text: head })];
-  if (files.length > 1) parts.push(el("p", { class: "legend", text: t("They are saved in {folder}. Back up Million, then import each file.", { folder: run.folder }) }));
-  else if (files.length && run.every !== false) parts.push(el("p", { class: "legend", text: t("It is saved in {folder}. Back up Million, then import this one file: it covers every company.", { folder: run.folder }) }));
-  else if (files.length) parts.push(el("p", { class: "legend", text: t("It is saved in {folder}. Back up Million, then import this file.", { folder: run.folder }) }));
-  if (!run.checked_with_million) parts.push(el("p", { class: "legend", text: t("The Employee Nos. were not checked against Million: import Million's employee list first.") }));
-  parts.push(...heldNodes(run));
+        : tn(run.ready, "Million file made: {name}, with {n} employee from {c}.", "Million file made: {name}, with {n} employees from {c}.", { name: files[0], c })];
+  if (files.length > 1) detail.push(t("They are saved in {folder}. Back up Million, then import each file.", { folder: run.folder }));
+  else if (files.length && run.every !== false) detail.push(t("It is saved in {folder}. Back up Million, then import this one file: it covers every company.", { folder: run.folder }));
+  else if (files.length) detail.push(t("It is saved in {folder}. Back up Million, then import this file.", { folder: run.folder }));
+  if (!run.checked_with_million) detail.push(t("The Employee Nos. were not checked against Million: import Million's employee list first."));
   if (run.held) {
-    parts.push(el("p", { class: "legend", text: t("Fix what is listed and press the button again. Each run makes the whole file again; importing it again is harmless.") }));
-  } else if (files.length && run.every !== false) {
-    parts.push(el("p", { class: "legend", text: t("Every employee of the month is in the file.") }));
+    detail.push(tn(run.held, "{n} employee is not in the file yet:", "{n} employees are not in the file yet:"));
+    run.companies.filter((x) => x.held.length).forEach((co) => co.held.forEach((h) => detail.push(
+      `${co.company || t("No company")} · ${[h.emp_no, h.name].filter(Boolean).join(" ") || t("An employee")}: ${h.reasons.map(runReason).join(" ")}`)));
+    detail.push(t("Fix what is listed and press the button again. Each run makes the whole file again; importing it again is harmless."));
   }
-  box.replaceChildren(...parts); box.hidden = false;
-  box.scrollIntoView({ block: "nearest" });
+  return { icon: "file-spreadsheet", line, detail: detail.join("\n"), action: files.length ? "payroll-folder" : "" };
 }
