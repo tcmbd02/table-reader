@@ -147,11 +147,14 @@ function emDraw() {
   ppDrawEmployeeNeeds(); ppDrawWalk(); emDrawTabs();
 }
 
-// What the calculation says that is not a thing to fix (leave marked on a card, cards no longer listed): under To fix.
+// What the calculation says that is not a thing to fix (leave marked on a card, cards no longer listed): under To fix
+// (its tab gets a mark) and above Million's fields in Pay.
 const INFO_ISSUES = ["leave", "removed"];
+function emInfoIssues() {
+  return emView && emView.employee.id === ppSel.employee ? emView.result.issues.filter((i) => INFO_ISSUES.includes(i.kind)) : [];
+}
 function emInfoNotes() {
-  if (!emView || emView.employee.id !== ppSel.employee) return null;
-  const notes = emView.result.issues.filter((i) => INFO_ISSUES.includes(i.kind));
+  const notes = emInfoIssues();
   return notes.length ? el("ul", { class: "info-notes" }, ...notes.map((i) => el("li", {}, icon("info-circle"), " ", tm(i.text)))) : null;
 }
 
@@ -194,7 +197,8 @@ function emDrawTabs() {
   const counts = { fix: ppItemsOf(emId).length, cards: emView.cards.length };
   $("em-tabs").replaceChildren(...EM_PANES.map(([key, name, label]) => el("button", { type: "button", role: "tab",
     class: "tab" + (key === emPane ? " on" : ""), "data-pane": key, "aria-selected": String(key === emPane),
-    onclick: () => emShowPane(key) }, icon(name), " ", t(label), key in counts ? el("span", { class: "count", text: String(counts[key]) }) : null)));
+    onclick: () => emShowPane(key) }, icon(name), " ", t(label), key in counts ? el("span", { class: "count", text: String(counts[key]) }) : null,
+    key === "fix" && emInfoIssues().length ? el("span", { class: "tab-note", title: t("A note") }, icon("info-circle"), el("span", { class: "sr-only", text: t("A note") })) : null)));
   for (const [key, , , id] of EM_PANES) $(id).hidden = key !== emPane;
 }
 
@@ -493,7 +497,7 @@ function emDrawWindow() {
 
   $("em-window").replaceChildren(el("div", { class: "pw" },
     el("div", { class: "pw-title", text: `Edit Payroll # ${e.emp_no || "(no Employee No.)"} - ${e.name}` }),
-    head, el("div", { class: "row" }, source, made),
+    head, el("div", { class: "row" }, source, made), emInfoNotes(),
     el("div", { class: "pw-tabs", role: "tablist" }, tab("basic", "Basic Pay & Overtime"), tab("allow", "Allowance & Deduction"), tab("leave", "Leave")),
     el("div", { class: "pw-body" }, body),
     el("div", { class: "pw-foot" }, el("span", { class: "muted", text: t("Changes are saved automatically.") }))));

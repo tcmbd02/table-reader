@@ -55,6 +55,7 @@ const MS = {
   "Next needing you ›": "Seterusnya yang perlukan anda ›",
   "Next to fix ›": "Seterusnya untuk dibetulkan ›",
   "Nothing to fix": "Tiada yang perlu dibetulkan",
+  "A note": "Ada nota",
   "Automatic": "Automatik",
   "Check this card": "Semak kad ini",
   "Hours from:": "Jam daripada:",

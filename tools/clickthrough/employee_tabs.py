@@ -62,3 +62,7 @@ async def scenario(page, downloads):
     # notes that are not things to fix (leave marked on the card, cards no longer listed) are under To fix too
     await page.ev("emView.result.issues.push({ kind: 'leave', job: null, text: 'The card marks leave on day 4. Type the leave in the Leave table if Million Payroll should count it.' }); emDraw()")
     expect("leave note under To fix", "leave on day 4" in await page.ev("document.getElementById('em-needs').textContent"), True)
+    # ... and where they were before the tabs: in the Pay tab, above Million's fields; the To fix tab shows there is a note
+    await page.ev("document.querySelector('#em-tabs [data-pane=pay]').click()")
+    expect("leave note in Pay", "leave on day 4" in await page.ev("document.getElementById('em-pay').textContent"), True)
+    expect("To fix tab marked", await page.ev("!!document.querySelector('#em-tabs [data-pane=fix] .tab-note')"), True)
