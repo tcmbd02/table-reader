@@ -44,7 +44,7 @@ def test_page_is_served(client):
     assert client.get("/app.js").status_code == 200 and client.get("/app.css").status_code == 200
 
 
-SCRIPTS = ["i18n.js", "app.js", "paycommon.js", "upload.js", "check.js", "columns.js", "people.js",
+SCRIPTS = ["i18n.js", "app.js", "paycommon.js", "bell.js", "upload.js", "check.js", "columns.js", "people.js",
            "employee.js", "look.js", "paytable.js", "settings.js", "steps.js"]       # grows with Tasks 5-7
 
 
