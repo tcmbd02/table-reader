@@ -15,6 +15,10 @@
   stays and Yes goes for all three ways, asked from a file without yellow cells while another in the list has some, not
   asked after the cell is accepted. It fails on the old code (10 problems). `check_page`, `cross_steps`,
   `check_reading` (`SLOW_FILE=1`), `upload_page`: no problems. 558 tests pass; Malay checks pass.
+- On the user's OK: `yellow-confirm` merged into `pdf-text` (fast-forward, **not pushed**) and the app rebuilt
+  (`dist\Table Reader\` and the zip, 16 Oct 08:26; the built `check.js` has the question). Starting the rebuilt
+  `Table Reader.exe` from the session was refused by Windows: "An Application Control policy has blocked this file"
+  (not tried again, no setting changed). The app was not running before the build.
 
 ## Session 24d - 2026-10-14 - Export…: what, format, companies, one file or one per company
 Asked by the user: the "Download payroll CSV" and "Make the month's Million file" buttons as one customisable export.

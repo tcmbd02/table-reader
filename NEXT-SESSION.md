@@ -8,9 +8,9 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 > Read NEXT-SESSION.md (the "Next" box first) and PROGRESS.md (sessions 9 to 25), then let's continue.
 
 > **State at the end of session 25 (16 Oct):** `pdf-text` is pushed up to 24d, and the `download` branch has that build
-> (8b1b984). The yellow-cell question before payroll (step 2) is built on branch **`yellow-confirm`** (from `pdf-text`,
-> committed, **not merged, app not rebuilt, not pushed**). Waiting for the user: merge into `pdf-text`, rebuild, push,
-> `download` branch, PDF guide (each needs the user's OK). Details: PROGRESS.md 25.
+> (8b1b984). The yellow-cell question before payroll (step 2) is merged into `pdf-text` and the app rebuilt, **not
+> pushed, `download` branch not updated**. Windows' Application Control blocked starting the rebuilt exe from the
+> session. Waiting for the user: push, `download` branch, PDF guide (each needs the user's OK). Details: PROGRESS.md 25.
 
 Session 24 rearranged the app into three steps (Upload, Check reading, Payroll): merged into `pdf-text`, the app
 rebuilt, pushed (PR #2), and the `download` branch updated, all on the user's OK. Sessions 24b-24d added to it (see
