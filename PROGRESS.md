@@ -15,6 +15,9 @@
 - pytest 560; every click-through "No problems" (`employee_tabs` and `yellow_confirm` with `YELLOW_FILE=1`,
   `check_reading` with `SLOW_FILE=1`); Malay checks pass. The 10 minor findings are deferred (listed in the session's
   final message and the ledger).
+- On the user's OK: `step3-tabs` merged into `pdf-text` (fast-forward, fff1f80, **not pushed**) and the app rebuilt
+  (`dist\Table Reader\` and the zip, 16 Oct 10:47; the built `bell.js` has the fix). The app (nothing being read) was
+  closed with its Quit before the build and started again afterwards; this time Windows let it start.
 
 ## Session 25 - 2026-10-16 - Push, `download` branch, and the yellow-cell question before payroll
 - On the user's OK: `pdf-text` pushed (24c, 24d and their notes, 6 commits; diff scanned, made-up names only), and the

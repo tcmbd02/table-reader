@@ -10,10 +10,10 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 > **State at the end of session 26 (16 Oct):** `pdf-text` is pushed up to 24d, and the `download` branch has that build
 > (8b1b984). The yellow-cell question (step 2) and the closable step 3 messages are merged into `pdf-text` (bd1c781),
 > **not pushed**; the app was rebuilt with the first only (Windows' Application Control blocked starting the rebuilt exe
-> from the session). The step 3 redesign (tabs, bell, pop-ups) is **built, reviewed and fixed on branch `step3-tabs`**
-> (from `pdf-text`; not merged, app not rebuilt, not pushed): final review 0 critical / 4 important (all fixed, each with
+> from the session). The step 3 redesign (tabs, bell, pop-ups) is **built, reviewed and fixed on branch `step3-tabs`, merged
+> into `pdf-text` (fast-forward, fff1f80) and the app rebuilt (16 Oct 10:47) on the user's OK; not pushed**: final review 0 critical / 4 important (all fixed, each with
 > a check that fails first) / 10 minor (deferred), pytest 560, every click-through "No problems". **Waiting for the
-> user:** look at it, then merge / rebuild / push / `download` branch / PDF guide (each needs the user's OK, one step at
+> user:** look at it, then push / `download` branch / PDF guide (each needs the user's OK, one step at
 > a time). Ledger with every ruling: `.superpowers/sdd/2026-10-16-step3-tabs-bell-popups/progress.md` in the worktree
 > `.claude/worktrees/payroll-yellow-cells-confirm-b123ca` (git-ignored). Details: PROGRESS.md 26 and 25.
 
