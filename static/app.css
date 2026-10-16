@@ -330,3 +330,19 @@ button.danger { color: var(--bad); }
 .need.short .need-head .need-buttons { margin: 0; }
 .need.short details { margin: 2px 0 0 26px; }
 .nothing { color: var(--ok); }
+
+/* the Hours tab: four figures and the month as a calendar */
+.figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 4px 0 10px; }
+.fig { background: var(--bg); border-radius: 8px; padding: 6px 10px; }
+.fig small { display: block; color: var(--muted); }
+.fig b { font-size: 1.15rem; }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal .wday { text-align: center; font-size: .8rem; color: var(--muted); }
+.cal .d { padding: 3px 6px; min-height: 42px; text-align: left; border-radius: 6px; font-size: .85rem; line-height: 1.2; }
+.cal .d b { display: block; font-size: .95rem; }
+.cal .d.rest { background: var(--line); color: var(--muted); }
+.cal .d.holiday { background: var(--warn-bg); border-color: var(--warn-line); }
+.cal .d.bad { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
+.cal .d.on { outline: 2px solid var(--accent); }
+#cal-note { min-height: 1.4em; }
+@media (max-width: 600px) { .figs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

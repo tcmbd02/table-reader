@@ -32,3 +32,17 @@ async def scenario(page, downloads):
     expect("walk says Next to fix", "Next to fix" in await page.ev("T.text('#em-walk button')"), True)
     await page.ev("T.click('More')")
     expect("Remove employee in the menu", await page.ev("!!T.button('Remove employee', document.getElementById('em-menu'))"), True)
+    # Hours: the month as a calendar (1 Sep 2026 is a Tuesday), the day's note on a click, no day-by-day table left
+    await page.ev("document.getElementById('em-menu').hidden = true; document.querySelector('#em-tabs [data-pane=hours]').click()")
+    expect("30 days in September", await page.ev("document.querySelectorAll('#em-hours .cal .d').length"), 30)
+    expect("one blank before Tuesday", await page.ev("document.querySelectorAll('#em-hours .cal .blank').length"), 1)
+    expect("Sundays are rest days", await page.ev("[...document.querySelectorAll('#em-hours .cal .d.rest')].map((b) => b.dataset.day)"), ["6", "13", "20", "27"])
+    expect("four figures", await page.ev("document.querySelectorAll('#em-hours .fig').length"), 4)
+    await page.ev("document.querySelector('#em-hours .cal .d[data-day=\"3\"]').click()")
+    expect("day note", await page.ev("document.getElementById('cal-note').textContent.startsWith('3 ')"), True)
+    expect("no day-by-day table left", await page.ev("document.getElementById('em-days') === null"), True)
+    # MEI's yellow day 9 is marked
+    await page.ev(f"location.hash = '#/payroll/{M}/e/{mei}'")
+    await page.ev("T.until(() => document.getElementById('em-title').textContent.includes('MEI'), 'MEI again', 6000)")
+    await page.ev("T.until(() => document.querySelector('#em-hours .cal .d[data-day=\"9\"]'), 'calendar drawn', 6000)")
+    expect("day 9 marked to check", await page.ev("document.querySelector('#em-hours .cal .d[data-day=\"9\"]').classList.contains('bad')"), True)

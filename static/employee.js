@@ -28,7 +28,7 @@ async function showEmployee(month, id) {
   if (emView && (month !== emMonth || id !== emId)) await emFlush();     // what was typed for the last one goes first
   emMonth = month;
   emId = id;
-  emView = null; emTab = "basic"; emPane = null;
+  emView = null; emTab = "basic"; emPane = null; emPickedDay = null;
   for (const k of Object.keys(emTimers)) { clearTimeout(emTimers[k]); delete emTimers[k]; }
   for (const k of Object.keys(emPending)) delete emPending[k];
   $("em-title").textContent = monthTitle(emMonth);
@@ -143,7 +143,24 @@ function emDraw() {
   $("em-million-list").replaceChildren(...(emView.million || []).map((x) => el("option", { value: x.emp_no, label: x.name })));
   if (!emPane) emPane = emPickPane(ppItemsOf(emId).length > 0);
   emKeepFocus(() => { emDrawCards(); emDrawWindow(); });
+  emDrawHours();
   ppDrawEmployeeNeeds(); ppDrawWalk(); emDrawTabs();
+}
+
+// The Hours tab: four figures and the month as a calendar; a clicked day says how it was read (hours.js).
+let emPickedDay = null;
+function emDrawHours() {
+  const r = emView.result;
+  const note = el("p", { id: "cal-note", class: "legend" });
+  const pick = (d) => {
+    emPickedDay = d.day;
+    $("em-hours").querySelectorAll(".cal .d").forEach((b) => b.classList.toggle("on", b.dataset.day === String(d.day)));
+    const written = d.code ?? (d.hours === null ? "" : String(d.hours));
+    note.textContent = [`${d.day} · ${DAY_WORDS[d.type]}`, written ? t("written: {x}", { x: written }) : "", emDayNote(d)].filter(Boolean).join(" · ");
+  };
+  $("em-hours").replaceChildren(hoursFigures(r.values), hoursCalendar(emMonth, r.days, pick), note);
+  const again = r.days.find((d) => d.day === emPickedDay);
+  if (again) pick(again);
 }
 
 // ------------------------------------------------------------------------------------------------ the four tabs
@@ -459,13 +476,6 @@ function emDrawWindow() {
   const issues = r.issues.length
     ? el("div", { class: "issues" }, el("strong", { text: t("Please check:") }), el("ul", {}, ...r.issues.map((x) => el("li", { text: tm(x.text) }))))
     : el("p", { class: "legend", text: t("Nothing to check for this employee.") });
-  const dayRows = r.days.map((d) => el("tr", { class: d.status === "ok" || (d.status === "missing" && d.type === "rest") ? "" : "bad" },
-    el("td", { text: String(d.day) }), el("td", { text: DAY_WORDS[d.type] }),
-    el("td", { text: d.code ?? (d.hours === null ? "" : String(d.hours)) }),       // a grid mark (✓, PH…) or the hours
-    el("td", { text: emDayNote(d) })));
-  const details = el("details", { id: "em-days", open: $("em-days") && $("em-days").open },
-    el("summary", { text: t("Day by day (how the figures were worked out)") }),
-    el("table", { class: "daytable" }, el("thead", {}, el("tr", {}, ...["Day", "Type", "Written on the card", "Note"].map((h) => el("th", { text: t(h) })))), el("tbody", {}, ...dayRows)));
 
   const tab = (key, text) => {
     const b = el("button", { type: "button", role: "tab", class: emTab === key ? "tab active" : "tab", "aria-selected": String(emTab === key), text });
@@ -476,7 +486,7 @@ function emDrawWindow() {
     ? emAllowanceTab()
     : el("div", {}, el("div", { class: "pw-panels" }, basic, days, time),
       el("div", { class: "pw-lower" }, el("div", {}, emLines("leave")), el("div", {}, otTable)),
-      el("div", { class: "pw-check" }, issues, details));
+      el("div", { class: "pw-check" }, issues));
 
   $("em-window").replaceChildren(el("div", { class: "pw" },
     el("div", { class: "pw-title", text: `Edit Payroll # ${e.emp_no || "(no Employee No.)"} - ${e.name}` }),

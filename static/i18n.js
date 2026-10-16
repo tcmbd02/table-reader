@@ -59,6 +59,8 @@ const MS = {
   "Check this card": "Semak kad ini",
   "Hours from:": "Jam daripada:",
   "To fix": "Perlu dibetulkan", "Cards": "Kad", "Hours": "Jam", "Pay": "Gaji",
+  "Days worked": "Hari bekerja", "Overtime hours": "Jam lebih masa", "Public holidays": "Cuti umum",
+  "rest": "rehat", "holiday": "cuti", "written: {x}": "tertulis: {x}",
   "Nobody else needs you": "Tiada orang lain perlukan anda",
   "Search name or Employee No.": "Cari nama atau No. Pekerja",
   "Showing only {company} (the Company chosen in step 2).": "Hanya {company} ditunjukkan (Syarikat yang dipilih dalam langkah 2).",
