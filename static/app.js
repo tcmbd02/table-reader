@@ -3,11 +3,7 @@
 // Text shown to the user goes through t()/tn() (page text) or tm() (server messages) from i18n.js.
 
 const $ = (id) => document.getElementById(id);
-const QUALITY = { CLEAR: t("Clear"), MOSTLY_CLEAR: t("Mostly clear"), FADED: t("Faded or small print"), ILLEGIBLE: t("Hard to read") };
 let claudeReady = false;
-let currentId = null;
-let currentDoc = null;
-let uploading = false;
 
 function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);
@@ -21,6 +17,66 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
+// An icon from static/icons.svg (Tabler Icons, MIT; tools/make_icon_sprite.py adds more).
+function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "ico"); svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `icons.svg#ti-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+// A button that shows only an icon: its words are its tooltip, and stay in it for screen readers.
+function iconButton(name, label, props = {}) {
+  return el("button", { type: "button", title: label, ...props, class: `icon-btn ${props.class || ""}`.trim() },
+    icon(name), el("span", { class: "sr-only", text: label }));
+}
+
+// An existing button of the page shown as an icon only (its listeners stay).
+function iconize(button, name, label) {
+  button.classList.add("icon-btn");
+  button.title = label;
+  button.removeAttribute("aria-label");
+  button.replaceChildren(icon(name), el("span", { class: "sr-only", text: label }));
+}
+
+// The pop-up (one at a time, over the page): a title with its icon, a ×, the body and the buttons. Esc and × close it.
+let popupClosed = null;
+function openPopup({ title, icon: name, body, buttons = [], onClose }) {
+  closePopup();
+  const box = $("popup");
+  $("popup-title").replaceChildren(icon(name), " ", title);
+  $("popup-body").replaceChildren(...body);
+  $("popup-foot").replaceChildren(...buttons);
+  $("popup-foot").hidden = !buttons.length;
+  popupClosed = onClose || null;
+  if (typeof box.showModal === "function") box.showModal(); else box.setAttribute("open", "");
+  box.scrollTop = 0; $("popup-body").scrollTop = 0;
+}
+// Emptied here and not on the "close" event, which comes later and would empty a pop-up opened straight after.
+function closePopup() {
+  const box = $("popup");
+  if (!box || !box.open) return;
+  const done = popupClosed; popupClosed = null;
+  if (typeof box.close === "function") box.close(); else box.removeAttribute("open");
+  $("popup-body").replaceChildren(); $("popup-foot").replaceChildren();
+  if (done) done();
+}
+function popupOpen() { return Boolean($("popup") && $("popup").open); }
+// An error inside the pop-up, at the top of its body ("" takes it away).
+function popupError(message) {
+  $("popup-body").querySelector(":scope > .banner.error")?.remove();
+  if (message) $("popup-body").prepend(el("div", { class: "banner error", text: message }));
+}
+
+function setupPopup() {
+  const box = $("popup");
+  $("popup-close").replaceWith(iconButton("x", t("Close"), { id: "popup-close", class: "popup-x", onclick: closePopup }));
+  box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); closePopup(); } });
+
+}
+
 async function api(method, url, body) {
   const opts = { method, headers: {} };
   if (body instanceof FormData) opts.body = body;
@@ -31,7 +87,7 @@ async function api(method, url, body) {
   let data = null;
   try { data = await res.json(); } catch { /* not JSON */ }
   if (!res.ok) {
-    if (data && data.message) throw new Error(tm(data.message));
+    if (data && data.message) throw Object.assign(new Error(tm(data.message)), { code: data.code });   // code: for a screen that acts on it
     if (res.status === 404 || res.status === 405) {
       throw new Error(t("Table Reader was updated while it was open. Close its window, open Table Reader again, then reload this page."));
     }
@@ -71,51 +127,7 @@ async function startLogin() {
   loginTimer = setInterval(() => { if (++tries > 100) { clearInterval(loginTimer); refreshClaude(); } else refreshClaude(); }, 3000);
 }
 
-// ------------------------------------------------------------------------------------------------ upload
-function updateDropState() {
-  const drop = $("drop");
-  drop.classList.toggle("disabled", !claudeReady || uploading);
-  drop.setAttribute("aria-disabled", String(!claudeReady || uploading));
-}
-
-function showMessages(items, kind) {
-  $("upload-messages").replaceChildren(...items.map((m) => el("div", { class: `banner ${kind}`, text: m })));
-}
-
-async function upload(fileList) {
-  const files = [...fileList];
-  if (!files.length || uploading) return;
-  if (!claudeReady) { showMessages([t("Connect your Claude account first (top right), then add your files.")], "error"); return; }
-  uploading = true; updateDropState();
-  showMessages([tn(files.length, "Adding {n} file…", "Adding {n} files…")], "info");
-  const form = new FormData();
-  files.forEach((f) => form.append("files", f, f.name));
-  try {
-    const r = await api("POST", "/api/jobs", form);
-    showMessages(r.rejected.map((x) => tm(x.message)), "error");
-    if (r.created.length === 1 && !r.rejected.length) { location.hash = `#/doc/${encodeURIComponent(r.created[0].id)}`; }
-  } catch (e) { showMessages([e.message], "error"); }
-  uploading = false; updateDropState();
-  loadRecent();
-}
-
-function setupDrop() {
-  const drop = $("drop"), input = $("file-input");
-  drop.addEventListener("click", () => {
-    if (!claudeReady) showMessages([t("Connect your Claude account first (top right), then add your files.")], "error");
-    else if (!uploading) input.click();
-  });
-  drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drop.click(); } });
-  input.addEventListener("change", () => { upload(input.files); input.value = ""; });
-  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
-  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
-  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files); });
-  // a file dropped beside the box must not make the browser leave the page
-  window.addEventListener("dragover", (e) => e.preventDefault());
-  window.addEventListener("drop", (e) => e.preventDefault());
-}
-
-// ------------------------------------------------------------------------------------------------ recent files
+// ------------------------------------------------------------------------------------------------ files and companies
 function progressText(j) {
   if (j.status === "queued") return t("Waiting…");
   if (j.status === "reading") return j.pages_total ? t("Reading page {a} of {b}…", { a: Math.min(j.pages_done + 1, j.pages_total), b: j.pages_total }) : t("Preparing…");
@@ -140,15 +152,21 @@ function suggestCompany(name) {
   return words.length >= 2 ? words.slice(0, -1).join(" ") : "";
 }
 
-function companyBox(j, companies) {
+function companyNames(jobs) {
+  return [...new Set(jobs.map((j) => j.company).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+// The box that files a file under a company. ``done``: called when it closes (saved or not); ``say(text, kind)``:
+// where the page shows what happened ("info" / "error").
+function companyBox(j, companies, done, say) {
   const input = el("input", { type: "text", list: "company-names", maxlength: "80", value: j.company || suggestCompany(j.name),
     placeholder: t("Company name"), "aria-label": t("Company for {name}", { name: j.name }) });
-  const close = () => { editingCompany = null; loadRecent(); };
+  const close = () => { editingCompany = null; done(); };
   const save = async () => {
     try {
       const r = await api("PUT", `/api/jobs/${encodeURIComponent(j.id)}/company`, { company: input.value });
-      if (r.moved) showMessages([tn(r.moved, "{n} other file starting with “{c}” was put under this company too.", "{n} other files starting with “{c}” were put under this company too.", { c: input.value.trim() })], "info");
-    } catch (e) { showMessages([e.message], "error"); }
+      if (r.moved) say(tn(r.moved, "{n} other file starting with “{c}” was put under this company too.", "{n} other files starting with “{c}” were put under this company too.", { c: input.value.trim() }), "info");
+    } catch (e) { say(e.message, "error"); }
     close();
   };
   input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") save(); if (ev.key === "Escape") close(); });
@@ -160,15 +178,15 @@ function companyBox(j, companies) {
     el("datalist", { id: "company-names" }, ...companies.map((c) => el("option", { value: c }))));
 }
 
-// Does a file's / employee's company pass the Company chosen in the top bar?
+// Does a file's company pass the Company chooser?
 function companyMatches(company) {
   return !companyFilter || (companyFilter === NO_COMPANY ? !company : company === companyFilter);
 }
 
-// The Company chooser in the top bar. It filters Recent files and the Payroll screen, and is remembered.
+// The Company chooser of step 2's list (it filters step 3's list too). Remembered in this browser.
 let companySignature = "";
-function renderCompanyFilter(jobs) {
-  const companies = [...new Set(jobs.map((j) => j.company).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+function renderCompanyFilter(jobs, onChange) {
+  const companies = companyNames(jobs);
   const count = (c) => jobs.filter((j) => (c === NO_COMPANY ? !j.company : j.company === c)).length;
   if (companyFilter && companyFilter !== NO_COMPANY && !companies.includes(companyFilter)) companyFilter = "";
   const none = count(NO_COMPANY);
@@ -184,232 +202,28 @@ function renderCompanyFilter(jobs) {
     companyFilter = sel.value;
     companySignature = JSON.stringify([options, companyFilter]);
     try { localStorage.setItem("companyFilter", companyFilter); } catch (_) { /* private window */ }
-    if (!$("home").hidden) loadRecent();
-    else if (!$("payroll").hidden && typeof payrollCompanyChanged === "function") payrollCompanyChanged();
+    onChange();
   });
   $("company-box").replaceChildren(el("label", {}, t("Company"), sel));
   return companies;
 }
 
-async function refreshCompanies() {
-  try { renderCompanyFilter(await api("GET", "/api/jobs")); } catch (_) { /* shown elsewhere */ }
+// What this tab remembers (sessionStorage): where the user was in each step, the working month, the files added here.
+// A private window may refuse it: then nothing is remembered and each step opens on its first screen.
+function remember(key, value) { try { sessionStorage.setItem(key, value); } catch (_) { /* refused */ } }
+function recall(key) { try { return sessionStorage.getItem(key); } catch (_) { return null; } }
+function forget(key) { try { sessionStorage.removeItem(key); } catch (_) { /* refused */ } }
+
+// The number beside a step button (0 hides it).
+function stepBadge(step, n) {
+  const badge = $(`step-${step}-n`);
+  badge.hidden = !n; badge.textContent = n ? String(n) : "";
 }
 
-async function loadRecent() {
-  if (editingCompany) return;
-  let jobs;
-  try { jobs = await api("GET", "/api/jobs"); } catch (e) { showMessages([e.message], "error"); return; }
-  const companies = renderCompanyFilter(jobs);
-  const shown = jobs.filter((j) => companyMatches(j.company));
-  const list = $("recent");
-  list.replaceChildren(...shown.map((j) => {
-    const cancelled = j.status === "failed" && j.error && j.error.code === "CANCELLED";
-    const active = j.status === "queued" || j.status === "reading";
-    const cls = j.status === "done" ? "pill good" : j.status === "failed" && !cancelled ? "pill bad" : "pill";
-    const li = el("li", {},
-      el("span", { class: "name", text: j.name }),
-      el("button", { class: j.company ? "company" : "company unset", text: j.company || t("Set company"),
-        title: j.company ? t("Click to change the company") : t("Choose the client company of this file"),
-        onclick: () => { editingCompany = j.id; drawCompanyEditor(j, companies); } }),
-      el("span", { class: "when", text: new Date(j.created).toLocaleString(LOCALE) }),
-      el("span", { class: cls, text: cancelled ? t("Cancelled") : progressText(j) }),
-      active && el("button", { text: t("Cancel"), onclick: async () => {
-        try { await api("POST", `/api/jobs/${encodeURIComponent(j.id)}/cancel`); } catch (e) { showMessages([e.message], "error"); }
-        loadRecent();
-      } }),
-      el("button", { text: t("Open"), onclick: () => { location.hash = `#/doc/${encodeURIComponent(j.id)}`; } }));
-    if (j.status === "failed" && j.error && !cancelled) li.append(el("div", { class: "muted", style: "flex-basis:100%", text: tm(j.error.message) }));
-    li.dataset.id = j.id;
-    return li;
-  }));
-  $("recent-empty").hidden = jobs.length > 0;
-  $("recent-none").hidden = !(jobs.length > 0 && shown.length === 0);
-  return jobs;
-}
-
-function drawCompanyEditor(j, companies) {
-  document.querySelectorAll(".company-edit").forEach((n) => n.remove());
-  const li = [...$("recent").children].find((n) => n.dataset.id === j.id);
-  if (li) li.append(companyBox(j, companies));
-}
-
-// ------------------------------------------------------------------------------------------------ document view
-function findCell(doc, loc) {
-  const page = doc.pages.find((p) => p.page === loc.page);
-  if (!page) return null;
-  if (loc.header !== undefined) return page.header_fields[loc.header]?.cell ?? null;
-  return page.rows[loc.row]?.cells[loc.column] ?? null;
-}
-
-async function saveCell(loc, value, node) {
-  const change = { page: loc.page, value };
-  if (loc.header !== undefined) change.header = loc.header; else { change.row = loc.row; change.column = loc.column; }
-  try {
-    const doc = await api("PUT", `/api/jobs/${encodeURIComponent(currentId)}/cells`, { changes: [change] });
-    currentDoc = doc;
-    const cell = findCell(doc, loc);
-    if (cell) paintCell(node, loc, cell);
-    paintStatus(doc);
-  } catch (e) { alert(e.message); }
-}
-
-// Fills a .cell element (input + helper buttons) from a merged cell. Called on first draw and after each save.
-function paintCell(node, loc, cell) {
-  node.className = "cell" + (cell.needs_review ? " flag" : "") + (cell.edited ? " edited" : "");
-  node.title = cell.needs_review ? (tm(cell.unclear_reason) || t("Claude was not sure about this cell.")) : "";
-  const input = node.querySelector("input");
-  if (document.activeElement !== input) input.value = cell.value ?? "";
-  input.dataset.original = cell.value ?? "";
-  input.setAttribute("aria-label", cell.needs_review ? t("Cell to check. Type the correct value.") : t("Cell value"));
-  node.querySelector(".tools")?.remove();
-  const tools = el("div", { class: "tools" });
-  if (cell.needs_review) {
-    tools.append(el("span", { class: "reason", text: tm(cell.unclear_reason) || t("Please check this cell.") }));
-    if (cell.raw_text) {
-      tools.append(el("span", { class: "seen", text: t("Claude saw: {x}", { x: cell.raw_text }) }),
-        el("button", { type: "button", text: t("Use this"), onclick: () => saveCell(loc, cell.raw_text.trim(), node) }));
-    }
-    tools.append(el("button", { type: "button", text: t("It's empty"), onclick: () => saveCell(loc, "", node) }));
-  } else if (cell.edited) {
-    tools.append(el("button", { type: "button", text: t("Undo my change"), onclick: () => saveCell(loc, null, node) }));
-  }
-  if (tools.children.length) node.append(tools);
-}
-
-function makeCell(loc, cell) {
-  const input = el("input", { type: "text", autocomplete: "off", spellcheck: "false" });
-  const node = el("div", {}, input);
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") input.blur();
-    else if (e.key === "Escape") { input.value = input.dataset.original; input.blur(); }
-  });
-  input.addEventListener("change", () => {
-    const value = input.value.trim();
-    const c = findCell(currentDoc, loc);
-    if (!c) return;
-    if (value === "" && c.needs_review) return;                 // empty box on a flagged cell: use "It's empty" to confirm
-    if (value === (c.value ?? "")) return;
-    saveCell(loc, value, node);
-  });
-  paintCell(node, loc, cell);
-  return node;
-}
-
-function buildPage(doc, page) {
-  const wrap = el("section", { class: "page" });
-  if (doc.pages_total > 1) wrap.append(el("h3", { text: t("Page {a} of {b}", { a: page.page, b: doc.pages_total }) }));
-
-  const notes = [];
-  if (page.quality !== "CLEAR") notes.push(t("Picture quality: {q}. Check the highlighted cells carefully.", { q: QUALITY[page.quality] || page.quality }));
-  notes.push(...page.notes);
-  const right = el("div");
-  if (notes.length) right.append(el("div", { class: "notes" }, el("strong", { text: t("Claude's notes") }),
-    el("ul", {}, ...notes.map((n) => el("li", { text: n })))));
-
-  if (page.header_fields.length) {
-    right.append(el("div", { class: "fields" }, ...page.header_fields.map((f, i) =>
-      el("div", { class: "field" }, el("label", { text: f.label }), makeCell({ page: page.page, header: i }, f.cell)))));
-  }
-  if (!page.rows.length) {
-    right.append(el("div", { class: "banner error", text: tm(page.problem) || t("No table was found on this page.") }));
-  } else {
-    const head = el("tr", {}, el("th", { text: "#" }), ...page.column_labels.map((c) => el("th", { text: c })));
-    const body = page.rows.map((row, r) => el("tr", {}, el("td", { class: "rownum", text: String(r + 1) }),
-      ...page.column_labels.map((col) => el("td", {}, makeCell({ page: page.page, row: r, column: col }, row.cells[col])))));
-    right.append(el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, head), el("tbody", {}, ...body))));
-  }
-
-  const src = `/api/jobs/${encodeURIComponent(doc.id)}/pages/${page.page}`;
-  const left = el("div", { class: "page-image" },
-    el("a", { href: src, target: "_blank", rel: "noopener" }, el("img", { src, alt: t("Original, page {n}", { n: page.page }) })),
-    el("p", { class: "hint", text: t("Click the picture to open it larger.") }));
-  wrap.append(el("div", { class: "page-grid" }, left, right));
-  return wrap;
-}
-
-function paintStatus(doc) {
-  $("doc-name").textContent = doc.name;
-  const active = doc.status === "queued" || doc.status === "reading";
-  let text;
-  if (doc.status === "queued") text = t("Waiting for the other files to finish…");
-  else if (doc.status === "reading") {
-    text = doc.pages_total
-      ? t("Reading page {a} of {b}… This takes about a minute per page. You can keep this window open and add more files.", { a: Math.min(doc.pages_done + 1, doc.pages_total), b: doc.pages_total })
-      : t("Preparing the pages…");
-  } else if (doc.status === "done" && !doc.pages.some((p) => p.rows.length)) {
-    text = t("Finished, but no table could be read from this file. See the message below the picture.");
-  } else if (doc.status === "done") {
-    text = doc.cells_to_check
-      ? tn(doc.cells_to_check, "Finished. {n} cell to check — highlighted in yellow. Type the correct value, or use Claude's suggestion.", "Finished. {n} cells to check — highlighted in yellow. Type the correct value, or use Claude's suggestion.")
-      : t("Finished. Nothing was marked as unsure, but have a look before you rely on it.");
-  } else if (doc.error && doc.error.code === "CANCELLED") {
-    text = t("Cancelled after {a} of {b} pages. Nothing more will be read unless you press Continue.", { a: doc.pages_done, b: doc.pages_total ?? "?" });
-  } else text = doc.pages.length ? t("Stopped after {a} of {b} pages.", { a: doc.pages_done, b: doc.pages_total ?? "?" }) : t("Stopped.");
-  $("doc-status").textContent = text;
-  $("cancel").hidden = !active;
-  const err = $("doc-error");
-  err.className = "banner " + (doc.error && doc.error.code === "CANCELLED" ? "info" : "error");
-  err.hidden = !(doc.status === "failed" && doc.error);
-  err.textContent = doc.error ? tm(doc.error.message) : "";
-  $("continue").hidden = !doc.can_continue;
-  $("download").disabled = doc.status !== "done" || !doc.pages.some((p) => p.rows.length);
-  if (err.hidden === false) {
-    const code = doc.error.code;
-    if (code === "CLAUDE_LOGIN_REQUIRED" || code === "CLAUDE_CLI_MISSING") refreshClaude();   // top-right box shows Sign in
-    if (!doc.can_continue) err.append(t(" Use “All files” to go back and add a corrected file."));
-  }
-  $("next-check").hidden = !(doc.cells_to_check > 0);
-  $("next-check").textContent = t("Go to next cell to check ({n})", { n: doc.cells_to_check });
-  return active;
-}
-
-function showDoc(doc) {
-  currentDoc = doc;
-  const active = paintStatus(doc);
-  // Do not redraw the table while someone is typing in it; the next poll will catch up.
-  if (!$("pages").contains(document.activeElement)) $("pages").replaceChildren(...doc.pages.map((p) => buildPage(doc, p)));
-  return active;
-}
-
-let docTimer = null;
-async function openDoc(id) {
-  currentId = id; currentDoc = null;
-  $("home").hidden = true; $("payroll").hidden = true; $("doc").hidden = false;
-  $("pages").replaceChildren(); $("doc-name").textContent = ""; $("doc-status").textContent = t("Opening…");
-  $("doc-error").hidden = true;
-  clearTimeout(docTimer);
-  await pollDoc(true);
-}
-
-async function pollDoc(first) {
-  if (currentId === null) return;
-  const id = currentId;
-  try {
-    const doc = await api("GET", `/api/jobs/${encodeURIComponent(id)}`);
-    if (id !== currentId) return;
-    const changed = first || !currentDoc || doc.status !== currentDoc.status || doc.pages_done !== currentDoc.pages_done;
-    const active = changed ? showDoc(doc) : (doc.status === "queued" || doc.status === "reading");
-    if (active) docTimer = setTimeout(() => pollDoc(false), 2500);
-  } catch (e) {
-    if (id !== currentId) return;
-    $("doc-status").textContent = "";
-    $("doc-error").hidden = false; $("doc-error").textContent = e.message;
-  }
-}
-
-function showHome() {
-  currentId = null; currentDoc = null; clearTimeout(docTimer);
-  $("doc").hidden = true; $("payroll").hidden = true; $("home").hidden = false;
-  loadRecent();
-}
-
-function route() {
-  refreshCompanies();                                          // the Company chooser is on every screen
-  const m = location.hash.match(/^#\/doc\/(.+)$/);
-  const pm = location.hash.match(/^#\/payroll(?:\/(\d{4}-\d{2}))?$/);
-  if (m) openDoc(decodeURIComponent(m[1]));
-  else if (pm && typeof showPayroll === "function") showPayroll(pm[1]);
-  else showHome();
+// "2 Check reading": the yellow cells left in the files step 2's list shows (every file until check.js is loaded).
+function refreshCheckBadge(jobs) {
+  const shown = typeof ckFilter === "function" ? jobs.filter(ckFilter) : jobs;
+  stepBadge("check", shown.reduce((n, j) => n + (j.cells_to_check || 0), 0));
 }
 
 function setupQuit() {
@@ -424,39 +238,7 @@ function setupQuit() {
   });
 }
 
-function setupDocButtons() {
-  $("back").addEventListener("click", () => { location.hash = ""; });
-  $("cancel").addEventListener("click", async () => {
-    try { await api("POST", `/api/jobs/${encodeURIComponent(currentId)}/cancel`); await pollDoc(true); }
-    catch (e) { $("doc-error").hidden = false; $("doc-error").textContent = e.message; }
-  });
-  $("continue").addEventListener("click", async () => {
-    try { await api("POST", `/api/jobs/${encodeURIComponent(currentId)}/resume`); await pollDoc(true); }
-    catch (e) { $("doc-error").hidden = false; $("doc-error").textContent = e.message; }
-  });
-  $("download").addEventListener("click", () => {
-    if (!currentDoc || currentDoc.status !== "done") return;
-    const n = currentDoc.cells_to_check;
-    if (n && !confirm(tn(n, "{n} cell is still highlighted. In the CSV they will be left blank with a note. Download anyway?", "{n} cells are still highlighted. In the CSV they will be left blank with a note. Download anyway?"))) return;
-    location.href = `/api/jobs/${encodeURIComponent(currentId)}/csv`;
-  });
-  $("next-check").addEventListener("click", () => {
-    const inputs = [...document.querySelectorAll("#pages .cell.flag input")];
-    if (!inputs.length) return;
-    const after = inputs.findIndex((i) => i === document.activeElement);
-    const next = inputs[(after + 1) % inputs.length];
-    next.scrollIntoView({ block: "center", behavior: "smooth" });
-    next.focus({ preventScroll: true });
-  });
-}
-
-// Keep the recent-files list live while anything is being read.
-setInterval(() => { if (!$("home").hidden) loadRecent(); }, 4000);
-
-setupDrop();
-setupDocButtons();
 setupQuit();
-window.addEventListener("hashchange", route);
+setupPopup();
 refreshClaude();
 setInterval(() => { if (!loginTimer) refreshClaude(); }, 60000);
-route();

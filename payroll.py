@@ -54,6 +54,7 @@ from typing import Callable
 from ocr import OcrError
 
 DAY_TYPES = ("work", "rest", "holiday")
+PAY_BASES = ("monthly", "daily")
 
 # key, column heading in the payroll file (the names on the Edit Payroll screen), unit shown in the page
 FIELDS = [
@@ -117,14 +118,24 @@ REPORT_TOTALS = {"shift details / actual": "total actual", "shift details / late
                  "shift details / earlyout": "total earlyout", "overtime / 1.5": "total ot 1.5",
                  "overtime / 2.0": "total ot 2.0"}
 # IN/OUT time cards: the last part of a column label ("MORNING / IN" -> "in"), and a clock time as written on them
-# (07:55, 7.55, 17:02:10, 5.30 PM). Anything else in an IN/OUT cell is reported, never guessed.
-_IN_LABEL = re.compile(r"^(?:(?:time|masa|clock)\s*)?(?:in|masuk)$")
-_OUT_LABEL = re.compile(r"^(?:(?:time|masa|clock)\s*)?(?:out|keluar|balik)$")
+# (07:55, 7.55, 17:02:10, 5.30 PM). Anything else in an IN/OUT cell is reported, never guessed. A label may give the
+# word in Malay and English ("Masuk In", "Masa Keluar / Time Out").
+_IN_WORD = r"(?:(?:time|masa|clock)\s*)?(?:in|masuk)"
+_OUT_WORD = r"(?:(?:time|masa|clock)\s*)?(?:out|keluar|balik)"
+_IN_LABEL = re.compile(rf"^{_IN_WORD}(?:\s+{_IN_WORD})?$")
+_OUT_LABEL = re.compile(rf"^{_OUT_WORD}(?:\s+{_OUT_WORD})?$")
 _NO_STAMP = re.compile(r"^[\s\-–—_./x]*$", re.IGNORECASE)
 _STAMP = re.compile(r"^(\d{1,2})\s*[:.,]\s*([0-5]\d)(?:\s*:\s*([0-5]\d))?\s*(?:([ap])\.?\s*m\.?)?$", re.IGNORECASE)
+# "530 pm": the digits run together, which only reads as a time with am / pm after it ("530" alone could be anything)
+_STAMP_RUN = re.compile(r"^(\d{1,2})([0-5]\d)()\s*([ap])\.?\s*m\.?$", re.IGNORECASE)
+_AM_PM = re.compile(r"[ap]\.?\s*m\.?\s*$", re.IGNORECASE)
+# the clock times inside a "stamps" cell (layout maps): "07:58 12:01", "7.58 AM, 5.02 PM"
+_STAMP_IN_TEXT = re.compile(r"\d{1,2}\s*[:.]\s*[0-5]\d(?:\s*:\s*[0-5]\d)?(?:\s*[ap]\.?\s*m\.?)?", re.IGNORECASE)
 DEFAULT_BREAK = 1.0
 _DATE_LABEL = re.compile(r"date|tarikh|day|hari", re.IGNORECASE)
 _HOURS_LABEL = re.compile(r"total|jumlah|hours|jam|hrs", re.IGNORECASE)
+_NOT_HOURS_WORDS = {"rm", "amount", "$", "min", "mins", "minutes"}          # money or minutes: never the daily hours
+_HOURS_NAMES = {"hours", "hrs", "whrs", "total", "jumlah", "jam", "total hours", "jumlah jam"}
 
 
 # ----------------------------------------------------------------------------------------------------- the month
@@ -237,15 +248,18 @@ def worker_parts(pages: list[dict]) -> list[dict]:
 
 # Month grids: one row per worker and one column per day of the month ("Name | 1 | 2 | … | 31 | Remark"). A day cell
 # holds a mark, not hours. Only these marks are understood; anything else is reported, never guessed.
-_DAY_LABEL = re.compile(r"^\s*(\d{1,2})\s*$")
+# a month grid's day column: "5", or the day with its weekday ("5 / SAT", "5 Saturday", Malay "5 Sab")
+_DAY_LABEL = re.compile(r"^\s*(\d{1,2})(?:\s*/?\s*(?:mon|tue|wed|thu|fri|sat|sun|isn|sel|rab|kha|jum|sab|ahd)[a-z]*\.?)?\s*$",
+                        re.IGNORECASE)
 _GRID_TOTAL_LABEL = re.compile(r"total|jumlah|remark|catatan", re.IGNORECASE)
 GRID_MARKS = {
     "present": {"✓", "✔", "√", "/", "p", "1"},          # worked that day (a normal day, no overtime)
     "absent": {"0", "o"},
-    "holiday": {"ph", "p.h", "p.h.", "p/h"},
-    "off": {"off", "ro", "rd", "r/d", "rest"},
-    "leave": {"al", "mc", "el", "cl", "ml", "hl", "upl", "npl", "ul"},
+    "holiday": {"ph", "p.h", "p.h.", "p/h", "cuti am", "cuti umum"},
+    "off": {"off", "ro", "rd", "r/d", "rest", "off day", "off days", "rest day", "ahad"},
+    "leave": {"al", "mc", "el", "cl", "ml", "hl", "upl", "npl", "ul", "cuti"},
 }
+DAY_WORD_MARKS = ("holiday", "off", "leave")      # marks an IN/OUT card may carry instead of times (never "worked")
 _MARK_OF = {code: mark for mark, codes in GRID_MARKS.items() for code in codes}
 
 
@@ -334,6 +348,64 @@ def name_from_file(filename: str, company: str) -> str:
     return " ".join(w for w in words if w and not w.isdigit() and not _MONTH_TOKEN.match(w))
 
 
+_MONTH_OF = {w: n for n, words in enumerate((
+    "jan january januari", "feb february februari", "mar mac march", "apr april", "may mei", "jun june",
+    "jul july julai", "aug august ogos", "sep sept september", "oct okt october oktober", "nov november",
+    "dec dis december disember"), start=1) for w in words.split()}
+# a month word, whole ("MARKET" is not March), with the year that may follow it: "SEPT 2026", "SEPT26", "Sep-26", "Sept. 2026"
+_MONTH_YEAR = re.compile(r"(?<![a-z])(" + "|".join(sorted(_MONTH_OF, key=len, reverse=True)) + r")\.?"
+                         r"(?:\s*[-/']?\s*(\d{4}|\d{2})(?!\d))?(?![a-z])", re.IGNORECASE)
+_FULL_DATE = re.compile(r"(?<!\d)(\d{1,2})\s*[/.\-]\s*(\d{1,2})\s*[/.\-]\s*(\d{4})(?!\d)")
+_MONTH_FIELD = re.compile(r"month|bulan|period|tempoh", re.IGNORECASE)
+_YEAR_FIELD = re.compile(r"^(?:.*\b)?(?:year|tahun)\b", re.IGNORECASE)
+
+
+def _year(text: str | None, today: date) -> int | None:
+    """A year as written next to a month: 2026, or 26 for 2026. Only within a year of today (so "SEPT 15", the 15th,
+    is not taken for 2015)."""
+    if not text:
+        return None
+    year = int(text) + (2000 if len(text) == 2 else 0)
+    return year if abs(year - today.year) <= 1 else None
+
+
+def document_month(file_name: str, pages: list[dict], today: date) -> tuple[str | None, str]:
+    """The payroll month a document is for ("2026-09"), from what is printed: the card's Month / Bulan / Period field
+    (with its Year / Tahun field) and the file name ("... SEPT 2026 (ALI).jpeg"). A file name counts only with a year
+    next to the month, so a worker called Mei or Jun is not a month. A month with no year anywhere is the latest such
+    month up to next month. Returns (month, "") or (None, why not): no month found, or two different months."""
+    found: set[tuple[int | None, int]] = set()
+    year_field = None
+    for p in pages:
+        for f in p["header_fields"]:
+            label, cell = " ".join(f["label"].split()), f["cell"]
+            value = "" if cell["needs_review"] else (cell["value"] or "").strip()
+            if not value:
+                continue
+            if _MONTH_FIELD.search(label):
+                dates = {(int(y), int(m)) for _, m, y in _FULL_DATE.findall(value) if 1 <= int(m) <= 12}
+                found |= dates
+                if not dates:
+                    found |= {(_year(y, today), _MONTH_OF[w.lower()]) for w, y in _MONTH_YEAR.findall(value)}
+            elif _YEAR_FIELD.match(label) and re.fullmatch(r"\d{2}|\d{4}", value):
+                year_field = _year(value, today) or year_field
+    stem = Path(file_name).stem.replace("_", " ")
+    found |= {(_year(y, today), _MONTH_OF[w.lower()]) for w, y in _MONTH_YEAR.findall(stem) if _year(y, today)}
+    next_month = (today.year + today.month // 12, today.month % 12 + 1)
+    resolved = set()
+    for y, m in found:
+        if y is None:
+            same = {yy for yy, mm in found if yy and mm == m}
+            y = next(iter(same)) if len(same) == 1 else year_field or \
+                max(yy for yy in (today.year + 1, today.year, today.year - 1) if (yy, m) <= next_month)
+        resolved.add(f"{y}-{m:02d}")
+    if len(resolved) == 1:
+        return resolved.pop(), ""
+    if not resolved:
+        return None, "no month was found in the file name or on the card"
+    return None, "the file name and the card give different months (" + ", ".join(sorted(resolved)) + ")"
+
+
 def worker_key(company: str, code: str, name: str, file_name: str) -> str:
     """Who a document belongs to, within a company: the printed code, else the printed name, else the file name."""
     who = f"code:{_key(code)}" if code else f"name:{_key(name)}" if name else f"file:{_key(file_name)}"
@@ -347,22 +419,41 @@ def readable(page: dict) -> bool:
     return bool(grid_columns(labels) or pick_columns(labels, None)[1] or clock_pairs(labels))
 
 
-def auto_employees(plan: dict, candidates: list[dict], directory: dict,
-                   new_id: Callable[[], str]) -> tuple[int, list[str], list[str]]:
+def new_employee(new_id: str, name: str, refs: list[str], company: str, key: str | None, known: dict) -> dict:
+    """An employee made from files: ``known`` is what the user typed for this worker in an earlier month
+    (Employee No., name, pay basis, rate), {} for a worker seen for the first time."""
+    return {"id": new_id, "emp_no": known.get("emp_no", ""), "name": known.get("name") or name, "jobs": refs,
+            "hours_column": None, "overrides": {}, "entries": {}, "zakat": 0.0, "levy": 0.0, "message": "",
+            **({"worker_key": key} if key else {}), "company": company or "",
+            "pay_basis": known.get("pay_basis") or "monthly", "basic_rate": float(known.get("basic_rate") or 0.0)}
+
+
+def auto_employees(plan: dict, candidates: list[dict], directory: dict, new_id: Callable[[], str],
+                   addable: set[str] | None = None, million: list[dict] | None = None) -> tuple[int, list[str], list[str]]:
     """Add an employee for every worker found in ``candidates`` ([{ref, name, company, pages}]: documents, one page of
     a multi-worker report, or one worker's row of a month grid) that no employee has yet, with their cards ticked.
     Employee No. and name come from ``directory`` (what the user typed in earlier months) when known; the Employee No.
-    is never made up. Changes ``plan`` in place. Returns (employees added, names of documents left out because no days
-    can be read from them, names of grid rows left out because the name in the row is unclear or empty)."""
-    taken, whole, in_parts = set(), set(), set()
+    is never made up: for a worker not known yet it is taken from ``million`` (Million's employee list) only when the
+    name read on the card is one employee's whole name there (fill_employee_nos). ``addable``: only these refs may be added (the others only show, by their file names, whose
+    cards are already chosen, so a card with no name printed joins its pair). Changes ``plan`` in place. Returns
+    (employees added, names of documents left out because no days can be read from them, names of grid rows left out
+    because the name in the row is unclear or empty)."""
+    taken, whole, in_parts, owner = set(), set(), set(), {}
     for e in plan["employees"]:
         for ref in e["jobs"]:
             base, page = split_ref(ref)
             taken.add(ref)
             (whole if page is None else in_parts).add(base)
+            if e.get("worker_key"):
+                owner[ref] = e["worker_key"]
     by_key = {e.get("worker_key"): e for e in plan["employees"] if e.get("worker_key")}
     groups: dict[str, dict] = {}
     by_file: dict[str, set[str]] = {}       # company + name left in the file name -> the groups such files went to
+    for c in candidates:                    # cards already chosen for an employee made from the files
+        if c["ref"] in owner:
+            name = name_from_file(c["name"], c["company"])
+            if name:
+                by_file.setdefault(f"{_key(c['company'])}|{_key(name)}", set()).add(owner[c["ref"]])
     skipped, unnamed = [], []
     # cards with the worker printed on them first, so a card whose printed name is unclear can join its pair below
     order = sorted(range(len(candidates)), key=lambda i: not any(printed_worker(candidates[i]["pages"])))
@@ -371,6 +462,8 @@ def auto_employees(plan: dict, candidates: list[dict], directory: dict,
         base, page, row = split_part(c["ref"])
         if c["ref"] in taken or base in whole or (page is None and base in in_parts):
             continue                                              # already chosen for someone (whole or in part)
+        if addable is not None and c["ref"] not in addable:
+            continue
         if not any(readable(p) for p in c["pages"] if p["rows"]):
             skipped.append(c["name"])
             continue
@@ -384,33 +477,182 @@ def auto_employees(plan: dict, candidates: list[dict], directory: dict,
         if not (code or name) and len(by_file.get(file_id, ())) == 1:
             key = next(iter(by_file[file_id]))           # nothing printed: the worker whose other card has this file name
         group = groups.setdefault(key, {"refs": [], "name": name or file_name, "code": code, "first": i,
-                                        "company": c["company"]})
+                                        "company": c["company"], "on_card": bool(name)})
         group["refs"].append(c["ref"])
         group["first"] = min(group["first"], i)
         if file_name:
             by_file.setdefault(file_id, set()).add(key)
-    added = 0
+    added, named_on_card = 0, set()
     for key, g in sorted(groups.items(), key=lambda kv: kv[1]["first"]):    # employees in the files' order
         g["refs"].sort(key=[c["ref"] for c in candidates].index)
         if key in by_key:                                         # this worker is already an employee: add the cards
             by_key[key]["jobs"] += [r for r in g["refs"] if r not in by_key[key]["jobs"]]
             continue
         known = directory.get(key) or {}
-        plan["employees"].append({"id": new_id(), "emp_no": known.get("emp_no", ""), "name": known.get("name") or g["name"],
-                                  "jobs": g["refs"], "hours_column": None, "overrides": {}, "entries": {},
-                                  "zakat": 0.0, "levy": 0.0, "message": "", "worker_key": key,
-                                  "company": g["company"] or ""})
+        plan["employees"].append(new_employee(new_id(), g["name"], g["refs"], g["company"], key, known))
+        if g["on_card"] and not known.get("name"):
+            named_on_card.add(plan["employees"][-1]["id"])
         added += 1
+    if million:
+        fill_employee_nos(plan, million, named_on_card)
     return added, skipped, unnamed
 
 
+def fill_employee_nos(plan: dict, million: list[dict], ids: set[str]) -> int:
+    """Give the employees ``ids`` (just made from the files, named as read on their card) Million's Employee No. when
+    the name on the card is the whole name of exactly one employee in Million's list (upper/lower case and spacing
+    aside), nobody in the plan has that number, and no other employee in the plan has that name. Such a number is
+    marked ``emp_no_million`` so the page can say where it came from. A name that only partly fits is offered, not
+    filled in (suggest_employee_nos). Returns how many were filled in."""
+    in_million: dict[str, list[str]] = {}
+    for m in million:
+        if _key(m.get("name", "")):
+            in_million.setdefault(_key(m["name"]), []).append(m["emp_no"])
+    taken = {e["emp_no"].strip().casefold() for e in plan["employees"] if e["emp_no"].strip()}
+    in_plan: dict[str, int] = {}
+    for e in plan["employees"]:
+        in_plan[_key(e["name"])] = in_plan.get(_key(e["name"]), 0) + 1
+    filled = 0
+    for e in plan["employees"]:
+        fits = in_million.get(_key(e["name"]), [])
+        if e["id"] in ids and not e["emp_no"].strip() and len(fits) == 1 and in_plan[_key(e["name"])] == 1 \
+                and fits[0].casefold() not in taken:
+            e["emp_no"] = e["emp_no_million"] = fits[0]
+            filled += 1
+    return filled
+
+
+def place_card(plan: dict, candidate: dict, employee_id: str | None, new_id: Callable[[], str], directory: dict) -> dict:
+    """Put one card (``candidate``: {ref, name, company, pages}) on the employee ``employee_id``, or on a new
+    employee when it is None: named as printed on the card, else from the file name, with the Employee No. typed in
+    an earlier month when the worker is known (``directory``). A new employee for a worker who already is one in this
+    plan is made without the worker's key, so the two are not remembered as one. Changes ``plan`` in place and
+    returns the employee."""
+    if employee_id is not None:
+        employee = _employee(plan, employee_id)
+        if candidate["ref"] not in employee["jobs"]:
+            employee["jobs"].append(candidate["ref"])
+        return employee
+    _, _, row = split_part(candidate["ref"])
+    code, name = printed_worker(candidate["pages"], row_only=row is not None)
+    file_name = name_from_file(candidate["name"], candidate["company"])
+    key = worker_key(candidate["company"], code, name, file_name)
+    if any(e.get("worker_key") == key for e in plan["employees"]):
+        key = None
+    employee = new_employee(new_id(), name or file_name, [candidate["ref"]], candidate["company"], key,
+                            (directory.get(key) or {}) if key else {})
+    plan["employees"].append(employee)
+    return employee
+
+
+# What the employee view may change, one key at a time (the values are checked by validate_plan afterwards). Cards
+# move through place_card / take_off_card, never by sending a list, so a stale view cannot undo another tab's move.
+EMPLOYEE_KEYS = ("emp_no", "name", "hours_column", "overrides", "entries", "zakat", "levy", "message",
+                 "pay_basis", "basic_rate")
+EMPLOYEE_GONE = "This employee is no longer in the payroll of this month. Go back to the company and open it again."
+
+
+def _employee(plan: dict, employee_id: str) -> dict:
+    person = next((e for e in plan["employees"] if e["id"] == employee_id), None)
+    if person is None:
+        raise OcrError("EMPLOYEE_NOT_FOUND", EMPLOYEE_GONE)
+    return person
+
+
+def change_employee(plan: dict, employee_id: str, changes: dict) -> dict:
+    """Set only the keys in ``changes`` on one employee (in place) and return the employee: what another tab changed
+    on the same employee meanwhile stays."""
+    if not isinstance(changes, dict) or any(key not in EMPLOYEE_KEYS for key in changes):
+        raise OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+    person = _employee(plan, employee_id)
+    person.update(changes)
+    return person
+
+
+CARD_MOVED = "That card is no longer on this employee. Reload the page."
+
+
+def take_off_card(plan: dict, ref: str, from_id: str | None = None) -> str | None:
+    """Take the card ``ref`` off whichever employee has it; that employee's id, or None when nobody has it.
+    ``from_id``: the employee a screen showed the card on. The card is taken off that employee only, and when it is not
+    on them any more (another tab moved it) OcrError, so a stale screen never takes it off someone else."""
+    if from_id is not None:
+        person = _employee(plan, from_id)
+        if ref not in person["jobs"]:
+            raise OcrError("BAD_PAYROLL", CARD_MOVED)
+        person["jobs"].remove(ref)
+        return person["id"]
+    for person in plan["employees"]:
+        if ref in person["jobs"]:
+            person["jobs"].remove(ref)
+            return person["id"]
+    return None
+
+
+def change_list(plan: dict, kind: str, add: dict | None = None, remove: str | None = None) -> None:
+    """Add one line to (or remove one from) a list that is the same for every employee, leaving the other lines as
+    saved: a screen opened before another tab added a line does not take it away. A line removed takes its figures
+    off every employee (validate_plan). Removing a line that is not there changes nothing."""
+    lines = (plan.get("lists") or default_lists()).get(kind)
+    if kind not in LISTS or not isinstance(lines, list):
+        raise OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+    if add is not None:
+        plan["lists"] = {**plan.get("lists", {}), kind: [*lines, add]}
+    else:
+        plan["lists"] = {**plan.get("lists", {}), kind: [line for line in lines if line.get("name") != remove]}
+
+
+def remove_employee(plan: dict, employee_id: str) -> None:
+    plan["employees"].remove(_employee(plan, employee_id))
+
+
+def add_employee(plan: dict, new_id: str, company: str) -> dict:
+    """An empty employee typed in by hand (no card yet), appended to the plan."""
+    person = new_employee(new_id, "", [], company, None, {})
+    plan["employees"].append(person)
+    return person
+
+
+NEW_NO_LETTERS = 7      # how much of the company name starts an Employee No. made by Table Reader
+
+
+def company_prefix(company: str) -> str:
+    """What a new Employee No. of this company starts with: the first 7 letters and digits of its name, in capitals,
+    without spaces or signs ("MAJU JAYA" -> "MAJUJAY")."""
+    return "".join(ch for ch in (company or "").upper() if ch.isalnum())[:NEW_NO_LETTERS]
+
+
+def new_employee_nos(plan: dict, companies: dict[str, str], used: set[str]) -> dict[str, str]:
+    """A new Employee No. for each employee in ``companies`` ({employee id: company}) who has none: the company's
+    letters and the next free number, three digits ("MAJUJAY001", then "MAJUJAY002"). The next number is one more than
+    the highest such number in the plan or in ``used`` (every number known elsewhere: other months, earlier months'
+    workers, Million's list), so a number is never given twice. Nobody gets one without a company.
+    Returns {employee id: Employee No.}; the plan is not changed."""
+    taken = [no.strip() for no in used] + [e["emp_no"].strip() for e in plan["employees"]]
+    last: dict[str, int] = {}
+    out = {}
+    for e in plan["employees"]:
+        prefix = company_prefix(companies.get(e["id"], ""))
+        if e["id"] not in companies or e["emp_no"].strip() or not prefix:
+            continue
+        if prefix not in last:
+            numbers = [re.fullmatch(re.escape(prefix) + r"(\d+)", no, re.IGNORECASE) for no in taken]
+            last[prefix] = max((int(m.group(1)) for m in numbers if m), default=0)
+        last[prefix] += 1
+        out[e["id"]] = f"{prefix}{last[prefix]:03d}"
+    return out
+
+
 def remember_employees(plan: dict, directory: dict) -> bool:
-    """Keep each employee's Employee No. and name for next month (by worker_key). Returns True if anything changed."""
+    """Keep each employee's Employee No., name, pay basis and basic rate for next month (by worker_key). Returns True
+    if anything changed."""
     changed = False
     for e in plan["employees"]:
         key = e.get("worker_key")
         if key and e["emp_no"]:
             entry = {"emp_no": e["emp_no"], "name": e["name"]}
+            if e.get("basic_rate"):
+                entry.update(pay_basis=e.get("pay_basis") or "monthly", basic_rate=e["basic_rate"])
             if directory.get(key) != entry:
                 directory[key] = entry
                 changed = True
@@ -424,16 +666,8 @@ def validate_plan(plan, known_jobs: set[str]) -> dict:
         raise bad
     month = plan.get("month")
     n_days = days_in(month if isinstance(month, str) else "")
-    hours = plan.get("normal_hours")
-    if isinstance(hours, bool) or not isinstance(hours, (int, float)) or not 1 <= hours <= 24:
-        raise OcrError("BAD_PAYROLL", "Normal hours per day must be a number from 1 to 24.")
-    break_hours = plan.get("break_hours", DEFAULT_BREAK)            # a plan saved before IN/OUT cards: 1 hour
-    if isinstance(break_hours, bool) or not isinstance(break_hours, (int, float)) or not 0 <= break_hours <= 5:
-        raise OcrError("BAD_PAYROLL", "The break must be a number of hours from 0 to 5.")
-    types = plan.get("day_types")
-    if not isinstance(types, dict) or set(types) != {str(d) for d in range(1, n_days + 1)} \
-            or any(v not in DAY_TYPES for v in types.values()):
-        raise bad
+    default = _valid_settings(plan, n_days)
+    companies = _valid_companies(plan.get("companies"), n_days)
     lists = validate_lists(plan.get("lists"))
     employees, seen_ids, used_jobs, whole, in_parts = [], set(), {}, set(), set()
     whole_pages, row_pages = set(), set()           # (document, page) chosen as a page / through one of its rows
@@ -455,7 +689,7 @@ def validate_plan(plan, known_jobs: set[str]) -> dict:
             # rows, nor a whole page together with one of its rows
             if j in used_jobs or (page is None and base in in_parts) or (page is not None and base in whole) \
                     or (row is None and (base, page) in row_pages) or (row is not None and (base, page) in whole_pages):
-                raise OcrError("BAD_PAYROLL", "A document can belong to one employee only. Untick it from the other employee first.")
+                raise OcrError("BAD_PAYROLL", "A document can belong to one employee only. Take it off the other employee first.")
             used_jobs[j] = e["id"]
             (whole if page is None else in_parts).add(base)
             if page is not None:
@@ -464,6 +698,8 @@ def validate_plan(plan, known_jobs: set[str]) -> dict:
         if column is not None and (not isinstance(column, str) or len(column) > 200):
             raise bad
         overrides = {}
+        if not isinstance(e.get("overrides") or {}, dict):
+            raise bad
         for key, value in (e.get("overrides") or {}).items():
             if key not in FIELD_KEYS or isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or value > 100000:
                 raise OcrError("BAD_PAYROLL", "Figures must be numbers (0 or more).")
@@ -482,15 +718,124 @@ def validate_plan(plan, known_jobs: set[str]) -> dict:
         key = e.get("worker_key")
         if key is not None and (not isinstance(key, str) or len(key) > 300):
             raise bad
+        basis = e.get("pay_basis") or "monthly"                     # how the Basic Rate is meant: per month or per day
+        if basis not in PAY_BASES:
+            raise bad
         company = e.get("company") or ""
         if not isinstance(company, str) or len(company) > 80:
             raise bad
         employees.append({"id": e["id"], "emp_no": emp_no.strip(), "name": name.strip(), "jobs": list(jobs),
                           "hours_column": column or None, "overrides": overrides, "entries": entries,
                           "zakat": _figure(e.get("zakat", 0)), "levy": _figure(e.get("levy", 0)), "message": message,
-                          "company": " ".join(company.split()), **({"worker_key": key} if key else {})})
-    return {"month": month, "normal_hours": float(hours), "break_hours": float(break_hours), "day_types": dict(types),
-            "lists": lists, "employees": employees}
+                          "pay_basis": basis, "basic_rate": _figure(e.get("basic_rate") or 0),
+                          "company": " ".join(company.split()), **({"worker_key": key} if key else {}),
+                          # filled in from Million's list (fill_employee_nos): kept until the number is changed
+                          **({"emp_no_million": emp_no.strip()} if emp_no.strip() and e.get("emp_no_million") == emp_no.strip() else {}),
+                          # made by Table Reader (new_employee_nos): the same
+                          **({"emp_no_new": emp_no.strip()} if emp_no.strip() and e.get("emp_no_new") == emp_no.strip() else {})})
+    return {"month": month, **default, "companies": companies, "lists": lists, "employees": employees}
+
+
+def _valid_settings(values, n_days: int) -> dict:
+    """Normal hours, break and calendar (the month's default, or a company's own set), checked."""
+    bad = OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+    if not isinstance(values, dict):
+        raise bad
+    hours = values.get("normal_hours")
+    if isinstance(hours, bool) or not isinstance(hours, (int, float)) or not 1 <= hours <= 24:
+        raise OcrError("BAD_PAYROLL", "Normal hours per day must be a number from 1 to 24.")
+    break_hours = values.get("break_hours", DEFAULT_BREAK)          # a plan saved before IN/OUT cards: 1 hour
+    if isinstance(break_hours, bool) or not isinstance(break_hours, (int, float)) or not 0 <= break_hours <= 5:
+        raise OcrError("BAD_PAYROLL", "The break must be a number of hours from 0 to 5.")
+    types = values.get("day_types")
+    if not isinstance(types, dict) or set(types) != {str(d) for d in range(1, n_days + 1)} \
+            or any(v not in DAY_TYPES for v in types.values()):
+        raise bad
+    return {"normal_hours": float(hours), "break_hours": float(break_hours), "day_types": dict(types)}
+
+
+def _valid_companies(companies, n_days: int) -> dict:
+    """The companies with their own settings: {name: {normal_hours, break_hours, day_types, keep, based_on}}."""
+    if companies is None:
+        return {}
+    bad = OcrError("BAD_PAYROLL", "The payroll settings could not be understood. Reload the page and try again.")
+    if not isinstance(companies, dict) or len(companies) > 500:
+        raise bad
+    out = {}
+    for name, entry in companies.items():
+        name = " ".join(name.split()) if isinstance(name, str) else ""
+        if not name or len(name) > 80 or not isinstance(entry, dict) or not isinstance(entry.get("keep", False), bool):
+            raise bad
+        out[name] = {**_valid_settings(entry, n_days), "keep": entry.get("keep", False),
+                     "based_on": _valid_settings(entry.get("based_on"), n_days)}
+    return out
+
+
+# ------------------------------------------------------------------------------------- month and company settings
+# The month keeps one default (calendar, normal hours, break). A company either follows it completely or has its own
+# complete set, in plan["companies"]; its employees are worked out with that set. "based_on" is the default as it was
+# when the company's set was last saved, so a later change of the default can be pointed out (never applied by itself).
+SETTING_KEYS = ("normal_hours", "break_hours", "day_types")
+
+
+def _default_of(plan: dict) -> dict:
+    return {"normal_hours": plan["normal_hours"], "break_hours": plan.get("break_hours", DEFAULT_BREAK),
+            "day_types": dict(plan["day_types"])}
+
+
+def settings_for(plan: dict, company: str) -> dict:
+    """The settings an employee of ``company`` is worked out with: the company's own set, else the month's default."""
+    own = (plan.get("companies") or {}).get(company) if company else None
+    return {k: (own or _default_of(plan))[k] for k in SETTING_KEYS}
+
+
+def with_settings(plan: dict, company: str) -> dict:
+    return {**plan, **settings_for(plan, company)}
+
+
+def default_changed(plan: dict, company: str) -> bool:
+    """The company has its own settings and the month's default was changed after they were last saved."""
+    own = (plan.get("companies") or {}).get(company) if company else None
+    return bool(own) and own.get("based_on") != _default_of(plan)
+
+
+def settings_view(plan: dict, company: str) -> dict:
+    """What the company's settings screen shows: whether it has its own set, the settings in use, "keep", whether the
+    month's default was changed after its own set was saved, and the default itself."""
+    own = (plan.get("companies") or {}).get(company) if company else None
+    return {"own": bool(own), **settings_for(plan, company), "keep": bool(own and own.get("keep")),
+            "default_changed": default_changed(plan, company), "default": _default_of(plan)}
+
+
+def carry_companies(previous: dict, plan: dict) -> dict:
+    """The own settings of ``previous``'s companies marked "keep", to start ``plan`` (the next month) with: the same
+    normal hours and break, and the new month's default calendar where a weekday is a rest day if every one of its
+    days was a rest day for the company last month (public holidays left out of that count), else a working day.
+    Public holidays come from the new month's default only; last month's are never carried over."""
+    out = {}
+    py, pm = parse_month(previous["month"])
+    ny, nm = parse_month(plan["month"])
+    for name, own in (previous.get("companies") or {}).items():
+        if not own.get("keep"):
+            continue
+        seen: dict[int, set] = {}
+        for d, kind in own["day_types"].items():
+            if kind != "holiday":
+                seen.setdefault(date(py, pm, int(d)).weekday(), set()).add(kind)
+        rest = {w for w, kinds in seen.items() if kinds == {"rest"}}
+        types = {d: "holiday" if kind == "holiday" else "rest" if date(ny, nm, int(d)).weekday() in rest else "work"
+                 for d, kind in plan["day_types"].items()}
+        out[name] = own_settings(plan, {"normal_hours": own["normal_hours"], "break_hours": own["break_hours"],
+                                        "day_types": types, "keep": True})
+    return out
+
+
+def own_settings(plan: dict, values: dict | None) -> dict:
+    """A company's own set from the user's values (None: a copy of the month's default), remembering the default."""
+    default = _default_of(plan)
+    values = values or {}
+    return {**{k: values.get(k, default[k]) for k in SETTING_KEYS}, "keep": bool(values.get("keep", False)),
+            "based_on": default}
 
 
 # ---------------------------------------------------------------------------------------- reading days from tables
@@ -525,37 +870,225 @@ def parse_day(value: str | None, month_number: int) -> tuple[int | None, str | N
     return None, "the date could not be read"
 
 
+def _last_words(label: str) -> list[str]:
+    """The words of a label's last part ("DAYS/HOURS/MINUTES WORK / E/Out(Min)" -> ["e", "out", "min"])."""
+    return re.findall(r"[a-z]+|\$", _key(label).split(" / ")[-1])
+
+
 def pick_columns(labels: list[str], hours_column: str | None) -> tuple[str | None, str | None]:
+    """(date column, daily hours column). The column the user chose wins; else the clock report's Actual; else a column
+    named for hours or a total, preferring one named exactly so (WHrs, Total, Jumlah). A money column ("TOTAL (RM)")
+    or a minutes column ("E/Out(Min)") is never taken by itself: read as hours, its figures would be wrong."""
     date_col = next((c for c in labels if _DATE_LABEL.search(c)), labels[0] if labels else None)
     if hours_column and hours_column in labels:
         return date_col, hours_column
     actual = next((c for c in labels if _key(c) == REPORT_HOURS), None)
     if actual:                                                      # clock-system report: the hours actually worked
         return date_col, actual
-    candidates = [c for c in labels if _HOURS_LABEL.search(c) and c != date_col]
-    return date_col, (candidates[-1] if candidates else None)
+    candidates = [c for c in labels if _HOURS_LABEL.search(c) and c != date_col
+                  and not set(_last_words(c)) & _NOT_HOURS_WORDS]
+    exact = [c for c in candidates if " ".join(_last_words(c)) in _HOURS_NAMES]
+    return date_col, (exact or candidates or [None])[-1]
 
 
 def _key(label: str) -> str:
     return " ".join((label or "").split()).casefold()
 
 
+# ------------------------------------------------------------------------------------------------- layout maps
+# A card layout Table Reader has no rule for is read with a map the user confirmed (Claude may suggest it, see
+# layouts.py): what each column means. The map belongs to the layout's headings (layout_signature), so it is used for
+# every company and month with the same headings and for no other layout. Figure roles are read like the clock
+# report's printed figures: added up as written, and the normal-hours overtime rule is not applied on those days.
+LAYOUT_ROLES = ("date", "hours", "in", "out", "stamps", "lateness", "early_departure", "ot_1", "ot_1_5", "ot_2",
+                "ot_3", "ignore")
+LAYOUT_UNITS = ("hours", "minutes", "none")
+_FIGURE_ROLES = ("lateness", "early_departure", "ot_1", "ot_1_5", "ot_2", "ot_3")
+_COUNTED_ROLES = ("hours", *_FIGURE_ROLES)                  # read as a number of hours or minutes
+_ROW_NUMBER = re.compile(r"^(?:no\.?|bil\.?|#|s/?no\.?)$")
+
+
+def layout_signature(labels: list[str]) -> str:
+    """A card layout: its column headings, lower case with spaces collapsed, in order."""
+    return " | ".join(_key(label) for label in labels)
+
+
+def valid_layout_map(labels: list[str], columns) -> dict:
+    """A clean {heading: {"role", "unit"}} for a page with ``labels``, or OcrError BAD_LAYOUT: every heading of the
+    page and no other, known roles and units, one date at most, IN and OUT in turn, a unit of hours or minutes on a
+    figure and none on the rest. Used for the user's map and for Claude's suggestion alike (never trusted as it
+    comes)."""
+    bad = OcrError("BAD_LAYOUT", "What the columns mean could not be understood. Open the card layout again.")
+    if not isinstance(columns, dict) or set(columns) != set(labels):
+        raise bad
+    clean, sides = {}, []
+    for label in labels:
+        c = columns[label]
+        if not isinstance(c, dict) or c.get("role") not in LAYOUT_ROLES or c.get("unit") not in LAYOUT_UNITS:
+            raise bad
+        if (c["role"] in _COUNTED_ROLES) != (c["unit"] != "none"):
+            raise bad
+        if c["role"] in ("in", "out"):
+            sides.append(c["role"])
+        clean[label] = {"role": c["role"], "unit": c["unit"]}
+    if sum(1 for c in clean.values() if c["role"] == "date") > 1 or sides != ["in", "out"] * (len(sides) // 2):
+        raise bad
+    return clean
+
+
+def _minutes(text: str | None) -> float | None:
+    """Minutes written for a day (15, 1:30 = 90) -> hours; 0 for a dash or blank; None if it is not a number of
+    minutes."""
+    value = (text or "").strip()
+    if _NOT_WORKED.match(value):
+        return 0.0
+    m = _CLOCK.match(value)
+    if m:
+        return (int(m.group(1)) * 60 + int(m.group(2))) / 60
+    return int(value) / 60 if re.fullmatch(r"\d{1,4}", value) else None
+
+
+def _counted(text: str | None, unit: str) -> float | None:
+    return _minutes(text) if unit == "minutes" else parse_hours(text)
+
+
+def _map_roles(labels: list[str], layouts: dict | None) -> dict | None:
+    """{label: {"role", "unit"}} of the user's map for these headings, looked up by heading key (a card that writes
+    "WHRS" where the map was saved from "WHrs" has the same signature); None when there is none or it does not fit."""
+    columns = ((layouts or {}).get(layout_signature(labels)) or {}).get("columns")
+    if not isinstance(columns, dict):
+        return None
+    by_key = {_key(k): v for k, v in columns.items()}
+    roles = {c: by_key.get(_key(c)) for c in labels}
+    fits = all(isinstance(r, dict) and r.get("role") in LAYOUT_ROLES and r.get("unit") in LAYOUT_UNITS
+               for r in roles.values())
+    return roles if fits else None
+
+
+def has_layout_map(labels: list[str], layouts: dict | None) -> bool:
+    """A page with these headings is read with a map the user confirmed (not with the built-in rules)."""
+    return _map_roles(labels, layouts) is not None
+
+
+def layout_reads_days(labels: list[str], layouts: dict | None) -> bool:
+    """False when the user's map for these headings gives no date, or no hours, IN/OUT or stamps (the days cannot be
+    worked out with it: the layout is asked about again)."""
+    how = _layout_columns(labels, None, layouts)
+    return not how.get("map") or bool(how["date"] and (how["hours"] or how["pairs"] or how["stamps"]))
+
+
+def _layout_columns(labels: list[str], hours_column: str | None, layouts: dict | None) -> dict:
+    """How read_days reads a page with these headings: {"map", "date", "hours", "units", "report", "pairs", "stamps",
+    "grid"}. A confirmed map decides everything; else the built-in rules (month grid, hours column, IN/OUT pairs,
+    the clock report)."""
+    roles = _map_roles(labels, layouts)
+    if roles:
+        of = lambda role: [c for c in labels if roles[c]["role"] == role]       # noqa: E731
+        return {"map": True, "grid": None, "date": next(iter(of("date")), None), "hours": next(iter(of("hours")), None),
+                "units": {c: roles[c]["unit"] for c in labels},
+                "report": {c: roles[c]["role"] for c in labels if roles[c]["role"] in _FIGURE_ROLES},
+                "pairs": list(zip(of("in"), of("out"))), "stamps": of("stamps")}
+    grid = grid_columns(labels)
+    if grid:
+        return {"map": False, "grid": grid}
+    date_col, hours_col = pick_columns(labels, hours_column)
+    report = {c: REPORT_COLUMNS[_key(c)] for c in labels if _key(c) in REPORT_COLUMNS}
+    # IN/OUT time card; on a card that also has a Total column, the times count on days the Total is left empty
+    pairs = [] if report and hours_col else clock_pairs(labels)
+    return {"map": False, "grid": None, "date": date_col, "hours": hours_col, "units": {}, "report": report,
+            "pairs": pairs, "stamps": []}
+
+
+def columns_read(labels: list[str], hours_column: str | None, layouts: dict | None) -> set[str]:
+    """The columns read_days reads on a page with these headings (from the same rules, so the two cannot drift): the
+    map's columns that are not ignored; a grid's days, name and total; else the date, hours, IN/OUT, report columns
+    (and the report's Flat column, which is checked)."""
+    how = _layout_columns(labels, hours_column, layouts)
+    if how["grid"]:
+        g = how["grid"]
+        return set(g["days"].values()) | {c for c in (g["name"], g["total"]) if c}
+    read = {how["date"], how["hours"], *how["report"], *how["stamps"], *(c for pair in how["pairs"] for c in pair)}
+    if how["report"] and not how["map"]:
+        read |= {c for c in labels if _key(c) in (REPORT_FLAT, REPORT_HOURS)}
+    return read - {None}
+
+
+def built_in_layout(labels: list[str]) -> bool:
+    """A layout Table Reader reads fully by its own rules (a month grid, the clock report): never asked about."""
+    return bool(grid_columns(labels)) or any(_key(c) in REPORT_COLUMNS for c in labels)
+
+
+def map_as_read(labels: list[str], hours_column: str | None) -> dict:
+    """Today's reading of a page with these headings as a layout map, every other column ignored ("It is right as it
+    is" on a layout Table Reader asked about). Not for a month grid (BAD_LAYOUT): grids are read by their own rules."""
+    how = _layout_columns(labels, hours_column, None)
+    if how["grid"]:
+        raise OcrError("BAD_LAYOUT", "What the columns mean could not be understood. Open the card layout again.")
+    roles = {how["date"]: ("date", "none"), how["hours"]: ("hours", "hours"),
+             **{c: (field, "hours") for c, field in how["report"].items()},
+             **{c: (side, "none") for pair in how["pairs"] for c, side in zip(pair, ("in", "out"))}}
+    return {c: dict(zip(("role", "unit"), roles.get(c, ("ignore", "none")))) for c in labels}
+
+
+def is_row_number(label: str) -> bool:
+    """A column of row numbers or codes ("No.", "Bil", "#", "Emp. No."): never a figure for the payroll."""
+    words = _key(label).split()
+    return bool(words) and bool(_ROW_NUMBER.match(words[-1]))
+
+
+def is_figure_text(text: str | None) -> bool:
+    """A cell that holds a number or a clock time (what a column the payroll could use would hold)."""
+    value = (text or "").strip()
+    return bool(re.search(r"\d", value)) and (parse_clock(value) is not None or parse_hours(value) is not None
+                                              or _number_or_none(value) is not None or bool(_STAMP_IN_TEXT.search(value)))
+
+
+def _stamp_cells(cells: dict, stamp_cols: list[str]) -> tuple[dict, list[tuple[str, str]], str | None]:
+    """A "stamps" cell (several clock times in one cell, a door-system export) as IN/OUT pairs in order:
+    (cells, pairs, problem). An odd number of times, or anything in the cell that is not a clock time, is a problem;
+    nothing is completed."""
+    out, pairs = {}, []
+    for col in stamp_cols:
+        cell = cells[col]
+        text = (cell["value"] or "").strip()
+        times = _STAMP_IN_TEXT.findall(text)
+        if cell["needs_review"]:
+            times = times or [""]                       # yellow: _clock_day reports it as still unclear
+        elif _STAMP_IN_TEXT.sub(" ", text).strip(" ,;/-\n\t"):
+            return {}, [], f"'{text}' is not a clock time (such as 07:55 or 5.30 PM). Correct it in the document."
+        elif len(times) % 2:
+            return {}, [], (f"'{text}' holds an odd number of clock times, so IN and OUT cannot be paired. Correct it "
+                            "in the document.")
+        for n in range(0, len(times), 2):
+            pin, pout = f"{col}\0{n}", f"{col}\0{n + 1}"
+            pair = times[n:n + 2] + [""] * (2 - len(times[n:n + 2]))
+            out[pin] = {**cell, "value": pair[0]}
+            out[pout] = {**cell, "value": pair[1]}
+            pairs.append((pin, pout))
+    return out, pairs, None
+
+
 def clock_pairs(labels: list[str]) -> list[tuple[str, str]]:
     """The (IN column, OUT column) pairs of an IN/OUT time card, in the card's order: "IN | OUT", "Time In | … | Time
-    Out", or one pair per group ("MORNING / IN | MORNING / OUT | AFTERNOON / IN | AFTERNOON / OUT")."""
+    Out", or one pair per group ("MORNING / IN | MORNING / OUT | AFTERNOON / IN | AFTERNOON / OUT"). The word may be
+    given twice ("Masuk In", "Masa Masuk / Time In")."""
     pairs, waiting = [], {}
     for label in labels:
-        group, _, last = _key(label).rpartition(" / ")
-        if _IN_LABEL.match(last):
+        parts, side = _key(label).split(" / "), set()
+        while parts and (_IN_LABEL.match(parts[-1]) or _OUT_LABEL.match(parts[-1])):
+            side.add("in" if _IN_LABEL.match(parts.pop()) else "out")
+        group = " / ".join(parts)
+        if side == {"in"}:
             waiting[group] = label
-        elif _OUT_LABEL.match(last) and group in waiting:
+        elif side == {"out"} and group in waiting:
             pairs.append((waiting.pop(group), label))
     return pairs
 
 
 def parse_clock(value: str | None) -> float | None:
-    """A clock time written on a card -> minutes after midnight: 07:55, 7.55, 17:02:10, 5.30 PM. None if it is not one."""
-    m = _STAMP.match((value or "").strip())
+    """A clock time written on a card -> minutes after midnight: 07:55, 7.55, 17:02:10, 5.30 PM, 530 PM. None if it is
+    not one."""
+    m = _STAMP.match((value or "").strip()) or _STAMP_RUN.match((value or "").strip())
     if not m:
         return None
     hour, half = int(m.group(1)), (m.group(4) or "").lower()
@@ -569,19 +1102,34 @@ def parse_clock(value: str | None) -> float | None:
 
 
 def _clock_day(cells: dict, pairs: list[tuple[str, str]], break_hours: float, where: str, day: int, name: str,
-               issues: list[dict]) -> dict:
+               issues: list[dict], at: dict) -> dict:
     """One day of an IN/OUT time card: the hours between each IN and its OUT, added up. One pair: the break is taken
-    off. Several pairs: no break (the gap between them is the break). Anything unclear leaves the day out."""
+    off. Several pairs: no break (the gap between them is the break). Only one IN and one OUT in a later pair (morning
+    IN, overtime OUT: the worker clocked twice): one span, the break taken off. An OUT written without pm that is
+    earlier than a morning IN is in the afternoon (the user's rule; ``clock["afternoon"]`` lists them). A day word
+    instead of times (OFF, PH, CUTI, MC: see DAY_WORD_MARKS) marks the day as on a month grid. Anything unclear leaves the day out. ``at``: where
+    the line is (see read_days)."""
     def unclear(text: str) -> dict:
-        issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: {text}"})
+        issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: {text}", "at": at})
         return {"hours": None, "status": "unclear", "source": where, "printed": None}
 
-    spans, written = [], []
-    for in_col, out_col in pairs:
-        cin, cout = cells[in_col], cells[out_col]
-        if cin["needs_review"] or cout["needs_review"]:
-            return unclear("an IN or OUT time is still unclear. Check the yellow cell in the document.")
-        tin, tout = (cin["value"] or "").strip(), (cout["value"] or "").strip()
+    if any(cells[c]["needs_review"] for pair in pairs for c in pair):
+        return unclear("an IN or OUT time is still unclear. Check the yellow cell in the document.")
+    stamps = [((cells[i]["value"] or "").strip(), (cells[o]["value"] or "").strip()) for i, o in pairs]
+    filled = [(k, side) for k, pair in enumerate(stamps) for side, text in zip(("in", "out"), pair)
+              if not _NO_STAMP.match(text)]
+    texts = [stamps[k][side == "out"] for k, side in filled]
+    if texts and all(parse_clock(t) is None for t in texts):
+        for words in (" ".join(texts), "".join(texts)):                   # "OFF" | "DAY", or "O" | "F" | "F"
+            mark, _ = grid_mark(words)
+            if mark in DAY_WORD_MARKS:
+                return {"hours": 0.0, "status": "ok", "source": where, "printed": None, "mark": mark,
+                        "code": " ".join(texts)}
+    if len(filled) == 2 and filled[0][1] == "in" and filled[1][1] == "out" and filled[0][0] < filled[1][0]:
+        stamps = [(stamps[filled[0][0]][0], stamps[filled[1][0]][1])]   # clocked IN once and OUT once: one span
+
+    spans, written, afternoon = [], [], []
+    for tin, tout in stamps:
         has_in, has_out = not _NO_STAMP.match(tin), not _NO_STAMP.match(tout)
         if not has_in and not has_out:
             continue
@@ -595,6 +1143,11 @@ def _clock_day(cells: dict, pairs: list[tuple[str, str]], break_hours: float, wh
         if start is None or end is None:
             return unclear(f"'{tin if start is None else tout}' is not a clock time (such as 07:55 or 5.30 PM). "
                            "Correct it in the document.")
+        if end < start < 720 and end < 720 and not _AM_PM.search(tout):
+            # the user's rule: a morning IN and an OUT written without pm that is earlier than it ("8.00" - "5.00")
+            # is an afternoon OUT; an OUT that says am, a night shift (IN after noon) or OUT = IN stay unclear
+            end += 720
+            afternoon.append(tout)
         if end <= start:
             return unclear(f"OUT {tout} is not later than IN {tin}. If it is an afternoon time, write it as 17.00 or "
                            "5.00 PM in the document. A shift that ends the next day cannot be worked out: type the "
@@ -606,7 +1159,8 @@ def _clock_day(cells: dict, pairs: list[tuple[str, str]], break_hours: float, wh
     taken = break_hours if len(spans) == 1 and spans[0] > break_hours else 0.0      # a day shorter than the break keeps its hours
     hours = round(sum(spans) - taken, 2)
     return {"hours": hours, "status": "ok", "source": where, "printed": None, "code": ", ".join(written),
-            "clock": {"hours": hours, "break": taken, "pairs": len(spans)}}
+            "clock": {"hours": hours, "break": taken, "pairs": len(spans),
+                      **({"afternoon": afternoon} if afternoon else {})}}
 
 
 def _check_report_totals(page: dict, where: str, name: str, issues: list[dict]) -> None:
@@ -638,80 +1192,134 @@ def _number_or_none(text: str) -> float | None:
 
 
 def read_days(docs: list[tuple[str, list[dict]]], n_days: int, month_number: int, hours_column: str | None,
-              break_hours: float = DEFAULT_BREAK):
-    """Daily hours from an employee's documents. ``docs`` is [(document name, merged pages)].
+              break_hours: float = DEFAULT_BREAK, year: int | None = None, layouts: dict | None = None):
+    """Daily hours from an employee's documents. ``docs`` is [(document name, merged pages)]. ``year``: the month's
+    year, for the weekday of a day (a month grid's "SA" / "SU" mean not worked only on that weekday). ``layouts``: the
+    user's confirmed layout maps by signature; a page whose headings have one is read with it (_layout_columns).
     Returns (days, issues): days maps day -> {"hours": float | None, "status": "ok" | "unclear" | "conflict",
     "source": text, "printed": {field: hours} | None (clock-system report figures for that day),
     "mark": None | "present" | "hours" | "absent" | "holiday" | "off" | "leave" (month grids), "code": what was written,
     "clock": {"hours", "break", "pairs"} on an IN/OUT time card (how the hours were worked out)}.
-    A month-grid tick is a day worked with no hours ("present", hours None)."""
+    A month-grid tick is a day worked with no hours ("present", hours None).
+    A problem about one line of a card also says where that line is, for the one-look panel: "at" = {"doc": position
+    in ``docs``, "page", "row": 0-based in the document's page (a page holding one worker's row of a sheet says where
+    that row is, ``first_row``), "day": None when the date is the problem, "columns": the columns read on the line
+    (the date column only when the date is the problem: otherwise the day names the line)}."""
     days: dict[int, dict] = {}
     issues: list[dict] = []
-    for name, pages in docs:
+    for k, (name, pages) in enumerate(docs):
         for page in pages:
             where = f"{name}" + (f", page {page['page']}" if len(pages) > 1 else "")
-            grid = grid_columns(page["column_labels"])
-            if grid:                                                # month grid: rows = workers, columns = days
-                _read_grid(page, grid, where, name, n_days, days, issues)
+            how = _layout_columns(page["column_labels"], hours_column, layouts)
+            if how["grid"]:                                         # month grid: rows = workers, columns = days
+                _read_grid(page, how["grid"], where, name, n_days, days, issues, k,
+                           (lambda d: date(year, month_number, d).weekday()) if year else None)
                 continue
-            date_col, hours_col = pick_columns(page["column_labels"], hours_column)
-            pairs = clock_pairs(page["column_labels"]) if hours_col is None else []     # IN/OUT time card
-            if hours_col is None and not pairs:
-                issues.append({"kind": "column", "text": f"{where}: no column with the daily hours was found. "
-                                                         "Choose it in the 'Hours column' list.", "job": name})
+            date_col, hours_col, report, pairs = how["date"], how["hours"], how["report"], how["pairs"]
+            units, stamp_cols = how["units"], how["stamps"]
+            if how["map"] and date_col is None:
+                issues.append({"kind": "column", "job": name, "text": f"{where}: the card layout has no date column. "
+                               "Open the card layout and say which column holds the date."})
                 continue
-            report = {c: REPORT_COLUMNS[_key(c)] for c in page["column_labels"] if _key(c) in REPORT_COLUMNS}
-            if report:
+            if hours_col is None and not pairs and not stamp_cols:
+                issues.append({"kind": "column", "job": name, "text": f"{where}: the card layout has no column with the "
+                               "hours or the times. Open the card layout and say which column holds them."} if how["map"]
+                              else {"kind": "column", "text": f"{where}: no column with the daily hours was found. "
+                                                              "Choose it in the 'Hours column' list.", "job": name})
+                continue
+            # columns not read, looked at on a day whose hours are empty (times there: the day is not "not worked")
+            others = [c for c in page["column_labels"] if c not in (date_col, hours_col) and c not in report] \
+                if hours_col and not pairs and not stamp_cols and (how["map"] or not report) else []
+            if report and not how["map"]:
                 _check_report_totals(page, where, name, issues)
                 flat = next((c for c in page["column_labels"] if _key(c) == REPORT_FLAT), None)
                 if flat and any(parse_hours(row["cells"][flat]["value"]) or row["cells"][flat]["needs_review"]
                                 for row in page["rows"]):
                     issues.append({"kind": "flat", "job": name, "text": f"{where}: the report has Flat overtime. "
                                    "Table Reader does not add it: type it in the right Million Payroll field yourself."})
+            timed_cols = ([hours_col] if hours_col else []) + [c for pair in pairs for c in pair] + stamp_cols
+
+            def printed_of(cells: dict, day: int, entry: dict, read: list[str]) -> dict:
+                """The day's printed figures (the clock report's, or a map's figure columns), unit converted. One that
+                is unclear or not a number makes the day unclear."""
+                printed = {}
+                for col, field in report.items():
+                    c = cells[col]
+                    value = None if c["needs_review"] else _counted(c["value"], units.get(col, "hours"))
+                    if value is None:
+                        entry["status"] = "unclear"
+                        issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: the {col} "
+                                       "figure is unclear or not a number of hours. Check it in the document.",
+                                       "at": at(day, read)})
+                    else:
+                        printed[field] = printed.get(field, 0.0) + value
+                return printed
+
             for r, row in enumerate(page["rows"], start=1):
                 cells = row["cells"]
                 dcell = cells[date_col]
-                timed = [cells[hours_col]] if hours_col else [cells[c] for pair in pairs for c in pair]
+                hcell = cells[hours_col] if hours_col else None
+                stamps = [cells[c] for pair in pairs for c in pair] + [cells[c] for c in stamp_cols]
+                timed = ([hcell] if hcell else []) + stamps
+
+                def at(day: int | None, read: list[str]) -> dict:
+                    # the date column only when the date is the problem; else the day is the line's label
+                    return {"doc": k, "page": page["page"], "row": page.get("first_row", 0) + r - 1, "day": day,
+                            "columns": [c for c in page["column_labels"] if c in read or (day is None and c == date_col)]}
+
                 if dcell["needs_review"] or not (dcell["value"] or "").strip():
                     if any(c["value"] or c["needs_review"] or (c["raw_text"] or "").strip() for c in timed):
                         issues.append({"kind": "unclear", "text": f"{where}, row {r}: the date is unclear, so its hours "
-                                                                  "were left out. Fix the date in the document.", "job": name})
+                                                                  "were left out. Fix the date in the document.", "job": name,
+                                       "at": at(None, timed_cols)})
                     continue
                 day, problem = parse_day(dcell["value"], month_number)
                 if day is None or not 1 <= day <= n_days:
-                    if any(not _NO_STAMP.match((c["value"] or "").strip()) for c in timed) if pairs else \
-                            (timed[0]["value"] or "").strip() and parse_hours(timed[0]["value"]):
+                    if any(not _NO_STAMP.match((c["value"] or "").strip()) for c in stamps) or \
+                            hcell and (hcell["value"] or "").strip() and parse_hours(hcell["value"]):
                         issues.append({"kind": "date", "text": f"{where}, row {r}: " + (problem or f"day {day} is not in this month")
-                                       + ", so its hours were left out.", "job": name})
+                                       + ", so its hours were left out.", "job": name, "at": at(None, timed_cols)})
                     continue
-                if pairs:
-                    _put_day(days, day, _clock_day(cells, pairs, break_hours, where, day, name, issues), name, issues)
+                written = hcell is not None and (hcell["needs_review"] or bool((hcell["value"] or "").strip()))
+                if (pairs or stamp_cols) and not written:       # no Total written that day: the IN/OUT times
+                    stamped, more, problem = _stamp_cells(cells, stamp_cols)
+                    if problem:
+                        issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: {problem}",
+                                       "at": at(day, timed_cols)})
+                        _put_day(days, day, {"hours": None, "status": "unclear", "source": where, "printed": None},
+                                 name, issues)
+                        continue
+                    entry = _clock_day({**cells, **stamped}, pairs + more, break_hours, where, day, name, issues,
+                                       at(day, timed_cols))
+                    if report:                                  # a map's figure columns count on these days too
+                        entry["printed"] = printed_of(cells, day, entry, [*timed_cols, *report])
+                    _put_day(days, day, entry, name, issues)
                     continue
-                hcell = cells[hours_col]
+                read = [hours_col, *report]                     # what the lines below read
+                if not written and any(cells[c]["needs_review"] or parse_clock(cells[c]["value"]) is not None
+                                       for c in others):
+                    # the Total is empty but the row holds times (or yellow cells) in columns not known as IN/OUT:
+                    # empty does not mean "not worked" here
+                    busy = [c for c in others if cells[c]["needs_review"] or parse_clock(cells[c]["value"]) is not None]
+                    issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: the {hours_col} column "
+                                   "is empty but other columns of the row have times or yellow cells. Type the hours in the "
+                                   f"{hours_col} column of the document.", "at": at(day, [hours_col, *busy])})
+                    _put_day(days, day, {"hours": None, "status": "unclear", "source": where, "printed": None}, name, issues)
+                    continue
                 if hcell["needs_review"]:
                     entry = {"hours": None, "status": "unclear", "source": where}
                 else:
-                    hours = parse_hours(hcell["value"])
+                    hours = _counted(hcell["value"], units.get(hours_col, "hours"))
                     entry = {"hours": hours, "status": "ok" if hours is not None else "unclear", "source": where}
                     if hours is None:
                         issues.append({"kind": "unclear", "text": f"{where}, day {day}: '{hcell['value']}' is not a number "
-                                                                  "of hours. Correct it in the document.", "job": name})
+                                                                  "of hours. Correct it in the document.", "job": name,
+                                       "at": at(day, read)})
                 if entry["status"] == "unclear" and hcell["needs_review"]:
                     issues.append({"kind": "unclear", "text": f"{where}, day {day}: the hours are still unclear. Check the "
-                                                              "yellow cell in the document.", "job": name})
-                entry["printed"] = None
-                if report:
-                    printed = {}
-                    for col, field in report.items():
-                        c = cells[col]
-                        value = None if c["needs_review"] else parse_hours(c["value"])
-                        if value is None:
-                            entry["status"] = "unclear"
-                            issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: the {col} "
-                                           "figure is unclear or not a number of hours. Check it in the document."})
-                        else:
-                            printed[field] = printed.get(field, 0.0) + value
-                    entry["printed"] = printed
+                                                              "yellow cell in the document.", "job": name,
+                                   "at": at(day, read)})
+                entry["printed"] = printed_of(cells, day, entry, read) if report else None
                 _put_day(days, day, entry, name, issues)
     return days, issues
 
@@ -734,13 +1342,25 @@ def _put_day(days: dict, day: int, entry: dict, name: str, issues: list[dict]) -
                                                f"{entry['source']}). It was left out until you fix it.", "job": name})
 
 
-def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: dict, issues: list[dict]) -> None:
-    """One worker's row of a month grid: each day column holds a mark (see GRID_MARKS) or hours."""
+# A month grid's cell holding only the day's name on that weekday (the user's rule): nothing was worked that day.
+# Sunday is every worker's rest day; hours written on it count as rest-day work through the calendar, as any hours do.
+_WEEKEND_NAMES = {5: {"sa", "sat"}, 6: {"su", "sun"}}                  # date.weekday(): 5 = Saturday, 6 = Sunday
+
+
+def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: dict, issues: list[dict], k: int,
+               weekday: Callable[[int], int] | None = None) -> None:
+    """One worker's row of a month grid: each day column holds a mark (see GRID_MARKS) or hours. ``k``: the document's
+    position in the employee's documents (for "at", see read_days). ``weekday``: day -> date.weekday(), to read "SA" /
+    "SU" written on their own weekday as not worked (_WEEKEND_NAMES); without it they stay unknown marks."""
     if len(page["rows"]) != 1:
         issues.append({"kind": "column", "job": name, "text": f"{where}: this sheet lists {len(page['rows'])} workers. "
                                                               "Tick each worker's own row instead of the whole file."})
         return
     cells = page["rows"][0]["cells"]
+
+    def at(day: int) -> dict:
+        return {"doc": k, "page": page["page"], "row": page.get("first_row", 0), "day": day, "columns": [g["days"][day]]}
+
     worked = holidays = 0
     unclear = False
     for day, label in sorted(g["days"].items()):
@@ -749,21 +1369,23 @@ def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: di
         if day > n_days:
             if cell["needs_review"] or text:
                 issues.append({"kind": "date", "job": name, "text": f"{where}: day {day} is not in this month, so its "
-                                                                    "mark was left out."})
+                                                                    "mark was left out.", "at": at(day)})
             continue
         if cell["needs_review"]:
             unclear = True
             issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: the mark is still unclear. "
-                                                                   "Check the yellow cell in the document."})
+                                                                   "Check the yellow cell in the document.", "at": at(day)})
             _put_day(days, day, {"hours": None, "status": "unclear", "source": where, "printed": None}, name, issues)
             continue
         if not text:
             continue                                                # no entry: counted (and reported) as missing
         mark, hours = grid_mark(text)
+        if mark is None and weekday and text.casefold() in _WEEKEND_NAMES.get(weekday(day), ()):
+            mark, hours = "off", 0.0
         if mark is None:
             unclear = True
             issues.append({"kind": "unclear", "job": name, "text": f"{where}, day {day}: '{text}' is not a mark Table "
-                           "Reader knows (✓, 0, PH, OFF, AL, MC or hours). Correct it in the document."})
+                           "Reader knows (✓, 0, PH, OFF, AL, MC or hours). Correct it in the document.", "at": at(day)})
             _put_day(days, day, {"hours": None, "status": "unclear", "source": where, "printed": None}, name, issues)
             continue
         worked += mark == "present" or (mark == "hours" and hours > 0)
@@ -780,13 +1402,16 @@ def _read_grid(page: dict, g: dict, where: str, name: str, n_days: int, days: di
 
 
 # --------------------------------------------------------------------------------------------------- calculation
-def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict) -> dict:
-    """The month-end figures for one employee, the per-day working, and everything that needs the user's attention."""
+def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict, million: dict | None = None,
+              layouts: dict | None = None) -> dict:
+    """The month-end figures for one employee, the per-day working, and everything that needs the user's attention.
+    ``layouts``: the user's confirmed layout maps (read_days)."""
     n_days = days_in(plan["month"])
     _, month_number = parse_month(plan["month"])
     normal = plan["normal_hours"]
     days, issues = read_days(docs, n_days, month_number, employee.get("hours_column"),
-                             plan.get("break_hours", DEFAULT_BREAK))
+                             plan.get("break_hours", DEFAULT_BREAK), year=parse_month(plan["month"])[0],
+                             layouts=layouts)
     values = {k: 0.0 for k in FIELD_KEYS}
     rows = []
     missing, ph_on_workday, leave = [], [], []
@@ -799,7 +1424,7 @@ def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict) ->
         mark = entry.get("mark") if entry else None
         if kind == "work":
             values["working_days"] += 1
-        if status == "ok" and printed is not None:
+        if status == "ok" and printed is not None and any(field.startswith("ot_") for field in printed):
             # clock-system report: the overtime is already split into its rates by the clock system
             for field, value in printed.items():
                 values[field] += value
@@ -808,6 +1433,8 @@ def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict) ->
             elif hours == 0 and kind == "holiday":
                 values["public_holiday"] += 1
         elif status == "ok":
+            for field, value in (printed or {}).items():                # a map's lateness / early departure only
+                values[field] += value
             # a month-grid tick is a day worked with no hours written: a normal day, no overtime
             if (hours is not None and hours > 0) or mark == "present":
                 if kind == "work":
@@ -851,9 +1478,89 @@ def calculate(plan: dict, docs: list[tuple[str, list[dict]]], employee: dict) ->
     for key in FIELD_KEYS:
         edited = key in employee.get("overrides", {})
         final[key] = {"value": employee["overrides"][key] if edited else values[key], "computed": values[key], "edited": edited}
+    basis, rate, source = pay_terms(employee, million)
+    known = {k: million[k] for k in ("pay_basis", "basic_rate", "branch") if million and million.get(k)} or None
     return {"id": employee["id"], "emp_no": employee.get("emp_no", ""), "name": employee.get("name", ""), "values": final,
             "entries": employee.get("entries") or {}, "zakat": employee.get("zakat", 0.0), "levy": employee.get("levy", 0.0),
-            "message": employee.get("message", ""), "days": rows, "issues": issues, "complete": complete}
+            "message": employee.get("message", ""), "days": rows, "issues": issues, "complete": complete,
+            "pay_basis": basis, "basic_rate": rate, "rate_source": source, "million": known,
+            "pay": pay_preview(basis, rate, {k: v["value"] for k, v in final.items()}, employee.get("entries") or {})}
+
+
+# Million Payroll's own overtime tables ("Overtime Table for Monthly Pay" / "for Daily Pay"), as set up in Million:
+# what one hour or one day of each overtime line is worth, from the Basic Rate. A month has 26 work days of 8 hours
+# there (its Work Table). If the office changes those tables in Million, these must follow.
+MONTH_DAYS, DAY_HOURS = 26, 8
+OT_LINES = [("ot_1", "Overtime 1.0", "hour", 1.0), ("ot_1_5", "Overtime 1.5", "hour", 1.5), ("ot_2", "Overtime 2.0", "hour", 2.0),
+            ("ot_3", "Overtime 3.0", "hour", 3.0), ("ot_rest_day", "Rest Day", "day", 2.0), ("ot_holiday", "Holiday Day", "day", 3.0)]
+
+
+def pay_terms(employee: dict, million: dict | None) -> tuple[str, float, str | None]:
+    """(pay basis, Basic Rate, where they come from). What the user typed for the employee counts; while no rate is
+    typed, the Pay Basis and Basic Rate of the employee in Million's imported list are used ("million")."""
+    rate = float(employee.get("basic_rate") or 0.0)
+    if rate:
+        return employee.get("pay_basis") or "monthly", rate, "typed"
+    if million and million.get("basic_rate") and million.get("pay_basis") in PAY_BASES:
+        return million["pay_basis"], float(million["basic_rate"]), "million"
+    return employee.get("pay_basis") or "monthly", 0.0, None
+
+
+def pay_preview(basis: str, rate: float, values: dict, entries: dict) -> dict | None:
+    """What Million Payroll should pay before EPF, SOCSO and tax, worked out the way Million's own tables do it; None
+    while there is no Basic Rate.
+    Basic pay: Daily = rate x Days Worked; Monthly = the rate (absence, lateness and unpaid leave are not taken off).
+    Overtime: per hour, a day's pay / 8 x 1, 1.5, 2 or 3; per Rest Day worked, a day's pay x 2; per Holiday Day worked,
+    a day's pay x 3. A day's pay = the daily rate, or the monthly rate / 26.
+    Allowances and deductions are the amounts typed in their tables."""
+    if not rate:
+        return None
+    day = rate if basis == "daily" else rate / MONTH_DAYS
+    basic = round(rate * values["days_worked"], 2) if basis == "daily" else round(rate, 2)
+    lines = []
+    for key, label, unit, times in OT_LINES:
+        if values.get(key):
+            each = (day / DAY_HOURS if unit == "hour" else day) * times
+            lines.append({"key": key, "label": label, "unit": unit, "quantity": values[key], "each": round(each, 4),
+                          "amount": round(each * values[key], 2)})
+    overtime = round(sum(line["amount"] for line in lines), 2)
+    allowances = round(sum((entries.get("allowance") or {}).values()), 2)
+    deductions = round(sum((entries.get("deduction") or {}).values()), 2)
+    return {"basic": basic, "lines": lines, "overtime": overtime, "allowances": allowances, "deductions": deductions,
+            "total": round(basic + overtime + allowances - deductions, 2)}
+
+
+DAILY_COUNTS = [("days_worked", "Days Worked"), ("working_days", "Working Days"), ("public_holiday", "Public Holiday not worked (days)"),
+                ("ot_rest_day", "Rest day worked (days)"), ("ot_holiday", "Public holiday worked (days)"),
+                ("ot_1", "Overtime 1.0 (hours)"), ("ot_1_5", "Overtime 1.5 (hours)"), ("ot_2", "Overtime 2.0 (hours)"),
+                ("ot_3", "Overtime 3.0 (hours)")]
+
+
+def build_basic_pay_csv(results: list[dict], companies: list[str]) -> str:
+    """The pay table: one row per employee with the pay basis and Basic Rate in force (typed, or from Million), the
+    counts from the time cards, and the pay preview (basic pay, each overtime line, allowances, deductions, total;
+    empty while there is no rate). ``companies`` in the order of ``results``. UTF-8 text (the caller adds the BOM)."""
+    out = io.StringIO(newline="")
+    writer = csv.writer(out, lineterminator="\r\n")
+    writer.writerow(["Company", "Employee No.", "Name", "Pay basis", "Basic Rate (RM)", "Rate from", "Days Worked", "Basic pay (RM)"]
+                    + [f"{label} pay (RM)" for _, label, _, _ in OT_LINES]
+                    + ["Overtime pay (RM)", "Allowances (RM)", "Deductions (RM)", "Estimated pay before EPF, SOCSO and tax (RM)"]
+                    + [label for key, label in DAILY_COUNTS if key != "days_worked"] + ["Notes"])
+    total = 0.0
+    for r, company in zip(results, companies):
+        pay = r.get("pay")
+        total += pay["total"] if pay else 0.0
+        by_key = {line["key"]: line["amount"] for line in pay["lines"]} if pay else {}
+        writer.writerow([_csv_safe(company), _csv_safe(r["emp_no"]), _csv_safe(r["name"]),
+                         r["pay_basis"].capitalize() if pay else "", _number(r["basic_rate"]) if pay else "",
+                         {"typed": "Table Reader", "million": "Million"}.get(r.get("rate_source"), ""),
+                         _number(r["values"]["days_worked"]["value"]), _number(pay["basic"]) if pay else ""]
+                        + [(_number(by_key.get(key, 0.0)) if pay else "") for key, _, _, _ in OT_LINES]
+                        + [(_number(pay[k]) if pay else "") for k in ("overtime", "allowances", "deductions", "total")]
+                        + [_number(r["values"][key]["value"]) for key, _ in DAILY_COUNTS if key != "days_worked"]
+                        + [_csv_safe("; ".join(_notes(r)))])
+    writer.writerow(["", "", "Total"] + [""] * (8 + len(OT_LINES)) + [_number(total)])
+    return out.getvalue()
 
 
 def _ranges(days: list[int]) -> str:
@@ -870,16 +1577,26 @@ def _ranges(days: list[int]) -> str:
     return ", ".join(out)
 
 
-def compute_all(plan: dict, load_pages: Callable[[str], tuple[str, list[dict]]]) -> list[dict]:
+def compute_all(plan: dict, load_pages: Callable[[str], tuple[str, list[dict]]],
+                million: dict[str, dict] | None = None, companies: list[str] | None = None,
+                layouts: dict | None = None) -> list[dict]:
+    """``million``: the employees of Million's imported list by Employee No. in lower case (their Pay Basis and Basic
+    Rate are used while none is typed). ``companies``: each employee's company, in the plan's order; an employee is
+    then worked out with that company's settings (with_settings). Without it, everyone gets the month's default."""
     results = []
-    for e in plan["employees"]:
-        docs, lost = [], []
+    for n, e in enumerate(plan["employees"]):
+        docs, refs, lost = [], [], []
         for job_id in e["jobs"]:
             try:
                 docs.append(load_pages(job_id))
+                refs.append(job_id)
             except OcrError as exc:
                 lost.append({"kind": "missing", "text": exc.message, "job": job_id})
-        result = calculate(plan, docs, e)
+        settings = with_settings(plan, companies[n]) if companies else plan
+        result = calculate(settings, docs, e, (million or {}).get(e["emp_no"].strip().casefold()), layouts)
+        for issue in result["issues"]:
+            if "at" in issue:                                   # the document's id instead of its position
+                issue["at"] = {**issue["at"], "doc": split_ref(refs[issue["at"]["doc"]])[0]}
         if lost:
             result["issues"] = lost + result["issues"]
             result["complete"] = False
@@ -924,6 +1641,35 @@ def _notes(result: dict) -> list[str]:
     if not result["complete"]:
         notes.insert(0, "INCOMPLETE - check before importing")
     return notes
+
+
+def build_table_xls(plan: dict, results: list[dict]) -> bytes:
+    """The payroll file of build_csv as an Excel 97-2003 workbook (one sheet "Payroll"): the same columns and rows, the
+    figures as numbers; Employee No., Name, Month End Pay, Message and Notes stay text (an Employee No. "001" keeps its
+    zeros), without the mark build_csv puts before a text Excel would take for a formula (a text cell is never one)."""
+    import xlwt
+
+    rows = list(csv.reader(io.StringIO(build_csv(plan, results))))
+    book = xlwt.Workbook(encoding="utf-8")
+    sheet = book.add_sheet("Payroll")
+    bold, text, number = xlwt.easyxf("font: bold on"), xlwt.easyxf(num_format_str="@"), xlwt.easyxf(num_format_str="0.00")
+    head = rows[0]
+    texts = {0, 1, 2, len(head) - 2, len(head) - 1}
+    for col, label in enumerate(head):
+        sheet.write(0, col, label, bold)
+    for i, row in enumerate(rows[1:], start=1):
+        for col, value in enumerate(row):
+            if col in texts or value == "":
+                sheet.write(i, col, value[1:] if value.startswith("'") and value[1:2] in ("=", "@", "+", "-") else value,
+                            text)
+            else:
+                try:
+                    sheet.write(i, col, float(value), number)
+                except ValueError:
+                    sheet.write(i, col, value, text)
+    out = io.BytesIO()
+    book.save(out)
+    return out.getvalue()
 
 
 def _csv_safe(text: str) -> str:
@@ -1059,13 +1805,15 @@ def load_million_employees(path: Path | None = None) -> set[str] | None:
 MILLION_LIST_FILE = "million-employees.json"
 _TOTAL_EMPLOYEES = re.compile(r"total employees?\s*:\s*(\d+)", re.IGNORECASE)
 _CODE_HEADS = ("emp no.", "emp no", "employee no.", "employee no")
+_MILLION_EXTRA = {"branch": "branch", "pay basis": "pay_basis", "basic rate": "basic_rate"}
 
 
 def parse_million_employees(data: bytes) -> list[dict]:
     """Million Payroll's own employee list -> [{"emp_no", "name"}]. The file is Million's "Employment Listing" saved as
     Excel (Employee > Print > Employment Listing > Print > Excel > File): a printed-report layout with the heading row
-    ("Emp no." … "Name" …) repeated on every page and "Total Employees : n" at the end. Only the Employee No. and the
-    name are taken. Refused (OcrError) when it is not that report, or when the number of employees read differs from
+    ("Emp no." … "Name" …) repeated on every page and "Total Employees : n" at the end. The Employee No. and the name
+    are taken, and from the "Payroll Information" report also "branch", "pay_basis" ("monthly", "daily"…) and
+    "basic_rate" where they are filled in. Refused (OcrError) when it is not that report, or when the number of employees read differs from
     the report's own total: a list with someone missing would raise false alarms."""
     import xlrd
 
@@ -1082,7 +1830,7 @@ def parse_million_employees(data: bytes) -> list[dict]:
             value = int(value)                                       # an Employee No. such as 100 kept as a number
         return " ".join(str(value).split())
 
-    found, total, code_col, name_col, others = {}, None, None, None, []
+    found, total, code_col, name_col, others, extra = {}, None, None, None, [], {}
     for sheet in sheets:
         for r in range(sheet.nrows):
             row = [text(c) for c in sheet.row(r)]
@@ -1095,17 +1843,28 @@ def parse_million_employees(data: bytes) -> list[dict]:
                 code_col = next(i for i, k in enumerate(keys) if k in _CODE_HEADS)
                 name_col = keys.index("name")                        # the heading row (again on every page)
                 others = [i for i, k in enumerate(keys) if k and i != code_col]
+                extra = {field: keys.index(head) for head, field in _MILLION_EXTRA.items() if head in keys}
             elif code_col is not None and code_col < len(row) and row[code_col] \
                     and any(i < len(row) and row[i] for i in others):
                 # an employee's row has something under another heading too (name, gender, basic rate…); the report
                 # title, the company name and the total line can sit in the Employee No. column, alone
-                found.setdefault(row[code_col], row[name_col] if name_col < len(row) else "")
+                if row[code_col] not in found:
+                    person = {"emp_no": row[code_col], "name": row[name_col] if name_col < len(row) else ""}
+                    for field, i in extra.items():
+                        value = row[i] if i < len(row) else ""
+                        if field == "basic_rate":
+                            number = _number_or_none(value.replace(",", ""))
+                            if number is not None:
+                                person[field] = number
+                        elif value:
+                            person[field] = value.casefold() if field == "pay_basis" else value
+                    found[row[code_col]] = person
     if code_col is None or not found:
         raise bad
     if total is not None and total != len(found):
         raise OcrError("MILLION_LIST", f"The employee list says Total Employees : {total}, but {len(found)} could be "
                        "read. Nothing was imported. Make the file again in Million Payroll and import it again.")
-    return [{"emp_no": code, "name": name} for code, name in found.items()]
+    return list(found.values())
 
 
 def _same_person(a: str, b: str) -> bool:
@@ -1248,6 +2007,74 @@ def build_xls(plan: dict, results: list[dict], *, allow_incomplete: bool = False
     return buf.getvalue()
 
 
+def month_run(plan: dict, results: list[dict], companies: list[str], *, mapping: list[dict] | None = None,
+              known: set[str] | None = None, names: dict[str, str] | None = None) -> dict:
+    """One Million file for the whole month, so the office imports once instead of once per company.
+
+    Every employee who would go into a company's file without a question goes in. Everyone else is held back, with the
+    reason: something that would import wrong, an Employee No. Million does not know or that belongs to another name
+    there, an Employee No. used twice, or an employee still marked INCOMPLETE. Nobody is put in "anyway" here; that
+    stays a decision per company (the company's own Download button).
+    ``companies`` = each employee's company, in the order of ``results``. Returns {"file": bytes | None,
+    "ready": [{"emp_no", "name", "company"}], "held": [{"emp_no", "name", "company", "reasons": [text]}]}."""
+    mapping = mapping if mapping is not None else load_office_mapping()
+    count: dict[str, int] = {}
+    for r in results:
+        code = (r.get("emp_no") or "").strip()
+        if code:
+            count[code] = count.get(code, 0) + 1
+    ready, held, chosen = [], [], []
+    for r, company in zip(results, companies):
+        who = {"id": r["id"], "emp_no": r.get("emp_no") or "", "name": r.get("name") or "", "company": company}
+        reasons = []
+        if count.get(who["emp_no"].strip(), 0) > 1:
+            reasons.append(f"Employee No. {who['emp_no']} is used for {count[who['emp_no'].strip()]} employees. "
+                           "Each employee needs their own.")
+        else:
+            try:
+                build_xls(plan, [r], mapping=mapping, known=known, names=names)
+            except OcrError as exc:
+                if exc.code == "MILLION_REFUSED":
+                    reasons = [line[2:].split(": ", 1)[-1] for line in exc.message.split("\n")[1:]
+                               if line.startswith("- ") and not line.startswith("- Also marked INCOMPLETE")]
+                elif exc.code == "MILLION_UNKNOWN":
+                    reasons = [f"Employee No. {who['emp_no']} is not in the Million employee list."]
+                elif exc.code == "MILLION_NAME":
+                    reasons = [f"In Million Payroll, Employee No. {who['emp_no']} is "
+                               f"{names[who['emp_no'].casefold()]}."]
+                elif exc.code == "MILLION_INCOMPLETE":
+                    blocking = [i["text"] for i in r["issues"] if i["kind"] not in ("empno", "removed", "leave")]
+                    reasons = ["Marked INCOMPLETE: " + (blocking[0] if blocking else "check this employee.")
+                               + (f" (and {len(blocking) - 1} more)" if len(blocking) > 1 else "")]
+                else:
+                    raise
+        if reasons:
+            held.append({**who, "reasons": reasons})
+        else:
+            ready.append(who)
+            chosen.append(r)
+    data = build_xls(plan, chosen, mapping=mapping, known=known, names=names) if chosen else None
+    return {"file": data, "ready": ready, "held": held}
+
+
+def suggest_employee_nos(plan: dict, million: list[dict]) -> dict[str, dict]:
+    """For employees with no Employee No. yet: the one employee of Million's list with their name ({employee id:
+    {"emp_no", "name"}}). Offered to the user, not filled in (only a whole-name match is, when the employee is made
+    from the files: fill_employee_nos): a suggestion is only made when exactly one name in
+    Million fits (one name has all the words of the other) and nobody in the plan has that Employee No. already."""
+    taken = {e["emp_no"].strip().casefold() for e in plan["employees"] if e["emp_no"].strip()}
+    out = {}
+    for e in plan["employees"]:
+        if e["emp_no"].strip() or not e["name"].strip():
+            continue
+        fits = [m for m in million if m.get("name", "").strip() and _same_person(e["name"], m["name"])]
+        if len(fits) == 1 and fits[0]["emp_no"].casefold() not in taken:
+            out[e["id"]] = {"emp_no": fits[0]["emp_no"], "name": fits[0]["name"]}
+    # two employees who fit the same person in Million: not clear who is who, so neither gets the suggestion
+    twice = {s["emp_no"] for s in out.values() if sum(o["emp_no"] == s["emp_no"] for o in out.values()) > 1}
+    return {k: s for k, s in out.items() if s["emp_no"] not in twice}
+
+
 # ------------------------------------------------------------------------------------------------------- the store
 class PayrollStore:
     """One JSON file per month under <root>/payroll."""
@@ -1271,6 +2098,12 @@ class PayrollStore:
         if plan is None:
             plan = default_plan(month)
             plan["lists"] = self._latest_lists(month) or plan["lists"]
+            before = self._latest_before(month)
+            if before:                                              # companies whose settings are kept for next month
+                try:
+                    plan["companies"] = carry_companies(before, plan)
+                except (KeyError, TypeError, ValueError, AttributeError, OcrError):
+                    plan["companies"] = {}                          # a damaged earlier month: start from the default
         if "lists" not in plan:                                     # saved before the lists existed
             plan["lists"] = default_lists()
         plan.setdefault("break_hours", DEFAULT_BREAK)               # saved before IN/OUT time cards
@@ -1279,6 +2112,8 @@ class PayrollStore:
             e.setdefault("zakat", 0.0)
             e.setdefault("levy", 0.0)
             e.setdefault("message", "")
+            e.setdefault("pay_basis", "monthly")
+            e.setdefault("basic_rate", 0.0)
         return plan
 
     def _latest_lists(self, month: str) -> dict | None:
@@ -1290,6 +2125,17 @@ class PayrollStore:
             plan = self._read(self.root / f"{other}.json", other)
             if plan and isinstance(plan.get("lists"), dict):
                 return plan["lists"]
+        return None
+
+    def _latest_before(self, month: str) -> dict | None:
+        """The latest saved month before this one."""
+        if not self.root.is_dir():
+            return None
+        for other in sorted((p.stem for p in self.root.glob("*.json") if _MONTH.match(p.stem) and p.stem < month),
+                            reverse=True):
+            plan = self._read(self.root / f"{other}.json", other)
+            if plan:
+                return plan
         return None
 
     def save(self, plan: dict) -> None:
@@ -1325,3 +2171,37 @@ class PayrollStore:
 
     def save_directory(self, directory: dict) -> None:
         self._write(self.root / "employees.json", directory)
+
+    # the user's confirmed layout maps, by layout signature (see layout_signature): every company, every month
+    def load_layouts(self) -> dict:
+        try:
+            data = json.loads((self.root / "layouts.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {k: v for k, v in data.items() if isinstance(v, dict) and isinstance(v.get("columns"), dict)}
+
+    def save_layouts(self, layouts: dict) -> None:
+        self._write(self.root / "layouts.json", layouts)
+
+    # the month the user chose for a file that prints none ("none" = not a time card), by document id
+    def load_file_months(self) -> dict[str, str]:
+        try:
+            data = json.loads((self.root / "file-months.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return {k: v for k, v in data.items() if isinstance(v, str)} if isinstance(data, dict) else {}
+
+    def save_file_months(self, months: dict[str, str]) -> None:
+        self._write(self.root / "file-months.json", months)
+
+    def used_employee_nos(self) -> set[str]:
+        """Every Employee No. in any saved month and in the remembered workers (so a new one is never one of these)."""
+        used = {str(w.get("emp_no") or "") for w in self.load_directory().values() if isinstance(w, dict)}
+        for path in self.root.glob("*.json"):
+            plan = self._read(path, path.stem) if _MONTH.match(path.stem) else None
+            for e in (plan or {}).get("employees") or []:
+                if isinstance(e, dict):
+                    used.add(str(e.get("emp_no") or ""))
+        return used - {""}

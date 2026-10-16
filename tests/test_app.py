@@ -1,13 +1,18 @@
 import pytest
+import time
 import json
 import xlrd
 from fastapi.testclient import TestClient
 from PIL import Image
+from datetime import date
 
 import app as app_module
 import ocr
 from jobs import Jobs
 from tests.helpers import cell, good, make_pdf, record
+
+
+YEAR = date.today().year                 # file names carry this year's month (a month is only taken near today)
 
 
 def png_bytes(tmp_path):
@@ -39,10 +44,35 @@ def test_page_is_served(client):
     assert client.get("/app.js").status_code == 200 and client.get("/app.css").status_code == 200
 
 
+SCRIPTS = ["i18n.js", "app.js", "paycommon.js", "bell.js", "hours.js", "upload.js", "check.js", "columns.js", "people.js",
+           "employee.js", "look.js", "paytable.js", "settings.js", "steps.js"]       # grows with Tasks 5-7
+
+
 def test_browser_must_not_keep_an_old_script_after_an_update(client):
-    for path in ("/", "/app.js", "/payroll.js", "/i18n.js", "/app.css"):
+    for path in ["/", "/app.css", *(f"/{s}" for s in SCRIPTS)]:
         assert client.get(path).headers["cache-control"] == "no-cache", path
     assert client.get("/api/ping").headers["cache-control"] == "no-store"
+
+
+def test_the_page_has_the_three_steps(client):
+    html = client.get("/").text
+    for id_ in ("step-upload", "step-check", "step-payroll", "step-check-n", "step-payroll-n"):
+        assert f'id="{id_}"' in html
+    assert html.index('<main id="upload"') < html.index('<main id="check"') < html.index('<main id="people"')
+    for gone in ('id="home"', 'id="month"', 'id="nav-payroll"', 'id="back"', 'id="mo-back"', 'id="co-back"',
+                 'id="em-back"', 'id="co-tab-employees"', 'id="recent-none"', "companies.js", "layout.js",
+                 'id="mo-export"', 'id="mo-run-result"', 'id="mo-info"', 'id="mo-settings"', 'id="co-settings"'):
+        assert gone not in html, gone
+    # the parts that move into the steps keep their ids: the file view and the column choice in step 2, the month bar,
+    # company panel, employee view and Look panel in step 3
+    check = html[html.index('<main id="check"'):html.index('<main id="people"')]
+    people = html[html.index('<main id="people"'):]
+    for id_ in ("doc", "pages", "download", "ck-files", "ck-month", "ck-needs", "ck-foot", "layout", "ly-save",
+                "company-box"):
+        assert f'id="{id_}"' in check, id_
+    for id_ in ("mo-export-open", "popup", "bell-open", "bell-list", "mo-settings-open", "co-export", "pp-list", "pp-search", "company", "co-pay", "co-add",
+                "co-million", "employee", "em-needs", "em-cards", "em-window", "em-walk", "look", "lk-accept"):
+        assert f'id="{id_}"' in people, id_
 
 
 def test_script_addresses_change_when_a_script_changes(client, tmp_path, monkeypatch):
@@ -51,17 +81,17 @@ def test_script_addresses_change_when_a_script_changes(client, tmp_path, monkeyp
 
     page = client.get("/").text
     stamped = re.findall(r'(?:src|href)="([\w.-]+)\?v=([0-9a-f]{8})"', page)
-    assert [name for name, _ in stamped] == ["app.css", "i18n.js", "app.js", "payroll.js"]
+    assert [name for name, _ in stamped] == ["app.css", *SCRIPTS]
     assert client.get("/index.html").text == page
     assert all(client.get(f"/{name}?v={v}").status_code == 200 for name, v in stamped)
 
     copy = tmp_path / "static"
     shutil.copytree(app_module.static_dir(), copy)
-    (copy / "payroll.js").write_text("// an update\n", encoding="utf-8")
+    (copy / "steps.js").write_text("// an update\n", encoding="utf-8")
     monkeypatch.setattr(app_module, "static_dir", lambda: copy)
     after = dict(re.findall(r'(?:src|href)="([\w.-]+)\?v=([0-9a-f]{8})"', app_module.page_html()))
     before = dict(stamped)
-    assert after["payroll.js"] != before["payroll.js"] and after["app.js"] == before["app.js"]
+    assert after["steps.js"] != before["steps.js"] and after["app.js"] == before["app.js"]
 
 
 def test_upload_read_edit_download(client, tmp_path):
@@ -237,41 +267,37 @@ def card_reader(image):
 
 
 def test_payroll_screen_api_end_to_end(tmp_path):
-    jobs = Jobs(tmp_path / "jobs", reader=card_reader)
-    with TestClient(app_module.create_app(jobs), base_url="http://localhost") as c:
-        job_id = upload(c, tmp_path, name="card.png").json()["created"][0]["id"]
-        jobs.wait_idle(30)
-
-        view = c.get("/api/payroll/2026-09").json()                      # nothing saved yet: defaults
-        assert view["plan"]["day_types"]["6"] == "rest" and view["plan"]["employees"] == []
-        assert [d["id"] for d in view["documents"]] == [job_id]
-        assert [f["key"] for f in view["fields"]][:3] == ["working_days", "public_holiday", "days_worked"]
-
-        plan = view["plan"]
-        plan["day_types"]["16"] = "holiday"
-        plan["employees"] = [{"id": "e1", "emp_no": "AF(1)", "name": "Test", "jobs": [job_id], "hours_column": None,
-                              "overrides": {"lateness": 2}}]
-        saved = c.put("/api/payroll/2026-09", json=plan).json()
-        r = saved["results"][0]
+    store = Jobs(tmp_path / "jobs", reader=card_reader)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        upload(c, tmp_path, name=f"MAJU JAYA TEST SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "MAJU JAYA", "MAJU JAYA")
+        month = f"{YEAR}-09"
+        default = overview(c, month)["settings"]      # opened: the card joins by itself
+        assert default["day_types"]["6"] == "rest"
+        default["day_types"]["16"] = "holiday"
+        assert c.put(f"/api/payroll/{month}/settings", json=default).json() == {"ok": True}
+        who = employee_named(c, month, "TEST")["id"]
+        view = change(c, month, who, emp_no="AF(1)", overrides={"lateness": 2}).json()
+        r = view["result"]
         assert r["columns"] == ["Date", "Total"] and r["complete"]
+        assert [f["key"] for f in view["fields"]][:3] == ["working_days", "public_holiday", "days_worked"]
         assert r["values"]["working_days"]["value"] == 25 and r["values"]["days_worked"]["value"] == 25
         assert r["values"]["ot_holiday"]["value"] == 1 and r["values"]["lateness"]["edited"]
 
-        assert c.get("/api/payroll/2026-09").json()["plan"]["day_types"]["16"] == "holiday"     # persisted
-        csv = c.get("/api/payroll/2026-09/csv")
+        assert overview(c, month)["settings"]["day_types"]["16"] == "holiday"   # persisted
+        csv = c.get(f"/api/payroll/{month}/csv")
         assert csv.status_code == 200 and csv.content.startswith(b"\xef\xbb\xbfEmployee No.,Name,Month End Pay")
-        assert b"AF(1),Test" in csv.content and b"25.00" in csv.content
+        assert b"AF(1),TEST" in csv.content and b"25.00" in csv.content
 
 
 def test_payroll_api_refuses_bad_input(client, tmp_path):
-    assert client.get("/api/payroll/nonsense").status_code == 400
-    plan = client.get("/api/payroll/2026-09").json()["plan"]
+    assert client.get("/api/payroll/nonsense/people").status_code == 400
     assert client.get("/api/payroll/2026-09/csv").json()["code"] == "PAYROLL_EMPTY"
-    plan["employees"] = [{"id": "e1", "emp_no": "1", "name": "", "jobs": ["does-not-exist"]}]
-    r = client.put("/api/payroll/2026-09", json=plan)                 # a gone document is taken off, not an error
-    assert r.status_code == 200 and r.json()["plan"]["employees"][0]["jobs"] == []
-    assert client.put("/api/payroll/2026-09", content="x").status_code == 400
-    assert client.put("/api/payroll/2026-09", json=plan, headers={"origin": "https://evil.example"}).status_code == 403
+    new = client.post("/api/payroll/2026-09/employee", json={"company": ""}).json()["employee"]
+    assert client.put(f"/api/payroll/2026-09/employee/{new}", content="x").status_code == 400
+    assert client.put(f"/api/payroll/2026-09/employee/{new}", json={"changes": {"name": "X"}},
+                      headers={"origin": "https://evil.example"}).status_code == 403
 
 
 def test_company_can_be_set_and_is_listed(client, tmp_path):
@@ -283,33 +309,30 @@ def test_company_can_be_set_and_is_listed(client, tmp_path):
     assert client.put("/api/jobs/nope/company", json={"company": "X"}).status_code == 404
 
 
-def test_payroll_file_picker_gets_the_company_of_each_file(client, tmp_path):
-    job = upload(client, tmp_path, name="MAJU JAYA ALI SEPT 26.png").json()["created"][0]
-    client.put(f"/api/jobs/{job['id']}/company", json={"company": "MAJU JAYA"})
-    client.app.state.jobs.wait_idle()
-    docs = client.get("/api/payroll/2026-09").json()["documents"]
-    assert [d["company"] for d in docs if d["id"] == job["id"]] == ["MAJU JAYA"]
+def test_a_card_no_longer_in_recent_files_is_taken_off_and_saving_still_works(tmp_path):
+    """History reset / deleted document: the old card must not block every later save (it is taken off, not an
+    error)."""
+    import shutil
 
-
-def test_payroll_saves_even_when_a_ticked_time_card_no_longer_exists(client, tmp_path):
-    """History reset / deleted document: the old tick must not block every later save."""
-    job = upload(client, tmp_path, name="card.png").json()["created"][0]
-    client.app.state.jobs.wait_idle()
-    plan = client.get("/api/payroll/2026-09").json()["plan"]
-    plan["employees"] = [{"id": "e1", "emp_no": "MJ(1)", "name": "", "jobs": ["gone-job", job["id"]],
-                          "hours_column": None, "overrides": {}}]
-    r = client.put("/api/payroll/2026-09", json=plan)
-    assert r.status_code == 200
-    view = r.json()
-    assert view["plan"]["employees"][0]["jobs"] == [job["id"]]
-    assert view["results"][0]["issues"][0]["kind"] == "removed"
-    assert "no longer in Recent files" in view["results"][0]["issues"][0]["text"]
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        for name in (f"MAJU JAYA SEPT {YEAR} (ALI) (1).png", f"MAJU JAYA SEPT {YEAR} (ALI) (2).png"):
+            upload(c, tmp_path, name=name)
+        store.wait_idle()
+        month = f"{YEAR}-09"
+        ali = employee_named(c, month, "MAJU JAYA ALI")["id"]
+        jobs = c.get(f"/api/payroll/{month}/employee/{ali}").json()["employee"]["jobs"]
+        assert len(jobs) == 2
+        shutil.rmtree(store.root / jobs[0])                               # the document is gone
+        assert c.get(f"/api/payroll/{month}/people").status_code == 200
+        saved = change(c, month, ali, emp_no="MJ(1)")
+        assert saved.status_code == 200 and saved.json()["employee"]["jobs"] == [jobs[1]]
 
 
 def test_payroll_uses_only_the_chosen_workers_page_of_a_report(tmp_path):
     def two_workers(image):
         n = two_workers.calls = getattr(two_workers, "calls", 0) + 1
-        return record([{"Date": good("01-09-2026"), "Shift Details / Actual": good("8.00"),
+        return record([{"Date": good(f"01-09-{YEAR}"), "Shift Details / Actual": good("8.00"),
                         "OverTime / 1.5": good("1.50" if n == 1 else "3.00")}],
                       labels=("Date", "Shift Details / Actual", "OverTime / 1.5"),
                       header=[("Emp Code", good(f"E0{n}")), ("Name", good(f"W{n}"))])
@@ -318,38 +341,52 @@ def test_payroll_uses_only_the_chosen_workers_page_of_a_report(tmp_path):
     with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
         src = tmp_path / "report.pdf"
         make_pdf(src, 2)
-        job = c.post("/api/jobs", files=[("files", ("report.pdf", src.read_bytes(), "application/pdf"))]).json()["created"][0]
+        name = f"MAJU JAYA REPORT SEPT {YEAR}.pdf"
+        job = c.post("/api/jobs", files=[("files", (name, src.read_bytes(), "application/pdf"))]).json()["created"][0]
         store.wait_idle()
-        view = c.get("/api/payroll/2026-09").json()
-        doc = [d for d in view["documents"] if d["id"] == job["id"]][0]
-        assert [p["label"] for p in doc["parts"]] == ["E01 W1", "E02 W2"]
-        plan = view["plan"]
-        plan["employees"] = [{"id": "e1", "emp_no": "1", "name": "", "jobs": [doc["parts"][1]["ref"]],
-                              "hours_column": None, "overrides": {}}]
-        r = c.put("/api/payroll/2026-09", json=plan).json()["results"][0]
-        assert r["values"]["ot_1_5"]["value"] == 3.0 and r["values"]["days_worked"]["value"] == 1
+        month = f"{YEAR}-09"
+        w2 = employee_named(c, month, "W2")                               # each worker's page is its own employee
+        view = c.get(f"/api/payroll/{month}/employee/{w2['id']}").json()
+        assert view["employee"]["jobs"] == [job["id"] + "#p2"]
+        values = view["result"]["values"]
+        assert values["ot_1_5"]["value"] == 3.0 and values["days_worked"]["value"] == 1
 
 
-def test_add_employees_from_files_of_a_company(tmp_path):
-    def card(image):
-        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
-
-    store = Jobs(tmp_path / "jobs", reader=card)
-    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
-        for name in ("MAJU JAYA ALI SEPT 26.png", "MAJU JAYA ALI SEPT 26 2.png", "OTHER CO ZUL SEPT 26.png"):
+def test_new_workers_get_employee_nos_that_are_remembered_for_next_month(tmp_path):
+    store, client = company_client(tmp_path, nine_hour_card)
+    with client as c:
+        for name in (f"MAJU JAYA ALI SEPT {YEAR}.png", f"MAJU JAYA ALI SEPT {YEAR} 2.png",
+                     f"OTHER CO ZUL SEPT {YEAR}.png"):
             upload(c, tmp_path, name=name)
         store.wait_idle()
         for j in c.get("/api/jobs").json():
             c.put(f"/api/jobs/{j['id']}/company", json={"company": "MAJU JAYA" if j["name"].startswith("MAJU") else "OTHER CO"})
-        view = c.post("/api/payroll/2026-09/auto", json={"company": "MAJU JAYA"}).json()
-        assert view["auto"] == {"added": 1, "skipped": [], "unnamed": []}
-        emp = view["plan"]["employees"][0]
-        assert emp["name"] == "ALI" and len(emp["jobs"]) == 2 and emp["emp_no"] == ""
-        emp["emp_no"] = "MJ(1)"
-        c.put("/api/payroll/2026-09", json=view["plan"])                  # typed once ...
-        oct_view = c.post("/api/payroll/2026-10/auto", json={"company": "MAJU JAYA"}).json()
-        assert oct_view["plan"]["employees"][0]["emp_no"] == "MJ(1)"       # ... filled in next month
-        assert c.post("/api/payroll/2026-09/auto", json={"company": 5}).status_code == 400
+        sept, octo, nov = f"{YEAR}-09", f"{YEAR}-10", f"{YEAR}-11"
+        added = overview(c, sept)["added_by_themselves"]
+        assert added["new_numbers"] == 2 and added["from_million"] == 0
+        ali = employee_named(c, sept, "ALI")
+        emp = c.get(f"/api/payroll/{sept}/employee/{ali['id']}").json()["employee"]
+        assert len(emp["jobs"]) == 2
+        # a worker with no Employee No. anywhere gets a new one: the company's first 7 letters and the next number
+        assert emp["emp_no"] == emp["emp_no_new"] == "MAJUJAY001"
+        assert employee_named(c, sept, "ZUL")["emp_no"] == "OTHERCO001"
+        upload(c, tmp_path, name=f"MAJU JAYA ALI OCT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "MAJU JAYA ALI OCT", "MAJU JAYA")
+        october = c.get(f"/api/payroll/{octo}/employee/{employee_named(c, octo, 'ALI')['id']}").json()["employee"]
+        assert october["emp_no"] == "MAJUJAY001" and "emp_no_new" not in october          # remembered
+        assert "emp_no_new" not in change(c, sept, ali["id"], emp_no="MJ(1)").json()["employee"]   # the user types it
+        upload(c, tmp_path, name=f"MAJU JAYA ALI NOV {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "MAJU JAYA ALI NOV", "MAJU JAYA")
+        assert employee_named(c, nov, "ALI")["emp_no"] == "MJ(1)"         # ... and that is filled in next month
+        # an employee already in a payroll with no number gets one when the month is opened, once
+        change(c, sept, ali["id"], emp_no="")
+        opened = overview(c, sept)
+        given = c.get(f"/api/payroll/{sept}/employee/{ali['id']}").json()["employee"]
+        assert opened["numbered"] == 1 and given["emp_no"].startswith("MAJUJAY")
+        assert given["emp_no_new"] == given["emp_no"]
+        assert overview(c, sept)["numbered"] == 0
 
 
 def test_a_month_grid_with_several_workers_gives_one_employee_per_row(tmp_path):
@@ -362,116 +399,1188 @@ def test_a_month_grid_with_several_workers_gives_one_employee_per_row(tmp_path):
 
     store = Jobs(tmp_path / "jobs", reader=sheet)
     with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
-        upload(c, tmp_path, name="MAJU JAYA SEPT 26.png")
+        job = upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR}.png").json()["created"][0]
         store.wait_idle()
-        doc = c.get("/api/payroll/2026-09").json()["documents"][0]
-        assert [(p["row"], p["label"]) for p in doc["parts"]] == [(1, "ALI"), (2, "AMIN"), (3, "ZUL")]
-        assert doc["parts"][1]["ref"] == doc["id"] + "#p1r2"
-        view = c.post("/api/payroll/2026-09/auto", json={"company": ""}).json()
-        assert view["auto"]["added"] == 3
-        assert [e["name"] for e in view["plan"]["employees"]] == ["ALI", "AMIN", "ZUL"]
-        assert [r["values"]["days_worked"]["value"] for r in view["results"]] == [26, 26, 26]
-        assert all(r["complete"] or {i["kind"] for i in r["issues"]} == {"empno"} for r in view["results"])
+        month = f"{YEAR}-09"
+        over = overview(c, month)           # read after the app started: added by itself
+        assert over["added_by_themselves"]["added"] == [{"name": n, "cards": 1} for n in ("ALI", "AMIN", "ZUL")]
+        assert overview(c, month)["added_by_themselves"] is None     # once only
+        people = company_screen(c, month, "")["employees"]
+        assert [e["name"] for e in people] == ["ALI", "AMIN", "ZUL"]
+        for row, e in enumerate(people, 1):
+            view = c.get(f"/api/payroll/{month}/employee/{e['id']}").json()
+            assert view["employee"]["jobs"] == [f"{job['id']}#p1r{row}"]
+            assert view["result"]["values"]["days_worked"]["value"] == 26
+            assert view["result"]["complete"] or {i["kind"] for i in view["result"]["issues"]} == {"empno"}
 
 
-def test_million_xls_download_refuses_then_allows_incomplete(tmp_path):
-    def card(image):
-        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
+# ------------------------------------------------------------------------- files added to their month by themselves
+def nine_hour_card(image):
+    return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
 
-    store = Jobs(tmp_path / "jobs", reader=card)
+
+def test_two_cards_of_one_worker_become_one_employee_when_the_month_is_opened(tmp_path):
+    store = Jobs(tmp_path / "jobs", reader=nine_hour_card)
     with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
-        upload(c, tmp_path, name="MAJU JAYA ALI SEPT 26.png")
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR} (ALI) (1).png")
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR} (ALI) (2).png")
+        upload(c, tmp_path, name="MAJU JAYA ZUL.png")                      # no month anywhere
         store.wait_idle()
-        view = c.post("/api/payroll/2026-09/auto", json={"company": ""}).json()
-        r = c.get("/api/payroll/2026-09/xls")
-        assert r.status_code == 400 and r.json()["code"] == "MILLION_REFUSED"            # no Employee No. yet
-        assert "ALI: Employee No. is empty" in r.json()["message"]
-        view["plan"]["employees"][0]["emp_no"] = "MJ(1)"
-        c.put("/api/payroll/2026-09", json=view["plan"])
-        r = c.get("/api/payroll/2026-09/xls")                             # one card: most days have no entry
-        assert r.status_code == 400 and r.json()["code"] == "MILLION_INCOMPLETE"
-        r = c.get("/api/payroll/2026-09/xls", params={"allow_incomplete": "true"})
-        assert r.status_code == 200 and r.headers["content-type"] == "application/vnd.ms-excel"
-        assert "Payroll%202026-09%20%28Million%29.xls" in r.headers["content-disposition"]
-        sheet = xlrd.open_workbook(file_contents=r.content).sheet_by_index(0)
-        assert sheet.cell_value(1, 0) == "MJ(1)" and sheet.cell_value(1, 51).startswith("INCOMPLETE")
-        saved = tmp_path / "payroll" / "Payroll 2026-09 (Million).xls"
-        assert saved.read_bytes() == r.content                              # a copy is kept in the payroll folder
+        october = overview(c, f"{YEAR}-10")          # another month: nothing
+        assert all(len(r["employees"]) == 0 for r in october["companies"])
+        over = overview(c, f"{YEAR}-09")
+        added = over["added_by_themselves"]
+        assert added["added"] == [{"name": "MAJU JAYA ALI", "cards": 2}] and added["joined"] == []
+        assert added["no_month"] == [{"name": "MAJU JAYA ZUL.png",
+                                      "why": "no month was found in the file name or on the card"}]
+        [ali] = company_screen(c, f"{YEAR}-09", "")["employees"]
+        view = c.get(f"/api/payroll/{YEAR}-09/employee/{ali['id']}").json()
+        assert (view["employee"]["name"], len(view["employee"]["jobs"])) == ("MAJU JAYA ALI", 2)
+        assert view["result"]["values"]["days_worked"]["value"] == 1
 
 
-def test_million_xls_download_asks_about_an_employee_no_that_is_not_in_employees_txt(tmp_path, monkeypatch):
-    def card(image):
-        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
+def test_a_new_worker_named_on_the_card_gets_millions_employee_no_and_the_mark_goes_when_it_is_changed(tmp_path):
+    from tests.helpers import million_listing
 
+    def named_card(image):
+        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"), header=[("Name", good("Ali bin Abu"))])
+
+    store = Jobs(tmp_path / "jobs", reader=named_card)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        listing = million_listing([("MJ(1)", "ALI BIN ABU"), ("MJ(2)", "SITI")])
+        c.post("/api/million/employees", files={"file": ("rptempepmlist.xls", listing, "application/vnd.ms-excel")})
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR} (1).png")
+        store.wait_idle()
+        month = f"{YEAR}-09"
+        assert overview(c, month)["added_by_themselves"]["from_million"] == 1
+        who = employee_named(c, month, "Ali bin Abu")["id"]
+        worker = c.get(f"/api/payroll/{month}/employee/{who}").json()["employee"]           # saved
+        assert (worker["name"], worker["emp_no"], worker["emp_no_million"]) == ("Ali bin Abu", "MJ(1)", "MJ(1)")
+        saved = change(c, month, who, emp_no="MJ(2)").json()["employee"]   # the user types another number
+        assert "emp_no_million" not in saved
+
+
+def test_a_later_card_joins_its_worker_and_a_removed_card_is_not_added_again(tmp_path):
+    store = Jobs(tmp_path / "jobs", reader=nine_hour_card)
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR} (ALI) (1).png")
+        store.wait_idle()
+        month = f"{YEAR}-09"
+        ali = employee_named(c, month, "MAJU JAYA ALI")["id"]
+        jobs = lambda: c.get(f"/api/payroll/{month}/employee/{ali}").json()["employee"]["jobs"]   # noqa: E731
+        assert len(jobs()) == 1
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR} (ALI) (2).png")
+        store.wait_idle()
+        over = overview(c, month)
+        assert over["added_by_themselves"]["joined"] == [{"name": "MAJU JAYA ALI", "cards": 1}] and len(jobs()) == 2
+        assert c.post(f"/api/payroll/{month}/take-off", json={"ref": jobs()[1]}).json() == {"ok": True}   # taken off
+        over = overview(c, month)
+        assert over["added_by_themselves"] is None and len(jobs()) == 1
+
+
+def test_files_already_there_when_the_app_starts_are_left_as_they_are(tmp_path):
+    store = Jobs(tmp_path / "jobs", reader=nine_hour_card)
+    store.create_job(f"MAJU JAYA SEPT {YEAR} (ALI).png", png_bytes(tmp_path))
+    store.wait_idle()
+    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
+        over = overview(c, f"{YEAR}-09")
+        assert all(len(r["employees"]) == 0 for r in over["companies"]) and over["added_by_themselves"] is None
+
+
+def test_the_month_file_asks_about_an_employee_no_that_is_not_in_employees_txt(tmp_path, monkeypatch):
     listed = tmp_path / "employees.txt"
     listed.write_text("MJ(7)\n", encoding="utf-8")
     monkeypatch.setenv("TABLE_READER_MILLION_EMPLOYEES", str(listed))
-    store = Jobs(tmp_path / "jobs", reader=card)
-    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
-        upload(c, tmp_path, name="MAJU JAYA ALI SEPT 26.png")
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"MAJU JAYA ALI SEPT {YEAR}.png")
         store.wait_idle()
-        view = c.post("/api/payroll/2026-09/auto", json={"company": ""}).json()
-        view["plan"]["employees"][0]["emp_no"] = "MJ(1)"
-        c.put("/api/payroll/2026-09", json=view["plan"])
-        r = c.get("/api/payroll/2026-09/xls", params={"allow_incomplete": "true"})
-        assert r.status_code == 400 and r.json()["code"] == "MILLION_UNKNOWN"
-        assert "employee list: MJ(1) MAJU JAYA ALI." in r.json()["message"]
-        r = c.get("/api/payroll/2026-09/xls", params={"allow_incomplete": "true", "allow_unknown": "true"})
-        assert r.status_code == 200
-        listed.write_text("MJ(7)\nmj(1)\n", encoding="utf-8")                # added to the list: no question
-        assert c.get("/api/payroll/2026-09/xls", params={"allow_incomplete": "true"}).status_code == 200
+        month = f"{YEAR}-09"
+        change(c, month, employee_named(c, month, "MAJU JAYA ALI")["id"], emp_no="MJ(1)")
+        run = c.get(f"/api/payroll/{month}/run").json()
+        assert run["ready"] == 0 and run["checked_with_million"] is False
+        [held] = [h for comp in run["companies"] for h in comp["held"]]
+        assert "Million" in " ".join(held["reasons"])
+        listed.write_text("MJ(7)\nmj(1)\n", encoding="utf-8")                # added to the list: it goes in
+        assert c.get(f"/api/payroll/{month}/run").json()["ready"] == 1
 
 
-def test_millions_employee_list_is_imported_offered_and_checked_before_download(tmp_path):
+def test_millions_employee_list_is_imported_and_checked_before_the_month_file(tmp_path):
     from tests.helpers import million_listing
 
-    def card(image):
-        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
-
-    store = Jobs(tmp_path / "jobs", reader=card)
-    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
-        assert c.get("/api/payroll/2026-09").json()["million"] is None
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        month = f"{YEAR}-09"
+        assert overview(c, month)["checked_with_million"] is False
         r = c.post("/api/million/employees", files={"file": ("notes.xls", b"hello", "application/vnd.ms-excel")})
         assert r.status_code == 400 and r.json()["code"] == "MILLION_LIST"
         listing = million_listing([("MJ(1)", "SITI"), ("MJ(2)", "ALI")])
         r = c.post("/api/million/employees", files={"file": ("rptempepmlist.xls", listing, "application/vnd.ms-excel")})
-        assert r.status_code == 200 and r.json()["employees"] == [{"emp_no": "MJ(1)", "name": "SITI"},
-                                                                  {"emp_no": "MJ(2)", "name": "ALI"}]
-        assert c.get("/api/payroll/2026-09").json()["million"]["source"] == "rptempepmlist.xls"
+        assert r.status_code == 200 and [(e["emp_no"], e["name"]) for e in r.json()["employees"]] == [("MJ(1)", "SITI"),
+                                                                                                      ("MJ(2)", "ALI")]
+        assert overview(c, month)["checked_with_million"] is True
         saved = json.loads((tmp_path / "payroll" / "million-employees.json").read_text(encoding="utf-8"))
-        assert set(saved) == {"imported", "source", "employees"} and set(saved["employees"][0]) == {"emp_no", "name"}
+        assert set(saved) == {"imported", "source", "employees"} and set(saved["employees"][0]) == {"emp_no", "name", "basic_rate"}
 
-        upload(c, tmp_path, name="MAJU JAYA ALI SEPT 26.png")
+        upload(c, tmp_path, name=f"MAJU JAYA ALI SEPT {YEAR}.png")
         store.wait_idle()
-        view = c.post("/api/payroll/2026-09/auto", json={"company": ""}).json()
-        ok = {"allow_incomplete": "true"}
-        for emp_no, code in (("MJ(7)", "MILLION_UNKNOWN"), ("MJ(1)", "MILLION_NAME")):     # not in Million / someone else
-            view["plan"]["employees"][0]["emp_no"] = emp_no
-            c.put("/api/payroll/2026-09", json=view["plan"])
-            r = c.get("/api/payroll/2026-09/xls", params=ok)
-            assert r.status_code == 400 and r.json()["code"] == code, r.json()
-        assert "MJ(1) MAJU JAYA ALI (in Million: SITI)" in r.json()["message"]
-        assert c.get("/api/payroll/2026-09/xls", params={**ok, "allow_names": "true"}).status_code == 200
-        view["plan"]["employees"][0]["emp_no"] = "mj(2)"                 # the right person: no question
-        c.put("/api/payroll/2026-09", json=view["plan"])
-        assert c.get("/api/payroll/2026-09/xls", params=ok).status_code == 200
+        ali = employee_named(c, month, "MAJU JAYA ALI")["id"]
+        for emp_no, why in (("MJ(7)", "not in"), ("MJ(1)", "SITI")):          # not in Million / someone else there
+            change(c, month, ali, emp_no=emp_no)
+            run = c.get(f"/api/payroll/{month}/run").json()
+            [held] = [h for comp in run["companies"] for h in comp["held"]]
+            assert run["ready"] == 0 and why in " ".join(held["reasons"]), held
+        change(c, month, ali, emp_no="mj(2)")                              # the right person: it goes in
+        assert c.get(f"/api/payroll/{month}/run").json()["ready"] == 1
+
+
+def test_the_month_run_makes_one_file_and_lists_who_is_held_back(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        month = f"{YEAR}-09"
+        assert c.post(f"/api/payroll/{month}/run").json()["code"] == "PAYROLL_EMPTY"
+        import_million(c, ("MJ(1)", "ALI"), ("MJ(2)", "SITI"))
+        for name in (f"MAJU JAYA ALI SEPT {YEAR}.png", f"BINA SITI SEPT {YEAR}.png", f"BINA ZUL SEPT {YEAR}.png"):
+            upload(c, tmp_path, name=name)
+        store.wait_idle()
+        offers = {i["emp_no"] for i in company_screen(c, month, "")["items"]
+                  if i["kind"] == "offer"}
+        assert offers == {"MJ(1)", "MJ(2)"}                                 # ZUL: nobody of that name in Million
+        accept_offers(c, month, "")                                        # the user accepts the two offers
+        assert not [i for i in company_screen(c, month, "")["items"]
+                    if i["kind"] == "offer"]                               # nothing left to offer
+        run = c.post(f"/api/payroll/{month}/run").json()
+        assert run["file"] == f"Payroll {month} (Million).xls" and run["ready"] == 2 and run["held"] == 1
+        assert run["checked_with_million"] is True and len(run["companies"]) >= 1
+        held = [h for comp in run["companies"] for h in comp["held"]]
+        assert held == [{"emp_no": "", "name": "BINA ZUL",
+                         "reasons": ["Employee No. is empty. Type it exactly as in Million Payroll."]}]
+        sheet = xlrd.open_workbook(str(tmp_path / "payroll" / run["file"])).sheet_by_index(0)
+        assert [sheet.cell_value(r, 0) for r in range(1, sheet.nrows)] == ["MJ(1)", "MJ(2)"]
+
+
+def test_basic_pay_table_download(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"MAJU JAYA ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        month = f"{YEAR}-09"
+        ali = employee_named(c, month, "MAJU JAYA ALI")["id"]
+        saved = change(c, month, ali, emp_no="MJ(1)", pay_basis="daily", basic_rate=70).json()
+        days = saved["result"]["values"]["days_worked"]["value"]
+        assert saved["employee"]["basic_rate"] == 70.0 and saved["result"]["pay"]["basic"] == 70 * days
+        r = c.get(f"/api/payroll/{month}/basic-pay")
+        assert r.status_code == 200 and f"Basic%20pay%20{month}.csv" in r.headers["content-disposition"]
+        lines = r.content.decode("utf-8-sig").splitlines()
+        assert lines[1].split(",")[1:8] == ["MJ(1)", "MAJU JAYA ALI", "Daily", "70.00", "Table Reader", f"{days:.2f}", f"{70 * days:.2f}"]
+        assert (tmp_path / "payroll" / f"Basic pay {month}.csv").is_file()
+
+
+def test_pay_basis_and_rate_come_from_millions_report_until_typed(tmp_path):
+    from tests.helpers import million_listing
+
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        listing = million_listing([("MJ(1)", "ALI", "MAJU JAYA", "Daily", 60.0)], title_col=1)
+        c.post("/api/million/employees", files={"file": ("rptemppsnlist.xls", listing, "application/vnd.ms-excel")})
+        upload(c, tmp_path, name=f"MAJU JAYA ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        month = f"{YEAR}-09"
+        ali = employee_named(c, month, "MAJU JAYA ALI")["id"]
+        assert c.get(f"/api/payroll/{month}/employee/{ali}").json()["result"]["rate_source"] is None   # no Employee No.
+        r = change(c, month, ali, emp_no="mj(1)").json()["result"]
+        assert (r["pay_basis"], r["basic_rate"], r["rate_source"]) == ("daily", 60.0, "million")
+        assert r["pay"]["basic"] == 60.0 * r["values"]["days_worked"]["value"] and r["million"]["branch"] == "MAJU JAYA"
+        r = change(c, month, ali, pay_basis="monthly", basic_rate=1500).json()["result"]
+        assert (r["pay_basis"], r["rate_source"], r["pay"]["basic"]) == ("monthly", "typed", 1500.0)
 
 
 def test_payroll_csv_for_one_company(tmp_path):
-    def card(image):
-        return record([{"Date": good("1"), "Total": good("9")}], labels=("Date", "Total"))
-
-    store = Jobs(tmp_path / "jobs", reader=card)
-    with TestClient(app_module.create_app(store), base_url="http://localhost") as c:
-        for name in ("MAJU JAYA ALI SEPT 26.png", "OTHER CO ZUL SEPT 26.png"):
+    store, client = company_client(tmp_path, nine_hour_card)
+    with client as c:
+        for name in (f"MAJU JAYA ALI SEPT {YEAR}.png", f"OTHER CO ZUL SEPT {YEAR}.png"):
             upload(c, tmp_path, name=name)
         store.wait_idle()
         for j in c.get("/api/jobs").json():
             c.put(f"/api/jobs/{j['id']}/company", json={"company": " ".join(j["name"].split()[:2])})
-        c.post("/api/payroll/2026-09/auto", json={"company": ""})            # both companies
-        everyone = c.get("/api/payroll/2026-09/csv").content.decode("utf-8-sig").splitlines()
-        one = c.get("/api/payroll/2026-09/csv", params={"company": "MAJU JAYA"})
+        month = f"{YEAR}-09"
+        overview(c, month)                           # opened: both companies' cards join
+        everyone = c.get(f"/api/payroll/{month}/csv").content.decode("utf-8-sig").splitlines()
+        one = c.get(f"/api/payroll/{month}/csv", params={"company": "MAJU JAYA"})
         lines = one.content.decode("utf-8-sig").splitlines()
         assert len(everyone) == 3 and len(lines) == 2 and ",ALI," in lines[1]
-        assert "Payroll%202026-09%20MAJU%20JAYA.csv" in one.headers["content-disposition"]
-        assert c.get("/api/payroll/2026-09/csv", params={"company": "NOBODY"}).json()["code"] == "PAYROLL_EMPTY"
+        assert f"Payroll%20{month}%20MAJU%20JAYA.csv" in one.headers["content-disposition"]
+        assert c.get(f"/api/payroll/{month}/csv", params={"company": "NOBODY"}).json()["code"] == "PAYROLL_EMPTY"
+
+
+# ------------------------------------------------------------------------------------ payroll by company
+def company_client(tmp_path, reader):
+    store = Jobs(tmp_path / "jobs", reader=reader)
+    return store, TestClient(app_module.create_app(store), base_url="http://localhost")
+
+
+def set_company(c, starts, company):
+    for j in c.get("/api/jobs").json():
+        if j["name"].startswith(starts):
+            c.put(f"/api/jobs/{j['id']}/company", json={"company": company})
+
+
+def month_card(image):
+    return record([{"Date": good(str(d)), "Total": good("9")} for d in range(1, 31)], labels=("Date", "Total"))
+
+
+def import_million(c, *people):
+    """Million's employee list with these (Employee No., name): the numbers Table Reader makes are then known."""
+    from tests.helpers import million_listing
+
+    listing = million_listing(list(people))
+    assert c.post("/api/million/employees",
+                  files={"file": ("rptempepmlist.xls", listing, "application/vnd.ms-excel")}).status_code == 200
+
+
+def overview(c, month):
+    """Step 3's month (GET /people). Opening it joins newly read files of the month, as opening Payroll does."""
+    r = c.get(f"/api/payroll/{month}/people")
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def company_screen(c, month, name):
+    """One company the way the company screen showed it before the three steps, from step 3 (its own and its
+    employees' items, its employees) and step 2 (its files' items): {company, month, status, items, employees,
+    million_new, settings, files (no company: the files waiting for one), other_files}. Item order: the company's own,
+    its files' (unplaced / month), its card layouts, its employees'."""
+    people, files = overview(c, month), c.get(f"/api/payroll/{month}/files").json()
+    row = next((r for r in people["companies"] if r["company"] == name),
+               {"status": "none", "items": [], "employees": [], "million_new": [], "settings": None})
+    mine = [i for items in files["files"].values() for i in items if i["company"] == name]
+    items = (row["items"] + [i for i in mine if i["kind"] in ("unplaced", "month")]
+             + [i for i in mine if i["kind"] == "layout"] + [i for e in row["employees"] for i in e["items"]])
+    return {"company": name, "month": month, "status": row["status"], "items": items,
+            "employees": row["employees"], "million_new": row["million_new"], "settings": row["settings"],
+            "files": [{"id": i["doc"], "name": i["name"]} for i in mine if i["kind"] == "company"],
+            "other_files": [{"doc": i["doc"], "name": i["name"], "month": i["month"]}
+                            for i in mine if i["kind"] == "other"]}
+
+
+def accept_offers(c, month, company):
+    """The user presses "Use ..." on every Employee No. that Million's list offers in this company."""
+    view = company_screen(c, month, company)
+    for item in view["items"]:
+        if item["kind"] == "offer":
+            url = f"/api/payroll/{month}/employees/{item['employee']}"
+            assert c.put(url, json={"emp_no": item["emp_no"]}).json() == {"ok": True}
+
+
+def test_the_overview_and_a_company_screen(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        import_million(c, ("ABM001", "ALI"), ("BINA001", "SITI"))
+        for name in (f"A & B (M) ALI SEPT {YEAR}.png", f"BINA SITI SEPT {YEAR}.png", "BINA ZUL.png", "LOOSE.png"):
+            upload(c, tmp_path, name=name)
+        store.wait_idle()
+        set_company(c, "A & B", "A & B (M)")
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        rows = {r["company"]: r for r in overview(c, month)["companies"]}
+        assert rows["A & B (M)"]["status"] == "needs"                  # Million's list offers a number: one click
+        accept_offers(c, month, "A & B (M)")
+        accept_offers(c, month, "BINA")
+        over = overview(c, month)
+        rows = {r["company"]: r for r in over["companies"]}
+        assert set(rows) == {"A & B (M)", "BINA", ""}
+        assert len(rows["A & B (M)"]["employees"]) == 1 and rows["A & B (M)"]["status"] == "ready"
+        assert len(rows["BINA"]["employees"]) == 1 and rows["BINA"]["status"] == "ready"
+        assert rows["BINA"]["files_needing"] == 1                      # a file of BINA has no month: step 2
+        assert rows[""]["files_needing"] == 1 and rows[""]["employees"] == []   # a file with no company is not lost
+        assert over["checked_with_million"] is True
+        # a company name with signs opens through the query string
+        view = company_screen(c, month, "A & B (M)")
+        assert view["company"] == "A & B (M)" and view["month"] == month
+        assert [(e["name"], e["emp_no"], e["status"]) for e in view["employees"]] == [("ALI", "ABM001", "ready")]
+        assert view["items"] == [] and isinstance(view["employees"][0]["days_worked"], (int, float))
+        bina = company_screen(c, month, "BINA")
+        assert [i["kind"] for i in bina["items"]] == ["month"]
+        assert bina["items"][0]["name"] == "BINA ZUL.png" and "why" in bina["items"][0]
+        loose = company_screen(c, month, "")
+        assert [f["name"] for f in loose["files"]] == ["LOOSE.png"]
+
+
+def test_step_3_people_and_step_2_files(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        import_million(c, ("ABM001", "ALI"), ("BINA001", "SITI"))
+        for name in (f"A & B (M) ALI SEPT {YEAR}.png", f"BINA SITI SEPT {YEAR}.png", "BINA ZUL.png", "LOOSE.png"):
+            upload(c, tmp_path, name=name)
+        store.wait_idle()
+        set_company(c, "A & B", "A & B (M)")
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        people = c.get(f"/api/payroll/{month}/people").json()
+        rows = {r["company"]: r for r in people["companies"]}
+        assert set(rows) == {"A & B (M)", "BINA", ""}
+        [ali] = rows["A & B (M)"]["employees"]
+        assert ali["name"] == "ALI" and [i["kind"] for i in ali["items"]] == ["offer"]
+        assert rows["A & B (M)"]["items"] == [] and rows["A & B (M)"]["status"] == "needs"
+        for r in people["companies"]:                                  # the user presses every "Use ..."
+            for e in r["employees"]:
+                for i in e["items"]:
+                    if i["kind"] == "offer":
+                        c.put(f"/api/payroll/{month}/employees/{e['id']}", json={"emp_no": i["emp_no"]})
+        people = c.get(f"/api/payroll/{month}/people").json()
+        rows = {r["company"]: r for r in people["companies"]}
+        # BINA's only problem is a file with no month: counted for step 2, its employees are ready here
+        assert rows["BINA"]["status"] == "ready" and rows["BINA"]["files_needing"] == 1
+        assert rows[""]["status"] == "none" and rows[""]["files_needing"] == 1 and rows[""]["employees"] == []
+        assert (people["files_needing"], people["employees"], people["ready_employees"]) == (2, 2, 2)
+        assert people["checked_with_million"] is True and "day_types" in people["settings"]
+        files = c.get(f"/api/payroll/{month}/files").json()
+        ids = {j["name"]: j["id"] for j in c.get("/api/jobs").json()}
+        siti_file, zul_file = ids[f"BINA SITI SEPT {YEAR}.png"], ids["BINA ZUL.png"]
+        assert [(i["kind"], i["company"]) for i in files["files"][zul_file]] == [("month", "BINA")]
+        assert files["files"][ids["LOOSE.png"]] == [{"kind": "company", "doc": ids["LOOSE.png"], "name": "LOOSE.png",
+                                                     "company": ""}]
+        assert files["months"][siti_file] == month and files["months"][zul_file] is None
+        assert [e["name"] for e in files["employees"][siti_file]] == ["SITI"]
+        assert [e["name"] for e in files["choices"]["BINA"]] == ["SITI"] and files["needs"] == 0
+        assert all(isinstance(j["cells_to_check"], int) for j in c.get("/api/jobs").json())
+        assert c.get("/api/payroll/nonsense/people").status_code == 400
+        assert c.get("/api/payroll/nonsense/files").status_code == 400
+
+
+def test_a_look_item_in_step_3_names_its_cards(tmp_path):
+    store, client = company_client(tmp_path, day_9_unclear)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        [row] = [r for r in c.get(f"/api/payroll/{month}/people").json()["companies"] if r["company"] == "BINA"]
+        [look] = [i for i in row["employees"][0]["items"] if i["kind"] == "look"]
+        assert look["places"] == 1 and look["cards"] == [{"id": c.get("/api/jobs").json()[0]["id"],
+                                                          "name": f"BINA SITI SEPT {YEAR}.png"}]
+
+
+def test_a_file_gets_its_month_and_its_card_is_placed(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        import_million(c, ("BINA001", "SITI"), ("BINA002", "ZUL"))
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        upload(c, tmp_path, name="BINA ZUL.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        item = company_screen(c, month, "BINA")["items"][0]
+        assert c.post("/api/payroll/file-month", json={"id": item["doc"], "month": "2026-13"}).status_code == 400
+        assert c.post("/api/payroll/file-month", json={"id": "nope", "month": month}).status_code in (400, 404)
+        assert c.post("/api/payroll/file-month", json={"id": item["doc"], "month": month}).json() == {"ok": True}
+        accept_offers(c, month, "BINA")
+        view = company_screen(c, month, "BINA")
+        # read after the app started and now of this month: it joined by itself, as its own employee
+        assert sorted(e["name"] for e in view["employees"]) == ["SITI", "ZUL"] and view["items"] == []
+        # "not a time card": never asked about again, in any month
+        upload(c, tmp_path, name="BINA NOTICE.png")
+        store.wait_idle()
+        set_company(c, "BINA NOTICE", "BINA")
+        item = company_screen(c, month, "BINA")["items"][0]
+        assert item["kind"] == "month" and item["name"] == "BINA NOTICE.png"
+        c.post("/api/payroll/file-month", json={"id": item["doc"], "month": "none"})
+        assert company_screen(c, month, "BINA")["items"] == []
+        assert company_screen(c, f"{YEAR}-10", "BINA")["items"] == []
+
+
+def test_placing_a_card_and_refusing_one_that_is_taken(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        siti = company_screen(c, month, "BINA")["employees"][0]
+        ref = c.get(f"/api/payroll/{month}/employee/{siti['id']}").json()["employee"]["jobs"][0]
+        c.post(f"/api/payroll/{month}/take-off", json={"ref": ref})       # the user takes the card off
+        items = company_screen(c, month, "BINA")["items"]
+        assert [(i["kind"], i.get("ref")) for i in items if i["kind"] == "unplaced"] == [("unplaced", ref)]
+        assert c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": None}).json()["ok"] is True
+        view = company_screen(c, month, "BINA")
+        assert len(view["employees"]) == 2 and not [i for i in view["items"] if i["kind"] == "unplaced"]
+        # placed on the new employee already: putting it on SITI as well is refused and changes nothing
+        r = c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": siti["id"]})
+        assert r.status_code == 400 and "one employee only" in r.json()["message"]
+        assert c.get(f"/api/payroll/{month}/employee/{siti['id']}").json()["employee"]["jobs"] == []
+        assert c.post(f"/api/payroll/{month}/place", json={"ref": "nope", "employee": None}).status_code in (400, 404)
+        assert c.post(f"/api/payroll/{month}/place", json={"ref": ref}).status_code == 400          # no "employee" key
+
+
+def test_an_offered_employee_no_is_set_with_one_call(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        import_million(c, ("MJ(1)", "ALI"), ("MJ(2)", "SITI"))
+        upload(c, tmp_path, name=f"MAJU JAYA ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        month = f"{YEAR}-09"                                             # no company: no new number is made
+        view = company_screen(c, month, "")
+        offer = [i for i in view["items"] if i["kind"] == "offer"][0]
+        assert offer["emp_no"] == "MJ(1)" and offer["million_name"] == "ALI"
+        url = f"/api/payroll/{month}/employees/{offer['employee']}"
+        assert c.put(url, json={"emp_no": 5}).status_code == 400
+        assert c.put(f"/api/payroll/{month}/employees/nobody", json={"emp_no": "MJ(1)"}).status_code == 400
+        assert c.put(url, json={"emp_no": "MJ(1)"}).json() == {"ok": True}
+        view = company_screen(c, month, "")
+        assert view["employees"][0]["emp_no"] == "MJ(1)" and view["employees"][0]["status"] == "ready"
+        assert overview(c, month)["checked_with_million"] is True
+
+
+def test_the_overview_opens_when_a_file_is_being_read_or_its_reading_is_gone(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        upload(c, tmp_path, name=f"BINA ZUL SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        assert len(overview(c, month)["companies"][0]["employees"]) == 2
+        gone = [j for j in c.get("/api/jobs").json() if "ZUL" in j["name"]][0]
+        (store.root / gone["id"] / "result.json").write_text("{ damaged", encoding="utf-8")   # cannot be loaded any more
+        over = c.get(f"/api/payroll/{month}/people")
+        assert over.status_code == 200 and over.json()["companies"][0]["company"] == "BINA"
+        assert c.get(f"/api/payroll/{month}/files").status_code == 200
+
+
+def test_the_overview_opens_on_a_month_whose_stored_plan_cannot_be_saved_as_it_is(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        overview(c, month)
+        path = tmp_path / "payroll" / f"{month}.json"
+        plan = json.loads(path.read_text(encoding="utf-8"))
+        plan["employees"].append(dict(plan["employees"][0], id="twin1"))    # one card on two employees: old, bad data
+        path.write_text(json.dumps(plan), encoding="utf-8")
+        over = c.get(f"/api/payroll/{month}/people")
+        assert over.status_code == 200 and len(over.json()["companies"][0]["employees"]) == 2
+
+
+def test_an_old_bad_plan_is_left_alone_when_a_new_file_of_the_month_arrives(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        overview(c, month)
+        path = tmp_path / "payroll" / f"{month}.json"
+        plan = json.loads(path.read_text(encoding="utf-8"))
+        plan["employees"].append(dict(plan["employees"][0], id="twin1"))    # one card on two employees: old, bad data
+        path.write_text(json.dumps(plan), encoding="utf-8")
+        upload(c, tmp_path, name=f"BINA ZUL SEPT {YEAR}.png")               # and now a new file of the month is read
+        store.wait_idle()
+        set_company(c, "BINA ZUL", "BINA")
+        over = c.get(f"/api/payroll/{month}/people")
+        assert over.status_code == 200, over.json()
+        assert c.get(f"/api/payroll/{month}/files").status_code == 200
+        assert c.get(f"/api/payroll/{month}/employee/twin1").status_code == 200    # the employee view, to put it right
+        # nothing was added to the plan that cannot be saved, and no number was remembered for someone not in it
+        assert len(json.loads(path.read_text(encoding="utf-8"))["employees"]) == 2
+        remembered = json.loads((tmp_path / "payroll" / "employees.json").read_text(encoding="utf-8"))
+        assert not [k for k in remembered if "zul" in k]
+        # once the plan is put right (the twin removed), the waiting file joins by itself
+        assert c.delete(f"/api/payroll/{month}/employee/twin1").json() == {"ok": True}
+        view = company_screen(c, month, "BINA")
+        assert sorted(e["name"] for e in view["employees"]) == ["SITI", "ZUL"]
+
+
+def test_placing_a_card_works_while_another_reading_is_damaged(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        upload(c, tmp_path, name=f"BINA ZUL SEPT {YEAR}.png")
+        upload(c, tmp_path, name=f"BINA AMIN SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        siti = employee_named(c, month, "SITI")
+        ref = c.get(f"/api/payroll/{month}/employee/{siti['id']}").json()["employee"]["jobs"][0]
+        c.post(f"/api/payroll/{month}/take-off", json={"ref": ref})       # the user takes SITI's card off
+        for j in c.get("/api/jobs").json():                               # every other reading is damaged
+            if "SITI" not in j["name"]:
+                (store.root / j["id"] / "result.json").write_text("{ damaged", encoding="utf-8")
+        r = c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": siti["id"]})
+        assert r.status_code == 200 and r.json()["ok"] is True, r.json()
+        damaged = next(j["id"] for j in c.get("/api/jobs").json() if "ZUL" in j["name"])
+        r = c.post(f"/api/payroll/{month}/place", json={"ref": damaged, "employee": siti["id"]})
+        assert r.status_code in (400, 404) and "could not be opened" in r.json()["message"]
+
+
+def test_a_card_that_is_nobodys_can_be_set_aside_as_not_a_time_card(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        siti = employee_named(c, month, "SITI")
+        c.delete(f"/api/payroll/{month}/employee/{siti['id']}")        # the employee is removed: the card is nobody's
+        item = company_screen(c, month, "BINA")["items"][0]
+        assert item["kind"] == "unplaced" and item["doc"] == item["ref"]
+        assert c.post("/api/payroll/file-month", json={"id": item["doc"], "month": "none"}).json() == {"ok": True}
+        view = company_screen(c, month, "BINA")
+        assert view["items"] == [] and view["employees"] == []           # and it does not come back by itself
+
+
+# ------------------------------------------------------------------------------------------- the one-look panel
+def day_9_unclear(image):
+    rows = [{"Date": good(str(d)), "Total": good("9")} for d in range(1, 31)]
+    rows[8]["Total"] = cell(None, "9?", 30, "smudged")
+    return record(rows, labels=("Date", "Total"))
+
+
+def employee_named(c, month, name):
+    """The employee of that name, as the company screens list them (opening the month first)."""
+    for row in overview(c, month)["companies"]:
+        for e in company_screen(c, month, row["company"])["employees"]:
+            if e["name"] == name:
+                return e
+    raise AssertionError(f"no employee {name}")
+
+
+def test_the_look_panel_lists_the_yellow_lines_and_accepting_clears_them(tmp_path):
+    store, client = company_client(tmp_path, day_9_unclear)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        siti = employee_named(c, month, "SITI")
+        look = c.get(f"/api/payroll/{month}/look", params={"employee": siti["id"]}).json()
+        assert (look["name"], look["company"], look["month"]) == ("SITI", "BINA", month)
+        [card] = look["cards"]
+        [line] = card["lines"]
+        assert (line["page"], line["row"], line["day"]) == (1, 8, 9)
+        total = next(x for x in line["cells"] if x["column"] == "Total")
+        assert total["needs_review"] and total["raw_text"] == "9?"
+        item = next(i for i in company_screen(c, month, "BINA")["items"]
+                    if i["kind"] == "look")
+        assert item["places"] == 1
+        change = {"page": 1, "row": 8, "column": "Total", "value": "9", "via": "look"}
+        assert c.put(f"/api/jobs/{card['doc']}/cells", json={"changes": [change]}).status_code == 200
+        assert c.get(f"/api/payroll/{month}/look", params={"employee": siti["id"]}).json()["cards"] == []
+        # a second window still showing the yellow cell cannot save over what was just saved
+        stale = {**change, "value": "8", "seen": {"edited": False, "value": None}}
+        r = c.put(f"/api/jobs/{card['doc']}/cells", json={"changes": [stale]})
+        assert r.status_code == 409 and r.json()["code"] == "CELL_CHANGED"
+        items = company_screen(c, month, "BINA")["items"]
+        assert "look" not in [i["kind"] for i in items]
+
+
+def test_the_look_panel_points_at_the_documents_row_of_a_grid(tmp_path):
+    labels = ("Name",) + tuple(str(d) for d in range(1, 32)) + ("Remark",)
+    marks = {str(d): good("" if d in (6, 13, 20, 27, 31) else "✓") for d in range(1, 32)}
+
+    def sheet(image):
+        rows = [{"Name": good(n), **marks, "Remark": good("26")} for n in ("ALI", "AMIN", "ZUL")]
+        rows[2]["2"] = cell(None, "?", 20, "smudged")
+        return record(rows, labels=labels, header=[("CLEANER NAME", good("ALI"))])
+
+    store, client = company_client(tmp_path, sheet)
+    with client as c:
+        upload(c, tmp_path, name=f"MAJU JAYA SEPT {YEAR}.png")
+        store.wait_idle()
+        month = f"{YEAR}-09"
+        zul = employee_named(c, month, "ZUL")
+        [card] = c.get(f"/api/payroll/{month}/look", params={"employee": zul["id"]}).json()["cards"]
+        assert [(line["row"], line["day"], [x["column"] for x in line["cells"]]) for line in card["lines"]] == [
+            (2, 2, ["2"])]
+
+
+def test_the_look_panel_for_an_unknown_employee_says_so(tmp_path):
+    store, client = company_client(tmp_path, day_9_unclear)
+    with client as c:
+        r = c.get(f"/api/payroll/{YEAR}-09/look", params={"employee": "e-gone"})
+        assert r.status_code == 404 and r.json()["code"] == "EMPLOYEE_NOT_FOUND"
+
+
+def test_the_look_panel_leaves_out_a_card_that_cannot_be_opened(tmp_path):
+    store, client = company_client(tmp_path, day_9_unclear)
+    with client as c:
+        upload(c, tmp_path, name=f"BINA SITI SEPT {YEAR}.png")
+        upload(c, tmp_path, name=f"BINA SITI 2 SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        people = company_screen(c, month, "BINA")["employees"]
+        siti = next(e for e in people if e["name"] == "SITI")
+        for other in (e for e in people if e is not siti):                 # every card on SITI, the others removed
+            for ref in c.get(f"/api/payroll/{month}/employee/{other['id']}").json()["employee"]["jobs"]:
+                c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": siti["id"], "move": True})
+            assert c.delete(f"/api/payroll/{month}/employee/{other['id']}").json() == {"ok": True}
+        jobs = sorted(c.get(f"/api/payroll/{month}/employee/{siti['id']}").json()["employee"]["jobs"])
+        assert len(jobs) == 2
+        (store.root / jobs[0] / "result.json").write_text("{ damaged", encoding="utf-8")
+        r = c.get(f"/api/payroll/{month}/look", params={"employee": siti["id"]})
+        assert r.status_code == 200
+        assert [card["doc"] for card in r.json()["cards"]] == [jobs[1]]
+
+
+# ------------------------------------------------------------------------------------- month and company settings
+def ali_of_a_and_b(tmp_path):
+    """A & B (M) with one worker, ALI, whose card has 9 hours on every day of September."""
+    store, client = company_client(tmp_path, month_card)
+    return store, client, f"{YEAR}-09"
+
+
+def company_figures(c, month, company):
+    view = company_screen(c, month, company)
+    return view, {e["name"]: (e["ot_1_5"], e["days_worked"]) for e in view["employees"]}
+
+
+def test_company_settings_change_its_employees_figures_and_back(tmp_path):
+    store, client, month = ali_of_a_and_b(tmp_path)
+    with client as c:
+        upload(c, tmp_path, name=f"A & B (M) ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "A & B", "A & B (M)")
+        view, before = company_figures(c, month, "A & B (M)")
+        assert before == {"ALI": (26.0, 26.0)} and view["settings"]["own"] is False
+        r = c.put(f"/api/payroll/{month}/company-settings", json={"company": "A & B (M)", "own": True, "normal_hours": 9,
+                                                                  "keep": True})
+        assert r.json() == {"ok": True}
+        view, own = company_figures(c, month, "A & B (M)")
+        assert own == {"ALI": (0.0, 26.0)}
+        assert view["settings"]["own"] is True and view["settings"]["keep"] is True and view["settings"]["normal_hours"] == 9
+        rows = {r["company"]: r for r in overview(c, month)["companies"]}
+        assert rows["A & B (M)"]["own"] is True
+        c.put(f"/api/payroll/{month}/company-settings", json={"company": "A & B (M)", "own": False})
+        assert company_figures(c, month, "A & B (M)")[1] == before
+
+
+def test_month_settings_apply_to_companies_that_follow_them(tmp_path):
+    store, client, month = ali_of_a_and_b(tmp_path)
+    with client as c:
+        upload(c, tmp_path, name=f"A & B (M) ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "A & B", "A & B (M)")
+        default = overview(c, month)["settings"]
+        assert default["normal_hours"] == 8 and default["day_types"]["6"] == "rest"
+        r = c.put(f"/api/payroll/{month}/settings", json={**default, "normal_hours": 9})
+        assert r.json() == {"ok": True}
+        assert company_figures(c, month, "A & B (M)")[1] == {"ALI": (0.0, 26.0)}
+
+
+def test_a_month_default_changed_after_own_settings_gives_an_item_until_saved_again(tmp_path):
+    store, client, month = ali_of_a_and_b(tmp_path)
+    with client as c:
+        upload(c, tmp_path, name=f"A & B (M) ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "A & B", "A & B (M)")
+        c.put(f"/api/payroll/{month}/company-settings", json={"company": "A & B (M)", "own": True})   # a copy
+        default = overview(c, month)["settings"]
+        default["day_types"]["16"] = "holiday"
+        c.put(f"/api/payroll/{month}/settings", json=default)
+        view = company_screen(c, month, "A & B (M)")
+        assert view["items"][0] == {"kind": "settings", "company": "A & B (M)"}
+        assert view["settings"]["default_changed"] is True and view["settings"]["day_types"]["16"] == "work"
+        assert view["settings"]["default"]["day_types"]["16"] == "holiday"
+        own = view["settings"]
+        c.put(f"/api/payroll/{month}/company-settings", json={"company": "A & B (M)", "own": True, "keep": own["keep"],
+              **{k: own[k] for k in ("normal_hours", "break_hours", "day_types")}})                  # "It is right"
+        view = company_screen(c, month, "A & B (M)")
+        assert [i["kind"] for i in view["items"]] == [] and view["settings"]["default_changed"] is False
+
+
+def test_an_employee_change_keeps_the_company_settings(tmp_path):
+    """The old page's save guard: a change from the employee view, opened before the company's settings were changed,
+    keeps them (only the key sent is changed)."""
+    store, client, month = ali_of_a_and_b(tmp_path)
+    with client as c:
+        upload(c, tmp_path, name=f"A & B (M) ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "A & B", "A & B (M)")
+        ali = employee_named(c, month, "ALI")["id"]
+        c.get(f"/api/payroll/{month}/employee/{ali}")                      # "Open employee": the view in a new tab
+        c.put(f"/api/payroll/{month}/company-settings", json={"company": "A & B (M)", "own": True, "normal_hours": 9})
+        assert change(c, month, ali, message="typed in the other tab").status_code == 200
+        view = company_screen(c, month, "A & B (M)")
+        assert view["settings"]["own"] is True and view["settings"]["normal_hours"] == 9
+        assert c.get(f"/api/payroll/{month}/employee/{ali}").json()["employee"]["message"] == "typed in the other tab"
+
+
+def test_bad_settings_are_refused(tmp_path):
+    store, client, month = ali_of_a_and_b(tmp_path)
+    with client as c:
+        r = c.put(f"/api/payroll/{month}/company-settings", json={"company": "", "own": True})
+        assert r.status_code == 400 and r.json()["message"] == "Choose the company first."
+        r = c.put(f"/api/payroll/{month}/company-settings", json={"company": "BINA", "own": True, "normal_hours": 25})
+        assert r.json()["message"] == "Normal hours per day must be a number from 1 to 24."
+        r = c.put(f"/api/payroll/{month}/settings", json={"normal_hours": 8, "break_hours": 1, "day_types": {"1": "work"}})
+        assert r.json()["code"] == "BAD_PAYROLL"
+        r = c.put(f"/api/payroll/{month}/settings", json=["not", "settings"])
+        assert r.json()["code"] == "BAD_PAYROLL"
+
+
+# ------------------------------------------------------------------------------------ the month's Million file
+def three_workers(c, store, tmp_path):
+    """MAJU JAYA: ALI; BINA: SITI and ZUL. Million knows ALI and SITI; ZUL gets a new number Million does not have."""
+    import_million(c, ("MJ1", "ALI"), ("BN1", "SITI"))
+    for name in (f"MAJU JAYA ALI SEPT {YEAR}.png", f"BINA SITI SEPT {YEAR}.png", f"BINA ZUL SEPT {YEAR}.png"):
+        upload(c, tmp_path, name=name)
+    store.wait_idle()
+    set_company(c, "MAJU JAYA", "MAJU JAYA")
+    set_company(c, "BINA", "BINA")
+    month = f"{YEAR}-09"
+    overview(c, month)                        # opening the month: the files join by themselves
+    accept_offers(c, month, "MAJU JAYA")
+    accept_offers(c, month, "BINA")
+    return month
+
+
+def test_the_summary_lists_who_goes_in_and_writes_no_file(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        month = three_workers(c, store, tmp_path)
+        run = c.get(f"/api/payroll/{month}/run").json()
+        assert run["made"] is False and run["file"] is None and run["ready"] == 2 and run["held"] == 1
+        bina = next(comp for comp in run["companies"] if comp["company"] == "BINA")
+        assert bina["ready_people"] == [{"emp_no": "BN1", "name": "SITI"}]           # only ZUL is held back
+        assert len(bina["held"]) == 1 and bina["held"][0]["name"] == "ZUL"
+        assert "is not in the Million employee list" in " ".join(bina["held"][0]["reasons"])
+        assert list((tmp_path / "payroll").glob("*.xls")) == []
+
+
+def test_the_file_is_worked_out_again_when_it_is_made(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        month = three_workers(c, store, tmp_path)
+        assert c.get(f"/api/payroll/{month}/run").json()["held"] == 1
+        zul = next(e for e in company_screen(c, month, "BINA")["employees"]
+                   if e["name"] == "ZUL")
+        import_million(c, ("MJ1", "ALI"), ("BN1", "SITI"), (zul["emp_no"], "ZUL"))     # created in Million since
+        run = c.post(f"/api/payroll/{month}/run").json()
+        assert run["made"] is True and run["ready"] == 3 and run["held"] == 0
+        assert (tmp_path / "payroll" / run["file"]).exists()
+
+
+# ------------------------------------------------------------------- a card layout Table Reader does not know
+LAYOUT_2 = ("NO.", "DATE", "WHrs", "OT", "LIn(Min)", "E/Out(Min)")
+
+
+def report_2_card(image):
+    return record([{"NO.": good(str(d)), "DATE": good(str(d)), "WHrs": good("8"), "OT": good("2"),
+                    "LIn(Min)": good("15"), "E/Out(Min)": good("0")} for d in range(1, 31)], labels=LAYOUT_2)
+
+
+def layout_month(c, store, tmp_path):
+    upload(c, tmp_path, name=f"MAJU JAYA ALI SEPT {YEAR}.png")
+    store.wait_idle()
+    set_company(c, "MAJU JAYA", "MAJU JAYA")
+    month = f"{YEAR}-09"
+    view = company_screen(c, month, "MAJU JAYA")   # opening: the card joins
+    return month, view
+
+
+def report_2_map(**change):
+    roles = {"NO.": ("ignore", "none"), "DATE": ("date", "none"), "WHrs": ("hours", "hours"), "OT": ("ot_1_5", "hours"),
+             "LIn(Min)": ("lateness", "minutes"), "E/Out(Min)": ("early_departure", "minutes"), **change}
+    return {c: {"role": r, "unit": u} for c, (r, u) in roles.items()}
+
+
+def test_confirming_a_layout_changes_the_figures(tmp_path):
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        assert item["columns"] == ["OT", "LIn(Min)", "E/Out(Min)"] and view["employees"][0]["ot_1_5"] == 0
+        where = {"doc": item["doc"], "page": item["page"]}
+        assert c.put("/api/layouts", json={**where, "columns": report_2_map()}).json() == {"ok": True}
+        view = company_screen(c, month, "MAJU JAYA")
+        assert not [i for i in view["items"] if i["kind"] == "layout"]
+        assert view["employees"][0]["ot_1_5"] == 60.0                         # the OT column: 2 hours on 30 days
+        got = c.get("/api/layouts", params={"doc": item["doc"], "page": item["page"]}).json()
+        assert got["saved"] == report_2_map() and got["labels"] == list(LAYOUT_2)
+
+
+def test_it_is_right_as_it_is_ignores_the_rest(tmp_path):
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        before = view["employees"]
+        where = {"doc": item["doc"], "page": item["page"]}
+        assert c.put("/api/layouts", json={**where, "as_is": True}).json() == {"ok": True}
+        view = company_screen(c, month, "MAJU JAYA")
+        assert not [i for i in view["items"] if i["kind"] == "layout"] and view["employees"] == before
+
+
+def test_a_bad_map_is_refused_and_nothing_saved(tmp_path):
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        r = c.put("/api/layouts", json={"doc": item["doc"], "page": item["page"],
+                                        "columns": report_2_map(OT=("salary", "hours"))})
+        assert r.status_code == 400 and r.json()["code"] == "BAD_LAYOUT"
+        assert c.get("/api/layouts", params={"doc": item["doc"], "page": item["page"]}).json()["saved"] is None
+        assert c.put("/api/layouts", json={"doc": "nope", "page": 1, "as_is": True}).status_code == 404
+
+
+def test_opening_the_panel_does_not_ask_claude(tmp_path, monkeypatch):
+    asked = []
+
+    def fake_ask(prompt, schema, **kw):
+        asked.append(prompt)
+        return {"columns": [{"label": c, **v} for c, v in report_2_map().items()]}
+
+    monkeypatch.setattr(ocr, "ask_text", fake_ask)
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        got = c.get("/api/layouts", params={"doc": item["doc"], "page": item["page"]}).json()
+        assert asked == [] and got["suggestion"] is None
+        assert got["as_read"]["WHrs"] == {"role": "hours", "unit": "hours"}
+        assert len(got["shapes"]) == 5 and got["shapes"][0]["WHrs"] == "9"
+        got = c.get("/api/layouts", params={"doc": item["doc"], "page": item["page"], "ask": "true"}).json()
+        assert len(asked) == 1 and got["suggestion"] == report_2_map() and got["error"] is None
+
+
+def test_claude_failing_is_shown_not_a_crash(tmp_path, monkeypatch):
+    def failing(prompt, schema, **kw):
+        raise ocr.OcrError("CLAUDE_PLAN_LIMIT", "Your Claude plan has reached its usage limit for now.")
+
+    monkeypatch.setattr(ocr, "ask_text", failing)
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        got = c.get("/api/layouts", params={"doc": item["doc"], "page": item["page"], "ask": "true"}).json()
+        assert got["suggestion"] is None and "usage limit" in got["error"]
+
+
+def test_it_is_right_as_it_is_keeps_the_hours_column_the_user_chose(tmp_path):
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        where = {"doc": item["doc"], "page": item["page"]}
+        assert c.put("/api/layouts", json={**where, "as_is": True, "hours_column": "OT"}).json() == {"ok": True}
+        assert c.get("/api/layouts", params=where).json()["saved"]["OT"] == {"role": "hours", "unit": "hours"}
+        r = c.put("/api/layouts", json={**where, "as_is": True, "hours_column": "NOT A COLUMN"})
+        assert r.status_code == 400 and r.json()["code"] == "BAD_LAYOUT"
+        got = c.get("/api/layouts", params={**where, "hours": "WHrs"}).json()
+        assert got["as_read"]["WHrs"]["role"] == "hours"
+
+
+# ------------------------------------------------------------------------------- the employee view (stage 4 B)
+@pytest.fixture
+def maju_jaya(tmp_path):
+    """MAJU JAYA with ALI and SITI, one 30-day card each, placed by opening the month. (client, month, ALI's id,
+    SITI's id, ALI's card ref)"""
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        for name in (f"MAJU JAYA ALI SEPT {YEAR}.png", f"MAJU JAYA SITI SEPT {YEAR}.png"):
+            upload(c, tmp_path, name=name)
+        store.wait_idle()
+        set_company(c, "MAJU JAYA", "MAJU JAYA")
+        month = f"{YEAR}-09"
+        view = company_screen(c, month, "MAJU JAYA")
+        people = {e["name"]: e["id"] for e in view["employees"]}
+        ref = c.get(f"/api/payroll/{month}/employee/{people['ALI']}").json()["employee"]["jobs"][0]
+        yield c, month, people["ALI"], people["SITI"], ref
+
+
+def change(c, month, who, **changes):
+    return c.put(f"/api/payroll/{month}/employee/{who}", json={"changes": changes})
+
+
+def test_the_employee_view_shows_figures_cards_and_colleagues(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    view = c.get(f"/api/payroll/{month}/employee/{ali}").json()
+    assert view["month"] == month and view["company"] == "MAJU JAYA" and view["employee"]["name"] == "ALI"
+    assert view["result"]["values"]["days_worked"]["value"] == 26                # September's 4 Sundays are rest days
+    assert view["result"]["columns"] == ["Date", "Total"]
+    assert [(k["ref"], k["doc"]) for k in view["cards"]] == [(ref, ref)] and "ALI" in view["cards"][0]["name"]
+    assert [(o["id"], o["name"]) for o in view["others"]] == [(siti, "SITI")]
+    assert "allowance" in view["lists"] and view["fields"] and "allowance" in view["list_heads"]
+    assert view["million"] is None
+
+
+def test_an_override_is_saved_and_returned(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    r = change(c, month, ali, overrides={"ot_1_5": 4})
+    assert r.json()["result"]["values"]["ot_1_5"] == {"value": 4, "computed": 26.0, "edited": True}   # 1 h a day
+    back = change(c, month, ali, overrides={}).json()["result"]["values"]["ot_1_5"]
+    assert back["edited"] is False and back["value"] == back["computed"]
+    assert change(c, month, ali, overrides={"ot_1_5": -1}).status_code == 400
+    assert change(c, month, ali, jobs=[]).status_code == 400                 # cards move through /place and /take-off
+    assert c.put(f"/api/payroll/{month}/employee/{ali}", json={"name": "X"}).status_code == 400     # no "changes"
+
+
+def test_saving_one_field_keeps_what_another_tab_changed(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    assert c.put(f"/api/payroll/{month}/employees/{ali}", json={"emp_no": "MJ9"}).json() == {"ok": True}
+    saved = change(c, month, ali, name="ALI B").json()["employee"]
+    assert (saved["emp_no"], saved["name"]) == ("MJ9", "ALI B")
+
+
+def test_an_employee_removed_elsewhere_says_so(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    assert c.delete(f"/api/payroll/{month}/employee/{ali}").json() == {"ok": True}
+    for r in (c.get(f"/api/payroll/{month}/employee/{ali}"), change(c, month, ali, name="X"),
+              c.delete(f"/api/payroll/{month}/employee/{ali}"),
+              c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": ali})):
+        assert r.json()["code"] == "EMPLOYEE_NOT_FOUND"
+        assert r.json()["message"].startswith("This employee is no longer in the payroll of this month")
+
+
+def test_moving_a_card_takes_it_off_its_employee(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    r = c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": siti})
+    assert r.status_code == 400 and "one employee only" in r.json()["message"]     # without "move": refused
+    assert c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": siti, "move": True}).json()["ok"] is True
+    assert c.get(f"/api/payroll/{month}/employee/{ali}").json()["employee"]["jobs"] == []
+    assert ref in c.get(f"/api/payroll/{month}/employee/{siti}").json()["employee"]["jobs"]
+    items = company_screen(c, month, "MAJU JAYA")["items"]
+    assert [i["kind"] for i in items if i.get("employee") == ali] == ["nocard"]
+    assert c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": ali, "move": "yes"}).status_code == 400
+
+
+def test_a_card_taken_off_is_whose_card_again(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    assert c.post(f"/api/payroll/{month}/take-off", json={"ref": ref}).json() == {"ok": True}
+    items = company_screen(c, month, "MAJU JAYA")["items"]
+    assert [i["ref"] for i in items if i["kind"] == "unplaced"] == [ref]
+    again = c.post(f"/api/payroll/{month}/take-off", json={"ref": ref}).json()
+    assert again["code"] == "BAD_PAYROLL" and "not on any employee" in again["message"]
+    assert c.post(f"/api/payroll/{month}/take-off", json={"ref": 5}).status_code == 400
+
+
+def test_add_employee_by_hand_gets_a_number(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    new = c.post(f"/api/payroll/{month}/employee", json={"company": "MAJU JAYA"}).json()["employee"]
+    view = c.get(f"/api/payroll/{month}/employee/{new}").json()
+    assert view["employee"]["emp_no"].startswith("MAJUJAY") and view["company"] == "MAJU JAYA"
+    assert view["employee"]["emp_no"] not in {o["emp_no"] for o in view["others"]}
+    assert c.post(f"/api/payroll/{month}/employee", json={"company": 5}).status_code == 400
+
+
+def test_one_line_is_added_or_removed_at_a_time(maju_jaya):
+    """The lines are the same for every employee: a view opened before another tab added a line does not take it
+    away (nor the figures on it) when it adds or removes another one."""
+    c, month, ali, siti, ref = maju_jaya
+    lines = lambda: c.get(f"/api/payroll/{month}/employee/{ali}").json()["lists"]["allowance"]   # noqa: E731
+    url = f"/api/payroll/{month}/lists"
+    assert c.put(url, json={"kind": "allowance", "add": {"name": "Transport", "type": "Fixed"}}).json() == {"ok": True}
+    change(c, month, siti, entries={"allowance": {"Transport": 50}})
+    assert c.put(url, json={"kind": "allowance", "add": {"name": "Meal", "type": ""}}).json() == {"ok": True}  # ALI's tab
+    names = [line["name"] for line in lines()]
+    assert "Transport" in names and "Meal" in names
+    assert c.get(f"/api/payroll/{month}/employee/{siti}").json()["employee"]["entries"]["allowance"] == {"Transport": 50}
+    r = c.put(url, json={"kind": "allowance", "add": {"name": "transport", "type": ""}})
+    assert r.status_code == 400 and "twice" in r.json()["message"]
+    assert c.put(url, json={"kind": "allowance", "remove": "Transport"}).json() == {"ok": True}
+    assert c.get(f"/api/payroll/{month}/employee/{siti}").json()["employee"]["entries"]["allowance"] == {}
+    assert c.put(url, json={"kind": "allowance", "remove": "Transport"}).json() == {"ok": True}   # gone already: nothing
+    for bad in ({"lists": {}}, {"kind": "nope", "remove": "Meal"}, {"kind": "allowance"}, {"kind": "allowance", "add": "x"},
+                {"kind": "allowance", "remove": 5}):
+        assert c.put(url, json=bad).status_code == 400, bad
+    assert "Meal" in [line["name"] for line in lines()]
+
+
+def test_a_stale_view_cannot_take_a_card_off_someone_else(maju_jaya):
+    """Tab A shows ALI's card; tab B moves it to SITI. Take off or Move in tab A then says so and changes nothing."""
+    c, month, ali, siti, ref = maju_jaya
+    place = f"/api/payroll/{month}/place"
+    assert c.post(place, json={"ref": ref, "employee": siti, "move": True, "from": ali}).json()["ok"] is True   # tab B
+    for r in (c.post(f"/api/payroll/{month}/take-off", json={"ref": ref, "from": ali}),
+              c.post(place, json={"ref": ref, "employee": None, "move": True, "from": ali})):
+        assert r.status_code == 400 and "no longer on this employee" in r.json()["message"]
+    assert ref in c.get(f"/api/payroll/{month}/employee/{siti}").json()["employee"]["jobs"]
+    assert len(company_screen(c, month, "MAJU JAYA")["employees"]) == 2
+    assert c.post(f"/api/payroll/{month}/take-off", json={"ref": ref, "from": 5}).status_code == 400
+    assert c.post(f"/api/payroll/{month}/take-off", json={"ref": ref, "from": siti}).json() == {"ok": True}
+
+
+def test_moving_a_card_to_a_removed_employee_leaves_it_where_it_was(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    c.delete(f"/api/payroll/{month}/employee/{siti}")
+    r = c.post(f"/api/payroll/{month}/place", json={"ref": ref, "employee": siti, "move": True, "from": ali})
+    assert r.json()["code"] == "EMPLOYEE_NOT_FOUND"
+    assert c.get(f"/api/payroll/{month}/employee/{ali}").json()["employee"]["jobs"] == [ref]
+
+
+def test_figures_that_are_not_figures_are_refused_not_a_crash(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    for changes in ({"overrides": "x"}, {"overrides": [1]}, {"entries": "x"}, {"entries": {"allowance": 5}}):
+        r = change(c, month, ali, **changes)
+        assert r.status_code == 400 and r.json()["code"] == "BAD_PAYROLL", changes
+
+
+def test_other_files_of_a_company_can_be_taken_into_the_month(tmp_path):
+    """A file set aside as "Not a time card", or read as another month and on nobody there, is listed (not as
+    something that needs the user) and can be taken into this month."""
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        for name in (f"BINA SITI SEPT {YEAR}.png", f"BINA ZUL AUG {YEAR}.png", "BINA NOTICE.png"):
+            upload(c, tmp_path, name=name)
+        store.wait_idle()
+        set_company(c, "BINA", "BINA")
+        month = f"{YEAR}-09"
+        notice = next(j["id"] for j in c.get("/api/jobs").json() if "NOTICE" in j["name"])
+        zul = next(j["id"] for j in c.get("/api/jobs").json() if "ZUL" in j["name"])
+        c.post("/api/payroll/file-month", json={"id": notice, "month": "none"})
+        view = company_screen(c, month, "BINA")
+        assert view["items"] == [] and view["status"] != "needs"
+        assert sorted((f["doc"], f["month"]) for f in view["other_files"]) == sorted([(zul, f"{YEAR}-08"), (notice, "none")])
+        assert c.post("/api/payroll/file-month", json={"id": zul, "month": month}).json() == {"ok": True}
+        view = company_screen(c, month, "BINA")
+        assert [f["doc"] for f in view["other_files"]] == [notice]
+        placed = [i["ref"] for i in view["items"] if i["kind"] == "unplaced"]
+        cards = [r for e in view["employees"] for r in c.get(f"/api/payroll/{month}/employee/{e['id']}").json()["employee"]["jobs"]]
+        assert zul in placed + cards
+        # a file of another month that is on an employee there is not offered
+        c.post("/api/payroll/file-month", json={"id": zul, "month": f"{YEAR}-08"})
+        overview(c, f"{YEAR}-08")
+        august = company_screen(c, f"{YEAR}-08", "BINA")
+        unplaced = [i for i in august["items"] if i["kind"] == "unplaced"]
+        if unplaced:
+            c.post(f"/api/payroll/{YEAR}-08/place", json={"ref": unplaced[0]["ref"], "employee": None})
+        view = company_screen(c, month, "BINA")
+        assert [f["doc"] for f in view["other_files"]] == [notice]
+
+
+def test_the_pay_table_of_one_company(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    change(c, month, ali, pay_basis="daily", basic_rate=80)
+    rows = {r["name"]: r for r in c.get(f"/api/payroll/{month}/pay", params={"company": "MAJU JAYA"}).json()["rows"]}
+    assert set(rows) == {"ALI", "SITI"}
+    assert (rows["ALI"]["typed_basis"], rows["ALI"]["typed_rate"], rows["ALI"]["rate_source"]) == ("daily", 80, "typed")
+    assert rows["ALI"]["pay"]["basic"] == 80 * 26 and rows["ALI"]["days_worked"] == 26
+    assert rows["ALI"]["id"] == ali and "complete" in rows["ALI"] and "emp_no" in rows["ALI"]
+
+
+def test_the_employee_view_refuses_other_websites(maju_jaya):
+    c, month, ali, siti, ref = maju_jaya
+    r = c.put(f"/api/payroll/{month}/employee/{ali}", json={"changes": {"name": "X"}},
+              headers={"Origin": "http://evil.example"})
+    assert r.status_code == 403
+
+
+def test_the_employee_view_says_which_cards_follow_a_confirmed_layout(tmp_path):
+    """On such a card the map says which column holds the hours, so the view says the Hours column list does not
+    apply to it."""
+    store, client = company_client(tmp_path, report_2_card)
+    with client as c:
+        month, view = layout_month(c, store, tmp_path)
+        who = view["employees"][0]["id"]
+        [item] = [i for i in view["items"] if i["kind"] == "layout"]
+        assert [k["mapped"] for k in c.get(f"/api/payroll/{month}/employee/{who}").json()["cards"]] == [False]
+        c.put("/api/layouts", json={"doc": item["doc"], "page": item["page"], "columns": report_2_map()})
+        assert [k["mapped"] for k in c.get(f"/api/payroll/{month}/employee/{who}").json()["cards"]] == [True]
+
+
+def test_the_company_screens_requests_are_gone(client):
+    assert client.get("/api/payroll/2026-09/companies").status_code == 404
+    assert client.get("/api/payroll/2026-09/company", params={"name": ""}).status_code == 404
+
+
+def test_step_2_tells_what_joined_by_itself_when_it_opens_the_month_first(tmp_path):
+    """In the three steps, step 2 usually opens the month first: what joined by itself and the new Employee Nos. are
+    not lost, they come back from GET /files (for the page to carry to step 3)."""
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        upload(c, tmp_path, name=f"MAJU JAYA ALI SEPT {YEAR}.png")
+        store.wait_idle()
+        set_company(c, "MAJU JAYA", "MAJU JAYA")
+        month = f"{YEAR}-09"
+        files = c.get(f"/api/payroll/{month}/files").json()             # read after the app started: joins now
+        assert files["added_by_themselves"]["added"] == [{"name": "ALI", "cards": 1}]
+        assert files["added_by_themselves"]["new_numbers"] == 1 and files["numbered"] == 0   # ALI got a new number
+        again = c.get(f"/api/payroll/{month}/files").json()
+        assert again["added_by_themselves"] is None and again["numbered"] == 0     # once only
+
+
+def test_the_employee_view_offers_the_companys_other_cards(maju_jaya, tmp_path):
+    """"Add a time card": every card of the employee's company that is not on them - on nobody (with the month it is
+    for) or on another employee (who) - and none of another company."""
+    c, month, ali, siti, ref = maju_jaya
+    for name in (f"MAJU JAYA ZUL OCT {YEAR}.png", f"BINA AMIN SEPT {YEAR}.png"):
+        upload(c, tmp_path, name=name)
+    ids = {}
+    for _ in range(200):                                           # read by the fixture's store
+        ids = {j["name"]: j for j in c.get("/api/jobs").json()}
+        if all(j["status"] == "done" for j in ids.values()):
+            break
+        time.sleep(0.05)
+    set_company(c, "MAJU JAYA", "MAJU JAYA")
+    set_company(c, "BINA", "BINA")
+    view = c.get(f"/api/payroll/{month}/employee/{ali}").json()
+    offered = {k["name"]: k for k in view["addable"]}
+    zul, siti_card = ids[f"MAJU JAYA ZUL OCT {YEAR}.png"]["id"], ids[f"MAJU JAYA SITI SEPT {YEAR}.png"]["id"]
+    assert set(offered) == {f"MAJU JAYA ZUL OCT {YEAR}.png", f"MAJU JAYA SITI SEPT {YEAR}.png"}   # not ALI's, not BINA's
+    assert offered[f"MAJU JAYA ZUL OCT {YEAR}.png"] == {"ref": zul, "doc": zul, "name": f"MAJU JAYA ZUL OCT {YEAR}.png",
+                                                       "month": f"{YEAR}-10", "on": None}
+    assert offered[f"MAJU JAYA SITI SEPT {YEAR}.png"]["on"] == {"id": siti, "name": "SITI"}
+    assert offered[f"MAJU JAYA SITI SEPT {YEAR}.png"]["month"] == month and siti_card
+    # what the page then does: the October card is said to be for this month, and placed on ALI
+    assert c.post("/api/payroll/file-month", json={"id": zul, "month": month}).json() == {"ok": True}
+    assert c.post(f"/api/payroll/{month}/place", json={"ref": zul, "employee": ali}).json()["employee"] == ali
+    view = c.get(f"/api/payroll/{month}/employee/{ali}").json()
+    assert zul in [k["ref"] for k in view["cards"]] and zul not in [k["ref"] for k in view["addable"]]
+
+
+# ------------------------------------------------------------------------------------------------ Export...
+def export(client, month, **params):
+    return client.get(f"/api/payroll/{month}/export", params=params)
+
+
+def test_the_payroll_table_exports_as_csv_or_xls_for_the_chosen_companies(tmp_path):
+    import io
+    import zipfile
+
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        month = three_workers(c, store, tmp_path)               # MAJU JAYA: ALI; BINA: SITI and ZUL
+        everyone = export(c, month, format="csv")
+        assert everyone.status_code == 200 and len(everyone.content.decode("utf-8-sig").splitlines()) == 4
+        assert f"Payroll%20{month}.csv" in everyone.headers["content-disposition"]
+        bina = export(c, month, format="csv", c=["BINA"]).content.decode("utf-8-sig").splitlines()
+        assert len(bina) == 3 and not any(",ALI," in line for line in bina)
+        both = export(c, month, format="xls", c=["BINA", "MAJU JAYA"])
+        assert "%282%20companies%29.xls" in both.headers["content-disposition"]
+        sheet = xlrd.open_workbook(file_contents=both.content).sheet_by_index(0)
+        assert sheet.nrows == 4 and sheet.cell_value(0, 0) == "Employee No."
+        assert sorted(sheet.cell_value(r, 1) for r in range(1, 4)) == ["ALI", "SITI", "ZUL"]
+        days = sheet.row_values(0).index("Days Worked")
+        assert sheet.cell(1, days).ctype == xlrd.XL_CELL_NUMBER and sheet.cell(1, 0).ctype == xlrd.XL_CELL_TEXT
+        zipped = export(c, month, format="csv", split="each", c=["BINA", "MAJU JAYA"])
+        assert zipped.headers["content-type"] == "application/zip"
+        with zipfile.ZipFile(io.BytesIO(zipped.content)) as z:
+            assert sorted(z.namelist()) == [f"Payroll {month} BINA.csv", f"Payroll {month} MAJU JAYA.csv"]
+            assert len(z.read(f"Payroll {month} BINA.csv").decode("utf-8-sig").splitlines()) == 3
+        one = export(c, month, format="xls", split="each", c=["BINA"])      # one company: its file, no zip
+        assert f"Payroll%20{month}%20BINA.xls" in one.headers["content-disposition"]
+        assert export(c, month, format="csv", c=["NOBODY"]).json()["code"] == "PAYROLL_EMPTY"
+        assert export(c, month, format="pdf").status_code == 400
+        assert export(c, month, split="some").status_code == 400
+
+
+def test_the_million_file_for_the_chosen_companies_in_one_file_or_one_per_company(tmp_path):
+    store, client = company_client(tmp_path, month_card)
+    with client as c:
+        month = three_workers(c, store, tmp_path)               # ZUL is held back (a number Million does not have)
+        run = c.get(f"/api/payroll/{month}/run", params={"c": ["MAJU JAYA"]}).json()
+        assert (run["ready"], run["held"], run["files"]) == (1, 0, [])
+        assert [x["company"] for x in run["companies"]] == ["MAJU JAYA"]
+        made = c.post(f"/api/payroll/{month}/run", params={"c": ["MAJU JAYA", "BINA"], "split": "each"}).json()
+        assert sorted(made["files"]) == [f"Payroll {month} BINA (Million).xls", f"Payroll {month} MAJU JAYA (Million).xls"]
+        assert (made["ready"], made["held"]) == (2, 1)
+        bina = xlrd.open_workbook(str(tmp_path / "payroll" / f"Payroll {month} BINA (Million).xls")).sheet_by_index(0)
+        assert bina.nrows == 2 and bina.cell_value(1, 0) == "BN1"                    # SITI only: ZUL is held back
+        pair = c.post(f"/api/payroll/{month}/run", params={"c": ["MAJU JAYA", "BINA"]}).json()
+        assert pair["files"] == [f"Payroll {month} (2 companies) (Million).xls"] and pair["file"] == pair["files"][0]
+        whole = c.post(f"/api/payroll/{month}/run").json()
+        assert whole["files"] == [f"Payroll {month} (Million).xls"] and whole["ready"] == 2
+        assert c.get(f"/api/payroll/{month}/run", params={"c": ["NOBODY"]}).json()["code"] == "PAYROLL_EMPTY"
+        assert c.post(f"/api/payroll/{month}/run", params={"split": "some"}).status_code == 400

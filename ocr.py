@@ -445,6 +445,17 @@ def prepare_image(src: Path, dst_dir: Path, rotate_clockwise: int = 0) -> Path:
 def parse_cli_output(stdout: str, stderr: str = "", returncode: int = 0) -> dict:
     """Turn the CLI's ``--output-format json`` envelope into a validated page dict (raw, before never-guess).
     Raises OcrError with a plain-language message for every failure. Pure function: no Claude needed to test it."""
+    data = _cli_answer(stdout, stderr)
+    errors = validate_page_json(data, COMPACT_SCHEMA if "doubts" in data else PAGE_SCHEMA)
+    if errors:
+        raise OcrError("CLAUDE_CLI_BAD_JSON", f"Claude's answer did not match the expected form ({errors[0]}), so "
+                       "nothing was read. Try this file again.")
+    return data
+
+
+def _cli_answer(stdout: str, stderr: str = "") -> dict:
+    """The structured answer in the CLI's ``--output-format json`` envelope, or OcrError in plain language (not signed
+    in, plan limit, an error, no answer in the expected form)."""
     try:
         envelope = json.loads(stdout)
     except (json.JSONDecodeError, TypeError) as exc:
@@ -477,11 +488,28 @@ def parse_cli_output(stdout: str, stderr: str = "", returncode: int = 0) -> dict
     if not isinstance(data, dict):
         raise OcrError("CLAUDE_CLI_BAD_JSON", "Claude's answer was not in the expected form, so nothing was read. "
                        "Try this file again.")
-    errors = validate_page_json(data, COMPACT_SCHEMA if "doubts" in data else PAGE_SCHEMA)
-    if errors:
-        raise OcrError("CLAUDE_CLI_BAD_JSON", f"Claude's answer did not match the expected form ({errors[0]}), so "
-                       "nothing was read. Try this file again.")
     return data
+
+
+def ask_text(prompt: str, schema: dict, *, timeout: int = 120) -> dict:
+    """One question in text to the signed-in Claude Code CLI, answered in the form ``schema`` asks for: no picture and
+    no tools, the reading's model and effort, billed to the user's plan as a reading is (``_env``). Used to suggest what
+    a card layout's columns mean (layouts.py); the caller checks the answer. Raises OcrError in plain language."""
+    status = auth_status()
+    if not status["installed"] or not status["logged_in"]:
+        raise OcrError("CLAUDE_LOGIN_REQUIRED" if status["installed"] else "CLAUDE_CLI_MISSING", status["message"])
+    cmd = [cli_path(), "-p", "--output-format", "json", "--json-schema", json.dumps(schema), "--tools", "",
+           "--permission-mode", "dontAsk", "--no-session-persistence", "--strict-mcp-config",
+           "--disable-slash-commands", "--model", MODEL, "--effort", EFFORT]
+    with tempfile.TemporaryDirectory(prefix="table-reader-") as tmp:      # an empty folder: nothing there to look at
+        try:
+            proc = _run_cli(cmd, input=prompt, timeout=timeout, cwd=tmp, env=_env())
+        except subprocess.TimeoutExpired as exc:
+            raise OcrError("CLAUDE_CLI_TIMEOUT", "Claude took too long to answer. Try again.") from exc
+        except OSError as exc:
+            raise OcrError("CLAUDE_CLI_ERROR", f"Claude Code could not be started ({exc}). Reinstall Claude Code "
+                           "or restart the computer, then try again.") from exc
+    return _cli_answer(proc.stdout, proc.stderr)
 
 
 def build_command(cli: str, work_dir: Path, model: str | None = None) -> list[str]:

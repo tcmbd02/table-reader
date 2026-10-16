@@ -35,7 +35,8 @@ def record(rows, header=(), labels=("Date", "In"), turn=0, notes=()):
 def million_listing(employees, total=None, per_page=2, title_col=2):
     """Million Payroll's "Employment Listing" saved as Excel, as bytes: a printed-report layout (title, the heading rows
     again on every page, an employee every four rows, "Total Employees : n" at the end). ``employees`` = [(no, name)].
-    ``title_col=1``: the "Payroll Information" report, whose title, company name and total are in the Emp no. column."""
+    ``title_col=1``: the "Payroll Information" report, whose title, company name and total are in the Emp no. column.
+    An employee given as (no, name, branch, pay basis, basic rate) is written with those too (that report has them)."""
     import io
 
     import xlwt
@@ -47,19 +48,53 @@ def million_listing(employees, total=None, per_page=2, title_col=2):
         sheet.write(r + 1, title_col, "Employment Listing")
         sheet.write(r + 5, title_col, "MAJU JAYA SDN BHD")
         sheet.write(r + 5, 26, f"Page {start // per_page + 1}")
-        for col, label in ((1, "Emp no."), (4, "Name"), (8, "Gender"), (11, "D.O.B."), (24, "Basic Rate")):
+        for col, label in ((1, "Emp no."), (4, "Name"), (8, "Gender"), (10, "Branch"), (11, "D.O.B."), (16, "Pay Basis"),
+                           (24, "Basic Rate")):
             sheet.write(r + 7, col, label)
         sheet.write(r + 9, 4, "New I/C No.")
         sheet.write(r + 11, 4, "Old I/C No.")
         r += 15
-        for no, name in employees[start:start + per_page]:
+        for no, name, *more in employees[start:start + per_page]:
             sheet.write(r, 1, no)
             sheet.write(r, 4, name)
             sheet.write(r, 8, "M")
-            sheet.write(r, 24, 1700.0)
+            if more:
+                branch, basis, rate = more
+                sheet.write(r, 10, branch)
+                sheet.write(r, 16, basis)
+                sheet.write(r, 24, rate)
+                sheet.write(r + 2, 16, "Bank")                    # the lines under an employee (pay mode, pay period)
+            else:
+                sheet.write(r, 24, 0.0)
             r += 4
         r += 5
     sheet.write(r, title_col, f"Total Employees : {len(employees) if total is None else total}")
     out = io.BytesIO()
     book.save(out)
     return out.getvalue()
+
+
+def text_pdf(pages):
+    """A PDF made of real text, as bytes: ``pages`` = one list per page of (x, y, text), in points from the bottom-left
+    corner of an A4 page (Helvetica 9). What a program prints, not a scan."""
+    def literal(text):
+        return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    objects = ["<< /Type /Catalog /Pages 2 0 R >>", None, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    kids = []
+    for words in pages:
+        stream = "BT /F1 9 Tf " + " ".join(f"1 0 0 1 {x} {y} Tm ({literal(text)}) Tj" for x, y, text in words) + " ET"
+        objects.append(f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream")
+        objects.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents {len(objects)} 0 R "
+                       "/Resources << /Font << /F1 3 0 R >> >> >>")
+        kids.append(f"{len(objects)} 0 R")
+    objects[1] = f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(kids)} >>"
+    out, offsets = b"%PDF-1.4\n", []
+    for n, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{n} 0 obj\n{body}\nendobj\n".encode("latin-1")
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{o:010d} 00000 n \n".encode() for o in offsets)
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    return out

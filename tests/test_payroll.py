@@ -1,5 +1,6 @@
 """Tests for payroll.py: the calculation from confirmed cells, the issues it must raise, and the payroll file."""
 import csv
+from datetime import date
 import io
 from pathlib import Path
 
@@ -373,6 +374,82 @@ def test_the_employee_no_typed_once_is_used_next_month():
     assert payroll.validate_plan(octo, {"k1"})["employees"][0]["worker_key"] == "maju jaya|file:ali"
 
 
+def test_an_employee_no_is_filled_in_only_for_a_whole_name_read_on_the_card():
+    listed = [{"emp_no": "E01", "name": "Ali bin Abu"}, {"emp_no": "E02", "name": "SITI"}, {"emp_no": "E03", "name": "Zul bin Omar"},
+              {"emp_no": "E04", "name": "Zul bin Omar"}, {"emp_no": "E05", "name": "AMINAH OMAR"}, {"emp_no": "E06", "name": "TAN"}]
+    p = plan_for()
+    p["employees"] = [employee(id="old", emp_no="e06", name="SOMEONE")]
+    ids = iter("abcdef")
+    cands = [candidate("j1", "MAJU JAYA A SEPT 26.jpeg", header=[("Name", good("ALI  BIN ABU"))]),   # the whole name: filled
+             candidate("j2", "MAJU JAYA SITI SEPT 26.jpeg"),                                        # only in the file name
+             candidate("j3", "MAJU JAYA C SEPT 26.jpeg", header=[("Name", good("ZUL BIN OMAR"))]),    # two in Million
+             candidate("j4", "MAJU JAYA D SEPT 26.jpeg", header=[("Name", good("AMINAH"))]),          # part of a name
+             candidate("j5", "MAJU JAYA E SEPT 26.jpeg", header=[("Name", good("TAN"))])]             # number already used
+    payroll.auto_employees(p, cands, {}, lambda: next(ids), million=listed)
+    assert [(e["name"], e["emp_no"], e.get("emp_no_million")) for e in p["employees"][1:]] == [
+        ("ALI  BIN ABU", "E01", "E01"), ("SITI", "", None), ("ZUL BIN OMAR", "", None), ("AMINAH", "", None), ("TAN", "", None)]
+    assert payroll.suggest_employee_nos(p, listed)["b"] == {"emp_no": "E02", "name": "SITI"}    # still offered, by the button
+    # the mark stays while the number is the one filled in, and goes when the user types another
+    kept = payroll.validate_plan(p, {"j1", "j2", "j3", "j4", "j5"})["employees"][1]
+    assert kept["emp_no_million"] == "E01"
+    p["employees"][1]["emp_no"] = "E09"
+    assert "emp_no_million" not in payroll.validate_plan(p, {"j1", "j2", "j3", "j4", "j5"})["employees"][1]
+
+
+def test_an_employee_no_is_not_filled_in_for_a_known_worker_two_same_names_or_without_a_list():
+    listed = [{"emp_no": "E01", "name": "ALI BIN ABU"}]
+    ali = [("Name", good("ALI BIN ABU"))]
+    # two companies each have a worker of that name: not clear who is E01
+    p, ids = plan_for(), iter("ab")
+    payroll.auto_employees(p, [candidate("j1", "MAJU JAYA A SEPT 26.jpeg", header=ali),
+                               candidate("j2", "BINA A SEPT 26.jpeg", company="BINA", header=ali)], {}, lambda: next(ids), million=listed)
+    assert [e["emp_no"] for e in p["employees"]] == ["", ""]
+    # the number the user typed in an earlier month wins, and is not marked as Million's
+    p = plan_for()
+    directory = {"maju jaya|name:ali bin abu": {"emp_no": "MJ(7)", "name": "ALI BIN ABU"}}
+    payroll.auto_employees(p, [candidate("j1", "MAJU JAYA A SEPT 26.jpeg", header=ali)], directory, lambda: "a", million=listed)
+    assert p["employees"][0]["emp_no"] == "MJ(7)" and "emp_no_million" not in p["employees"][0]
+    # no list imported from Million: nothing to take a number from
+    p = plan_for()
+    payroll.auto_employees(p, [candidate("j1", "MAJU JAYA A SEPT 26.jpeg", header=ali)], {}, lambda: "a")
+    assert p["employees"][0]["emp_no"] == ""
+    # a mark the page sends for a number that was never filled in is not kept
+    p["employees"][0]["emp_no_million"] = "E01"
+    assert "emp_no_million" not in payroll.validate_plan(p, {"j1"})["employees"][0]
+
+
+def test_a_new_employee_no_is_the_companys_first_seven_letters_and_the_next_number():
+    assert payroll.company_prefix("Maju Jaya") == "MAJUJAY" and payroll.company_prefix("A & B (M) Sdn. Bhd.") == "ABMSDNB"
+    assert payroll.company_prefix("ACME") == "ACME" and payroll.company_prefix(" - ") == ""
+
+    def person(n, name, emp_no=""):
+        return employee(id=f"e{n}", emp_no=emp_no, name=name)
+
+    p = plan_for()
+    p["employees"] = [person(1, "ALI"), person(2, "SITI"), person(3, "ZUL", "X9"), person(4, ""), person(5, "AMIN"),
+                      person(6, "TAN"), person(7, "LIM", "majujay004"), person(8, "OMAR")]
+    companies = {"e1": "MAJU JAYA", "e2": "Maju  Jaya", "e3": "MAJU JAYA", "e4": "MAJU JAYA", "e5": "", "e6": "ACME", "e7": "MAJU JAYA"}
+    # 004 is in this plan and 012 somewhere else (another month, Million's list): the next ones follow the highest
+    assert payroll.new_employee_nos(p, companies, {"MAJUJAY012", "MAJUJAYA900", "ACME7", "OTHER001"}) == {
+        "e1": "MAJUJAY013", "e2": "MAJUJAY014", "e4": "MAJUJAY015", "e6": "ACME008"}   # not: has a number, no company, not asked
+    assert [e["emp_no"] for e in p["employees"]][:2] == ["", ""]     # the plan itself is not changed
+    assert payroll.new_employee_nos(plan_for(employees=[person(1, "ALI")]), {"e1": "MAJU JAYA"}, set()) == {"e1": "MAJUJAY001"}
+    # the mark stays while the number is the one made, and goes when the user types another
+    p = plan_for(employees=[employee(id="e1", emp_no="MAJUJAY001", name="ALI", emp_no_new="MAJUJAY001")])
+    assert payroll.validate_plan(p, set())["employees"][0]["emp_no_new"] == "MAJUJAY001"
+    p["employees"][0]["emp_no"] = "MJ(1)"
+    assert "emp_no_new" not in payroll.validate_plan(p, set())["employees"][0]
+
+
+def test_every_saved_month_and_remembered_worker_counts_as_a_used_employee_no(tmp_path):
+    store = payroll.PayrollStore(tmp_path)
+    sept = plan_for(employees=[employee(id="e1", emp_no="MAJUJAY001", name="ALI"), employee(id="e2", emp_no="", name="SITI")])
+    store.save(payroll.validate_plan(sept, set()))
+    store.save_directory({"maju jaya|name:zul": {"emp_no": "MAJUJAY002", "name": "ZUL"}})
+    store.save_million([{"emp_no": "M1", "name": "X"}], "list.xls")              # not a month: read by the caller
+    assert store.used_employee_nos() == {"MAJUJAY001", "MAJUJAY002"}
+
+
 def test_a_card_with_an_unclear_printed_name_joins_its_pair_by_file_name():
     p = plan_for()
     cands = [candidate("j2", "MAJU JAYA ALI SEPT 26 2.jpeg"),                       # name unclear on this one
@@ -380,6 +457,87 @@ def test_a_card_with_an_unclear_printed_name_joins_its_pair_by_file_name():
     added, _, _ = payroll.auto_employees(p, cands, {}, lambda: "a")
     assert added == 1 and sorted(p["employees"][0]["jobs"]) == ["j1", "j2"]
     assert p["employees"][0]["name"] == "ALI BIN ABU"
+
+
+def test_a_card_added_later_joins_its_pair_and_only_addable_cards_are_added():
+    p = plan_for()
+    first = candidate("j1", "MAJU JAYA ALI SEPT 26.jpeg", header=[("Name", good("ALI BIN ABU"))])
+    payroll.auto_employees(p, [first], {}, lambda: "a")
+    later = candidate("j2", "MAJU JAYA ALI SEPT 26 2.jpeg")                          # nothing printed on it
+    other = candidate("j3", "MAJU JAYA ZUL SEPT 26.jpeg")
+    added, _, _ = payroll.auto_employees(p, [first, later, other], {}, lambda: "b", addable={"j2"})
+    assert added == 0 and [e["jobs"] for e in p["employees"]] == [["j1", "j2"]]
+
+
+def test_a_card_is_placed_on_an_employee_or_on_a_new_one():
+    p = plan_for()
+    payroll.auto_employees(p, [candidate("j1", "MAJU JAYA ALI SEPT 26.jpeg")], {}, lambda: "a")
+    other = candidate("j2", "MAJU JAYA SEPT 26 (9).jpeg")
+    assert payroll.place_card(p, other, "a", lambda: "b", {})["jobs"] == ["j1", "j2"]
+    assert payroll.place_card(p, other, "a", lambda: "b", {})["jobs"] == ["j1", "j2"]          # not twice
+    named = candidate("j3", "MAJU JAYA SEPT 26 (7).jpeg", header=[("Name", good("ZUL BIN OMAR"))])
+    directory = {"maju jaya|name:zul bin omar": {"emp_no": "MJ(7)", "name": "ZUL BIN OMAR"}}
+    new = payroll.place_card(p, named, None, lambda: "b", directory)
+    assert (new["id"], new["name"], new["emp_no"], new["jobs"], new["company"]) == ("b", "ZUL BIN OMAR", "MJ(7)", ["j3"], "MAJU JAYA")
+    assert new["worker_key"] == "maju jaya|name:zul bin omar"
+    # a second new employee for a worker who already is one: made, but not under the same remembered worker
+    twin = payroll.place_card(p, candidate("j4", "MAJU JAYA SEPT 26 (8).jpeg", header=[("Name", good("ZUL BIN OMAR"))]),
+                              None, lambda: "c", directory)
+    assert twin["id"] == "c" and "worker_key" not in twin and twin["emp_no"] == ""
+    assert len(payroll.validate_plan(p, {"j1", "j2", "j3", "j4"})["employees"]) == 3
+    with pytest.raises(ocr.OcrError) as exc:
+        payroll.place_card(p, other, "gone", lambda: "d", {})
+    assert exc.value.code == "EMPLOYEE_NOT_FOUND"            # the employee was removed in another tab
+
+
+def test_the_month_chosen_for_a_file_is_kept(tmp_path):
+    store = payroll.PayrollStore(tmp_path)
+    assert store.load_file_months() == {}
+    store.save_file_months({"d1": "2026-09", "d2": "none"})
+    assert store.load_file_months() == {"d1": "2026-09", "d2": "none"}
+    (tmp_path / "file-months.json").write_text("not json", encoding="utf-8")
+    assert store.load_file_months() == {}                       # a damaged file is no answer, never a crash
+    assert store.used_employee_nos() == set()                   # and it is not taken for a month's payroll
+
+
+TODAY = date(2026, 10, 12)
+
+
+def header_page(*fields, cells=None):
+    rec = record([], header=[(k, (cells or {}).get(k) or good(v)) for k, v in fields])
+    rec["page"] = 1
+    return jobs.merged_pages({"pages": [rec]}, {"edits": []})
+
+
+@pytest.mark.parametrize("file_name,fields,month", [
+    ("DB X SEPT 2026 (ALI) (2).jpeg", (), "2026-09"),
+    ("ACME KLC 1 SEPT26.png", (), "2026-09"),
+    ("ACME ALI SEP 26.jpeg", (), "2026-09"),     
+    ("MARKET SEPT 2026.jpeg", (), "2026-09"),                                # "MARKET" is not March
+    ("card.jpeg", (("MONTH", "SEP"), ("YEAR", "2026")), "2026-09"),
+    ("card.jpeg", (("Bagi Bulan / For the month of", "SEPT"), ("Year", "26")), "2026-09"),
+    ("card.jpeg", (("Month", "Sep-26"),), "2026-09"),
+    ("card.jpeg", (("Month/Year (handwritten)", "Sept. 2026"),), "2026-09"),
+    ("card.jpeg", (("Period From", "01/09/2026 To 30/09/2026"),), "2026-09"),
+    ("card.jpeg", (("For the Month of", "September"),), "2026-09"),           # no year: the latest September
+    ("card.jpeg", (("For the Month of", "December"),), "2025-12"),            # ... up to next month
+    ("card.jpeg", (("For the Month of", "November"),), "2026-11"),
+    ("ACME SEPT 2026.jpeg", (("Month", "SEPTEMBER 2026"), ("Total working days in a month", "22")), "2026-09"),
+    ("MEI LING.jpeg", (), None),                                               # a name, not May: no year beside it
+    ("ACME SEPT 15.jpeg", (), None),                                           # the 15th, not 2015
+    ("ACME ALI.jpeg", (), None),
+    ("ACME AUG 2026.jpeg", (("Month", "September"),), None),                   # two months: not chosen
+])
+def test_the_month_of_a_document_comes_from_its_file_name_or_card(file_name, fields, month):
+    found, why = payroll.document_month(file_name, header_page(*fields), TODAY)
+    assert found == month and bool(why) == (month is None)
+    if file_name == "ACME AUG 2026.jpeg":
+        assert why == "the file name and the card give different months (2026-08, 2026-09)"
+
+
+def test_an_unclear_month_on_the_card_is_not_used():
+    pages = header_page(("Month", ""), cells={"Month": cell(None, raw="SE?T", reason="faded")})
+    assert payroll.document_month("card.jpeg", pages, TODAY)[0] is None
 
 
 # ------------------------------------------------------------------- month grids: one row per worker, a column per day
@@ -549,7 +707,8 @@ def test_in_out_columns_are_paired_in_the_cards_order():
 @pytest.mark.parametrize("text,minutes", [
     ("07:55", 475), ("7.55", 475), ("17:02:30", 1022.5), ("5.30 PM", 1050), ("5:30pm", 1050), ("5,30 p.m.", 1050),
     ("12.00 AM", 0), ("12:15 PM", 735), ("8.00 AM.", 480), ("0:00", 0),
-    ("7.5", None), ("7.75", None), ("24:00", None), ("13.00 PM", None), ("530 PM", None), ("8", None), ("8.00 AM ✓", None),
+    ("530 PM", 1050), ("1130 am", 690), ("7.5", None), ("7.75", None), ("24:00", None), ("13.00 PM", None),
+    ("530", None), ("1330 pm", None), ("8", None), ("8.00 AM ✓", None),
     ("", None), ("abc", None)])
 def test_clock_times_as_written_on_cards(text, minutes):
     assert payroll.parse_clock(text) == minutes
@@ -594,15 +753,15 @@ def test_in_out_days_that_cannot_be_worked_out_are_reported_and_never_guessed():
             {"DATE": good("2"), "IN": good("07:55"), "OUT": good("")},
             {"DATE": good("3"), "IN": good("-"), "OUT": good("17:00")},
             {"DATE": good("4"), "IN": good("7.55 AM ✓"), "OUT": good("17:00")},
-            {"DATE": good("7"), "IN": good("8.00"), "OUT": good("5.00")},        # afternoon, or a night shift?
-            {"DATE": good("8"), "IN": good("20:00"), "OUT": good("05:00")}]
+            {"DATE": good("7"), "IN": good("8.00"), "OUT": good("5.00 am")},     # said am: not taken as afternoon
+            {"DATE": good("8"), "IN": good("20:00"), "OUT": good("05:00")}]     # a night shift
     r = payroll.calculate(plan_for(), [("card", merged(rows, labels=("DATE", "IN", "OUT")))], employee())
     texts = [i["text"] for i in r["issues"] if i["kind"] == "unclear"]
     assert texts[0] == "card, day 1: an IN or OUT time is still unclear. Check the yellow cell in the document."
     assert "day 2: there is an IN time (07:55) but no OUT time" in texts[1]
     assert "day 3: there is an OUT time (17:00) but no IN time" in texts[2]
     assert "day 4: '7.55 AM ✓' is not a clock time" in texts[3]
-    assert "day 7: OUT 5.00 is not later than IN 8.00" in texts[4] and "day 8: OUT 05:00" in texts[5]
+    assert "day 7: OUT 5.00 am is not later than IN 8.00" in texts[4] and "day 8: OUT 05:00" in texts[5]
     assert all(d["hours"] is None and d["status"] == "unclear" for d in r["days"] if d["day"] in (1, 2, 3, 4, 7, 8))
     assert values(r)["days_worked"] == 0 and not r["complete"]
 
@@ -619,6 +778,103 @@ def test_an_hours_column_wins_over_in_and_out_times():
     rows = [{"Date": good("1"), "IN": good("08:00"), "OUT": good("20:00"), "Total": good("9")}]
     r = payroll.calculate(plan_for(), [("card", merged(rows, labels=("Date", "IN", "OUT", "Total")))], employee())
     assert r["days"][0]["hours"] == 9.0 and r["days"][0]["clock"] is None
+
+
+def test_bilingual_in_out_labels_are_paired():
+    labels = ["Tarikh Date", "Sebelum T/Hari Before Noon / Masuk In", "Sebelum T/Hari Before Noon / Keluar Out",
+              "Selepas T/Hari After Noon / Masuk In", "Selepas T/Hari After Noon / Keluar Out", "Jumlah Total"]
+    assert payroll.clock_pairs(labels) == [(labels[1], labels[2]), (labels[3], labels[4])]
+    assert payroll.clock_pairs(["Date", "Masa Masuk / Time In", "Masa Keluar / Time Out"]) == [
+        ("Masa Masuk / Time In", "Masa Keluar / Time Out")]
+    assert payroll.clock_pairs(["Date", "In / Out", "Out"]) == []                  # one column for both is no pair
+
+
+TOTAL_CARD = ("Date", "Before Noon / In", "Before Noon / Out", "After Noon / In", "After Noon / Out", "Total")
+
+
+def test_an_empty_total_column_does_not_hide_the_in_and_out_times():
+    rows = [(1, {TOTAL_CARD[1]: "08:00", TOTAL_CARD[2]: "12:00", TOTAL_CARD[3]: "13:00", TOTAL_CARD[4]: "18:00"}),
+            (2, {TOTAL_CARD[1]: "08:00", TOTAL_CARD[2]: "12:00", TOTAL_CARD[3]: "13:00", TOTAL_CARD[4]: "17:00",
+                 "Total": "7"}),                                         # a written Total counts (the user's choice)
+            (3, {})]                                                     # nothing written: not worked
+    r = payroll.calculate(plan_for(), [("card", in_out(rows, labels=TOTAL_CARD))], employee())
+    by_day = {d["day"]: d for d in r["days"]}
+    assert by_day[1]["hours"] == 9.0 and by_day[1]["clock"]["pairs"] == 2
+    assert by_day[2]["hours"] == 7.0 and by_day[2]["clock"] is None
+    assert by_day[3]["hours"] == 0.0 and by_day[3]["status"] == "ok"
+    v = values(r)
+    assert v["days_worked"] == 2 and v["ot_1_5"] == 1.0
+
+
+def test_unclear_times_behind_an_empty_total_make_the_day_unclear_not_unworked():
+    rows = [{"Date": good("1"), TOTAL_CARD[1]: cell(None, raw="0?:00", reason="faded"), TOTAL_CARD[2]: good("12:00"),
+             TOTAL_CARD[3]: good(""), TOTAL_CARD[4]: good(""), "Total": good("")}]
+    r = payroll.calculate(plan_for(), [("card", merged(rows, labels=TOTAL_CARD))], employee())
+    assert r["days"][0]["status"] == "unclear" and r["days"][0]["hours"] is None
+    assert values(r)["days_worked"] == 0 and not r["complete"]
+    assert any("an IN or OUT time is still unclear" in i["text"] for i in r["issues"])
+
+
+def test_an_empty_total_with_times_in_unknown_columns_is_reported():
+    labels = ("Date", "Start", "Finish", "Total")                       # not recognised as IN/OUT
+    rows = [{"Date": good("1"), "Start": good("08:00"), "Finish": good("17:00"), "Total": good("")},
+            {"Date": good("2"), "Start": good(""), "Finish": cell(None, raw="1?", reason="smudged"), "Total": good("")},
+            {"Date": good("3"), "Start": good(""), "Finish": good(""), "Total": good("")},
+            {"Date": good("4"), "Start": good("08:00"), "Finish": good("17:00"), "Total": good("8")}]
+    r = payroll.calculate(plan_for(), [("card", merged(rows, labels=labels))], employee())
+    by_day = {d["day"]: d for d in r["days"]}
+    assert by_day[1]["status"] == by_day[2]["status"] == "unclear"
+    assert by_day[3]["hours"] == 0.0 and by_day[4]["hours"] == 8.0
+    texts = [i["text"] for i in r["issues"] if i["kind"] == "unclear"]
+    assert texts[0] == ("card, day 1: the Total column is empty but other columns of the row have times or yellow cells. "
+                        "Type the hours in the Total column of the document.")
+    assert not r["complete"]
+
+
+THREE_PAIRS = ("DATE", "MORNING / IN", "MORNING / OUT", "AFTERNOON / IN", "AFTERNOON / OUT", "OVERTIME / IN",
+               "OVERTIME / OUT")
+
+
+def test_one_in_and_one_later_out_are_one_span_with_the_break_taken_off():
+    m_in, m_out, a_in, a_out, o_in, o_out = THREE_PAIRS[1:]
+    rows = [(1, {m_in: "08:00", o_out: "19:00"}),                       # clocked in the morning, out after overtime
+            (2, {m_in: "08:00", a_out: "17:00"}),
+            (3, {m_in: "08:00", a_in: "13:00", o_out: "19:00"}),         # two INs, one OUT: not worked out
+            (4, {m_out: "12:00", a_in: "13:00"})]                        # OUT before IN: not worked out
+    p = plan_for()
+    r = payroll.calculate(p, [("card", in_out(rows, labels=THREE_PAIRS))], employee())
+    by_day = {d["day"]: d for d in r["days"]}
+    assert by_day[1]["hours"] == 10.0 and by_day[1]["code"] == "08:00 - 19:00"
+    assert by_day[1]["clock"] == {"hours": 10.0, "break": 1.0, "pairs": 1}
+    assert by_day[2]["hours"] == 8.0
+    assert by_day[3]["status"] == by_day[4]["status"] == "unclear"
+    assert values(r)["days_worked"] == 2 and values(r)["ot_1_5"] == 2.0
+    p["break_hours"] = 0.5                                               # the month's break box applies
+    assert payroll.calculate(p, [("card", in_out(rows[:1], labels=THREE_PAIRS))], employee())["days"][0]["hours"] == 10.5
+
+
+def test_day_words_on_an_in_out_card_mark_the_day():
+    m_in, m_out, a_in, a_out, o_in, o_out = THREE_PAIRS[1:]
+    p = plan_for()
+    p["day_types"]["16"] = "holiday"
+    rows = [(1, {m_in: "08:00", a_out: "17:00"}),
+            (2, {m_in: "OFF", m_out: "DAY"}),                            # one word over two cells
+            (3, {m_in: "O", m_out: "F", a_in: "F"}),                     # one letter per cell
+            (4, {m_in: "CUTI"}),
+            (5, {a_in: "MC"}),
+            (6, {m_in: "AHAD"}),                                         # Sunday
+            (7, {m_in: "PH"}),                                           # a working day in the calendar
+            (16, {m_in: "PH"}),
+            (17, {m_in: "08:00", m_out: "MC"}),                          # a time and a word: reported
+            (18, {m_in: "LATE"})]                                        # an unknown word: reported
+    r = payroll.calculate(p, [("card", in_out(rows, labels=THREE_PAIRS))], employee())
+    by_day = {d["day"]: d for d in r["days"]}
+    assert all(by_day[d]["status"] == "ok" and by_day[d]["hours"] == 0.0 for d in (2, 3, 4, 5, 6, 7, 16))
+    assert by_day[17]["status"] == by_day[18]["status"] == "unclear"
+    v = values(r)
+    assert v["days_worked"] == 1 and v["public_holiday"] == 1
+    kinds = {i["kind"]: i["text"] for i in r["issues"]}
+    assert "leave on day 4 (CUTI), 5 (MC)" in kinds["leave"] and "day 7 as a public holiday" in kinds["daytype"]
 
 
 def test_in_out_cards_are_readable_and_the_break_is_validated():
@@ -786,8 +1042,14 @@ def test_no_employee_list_means_no_check(tmp_path, monkeypatch):
 def test_millions_employee_list_is_read_from_its_printed_report_layout():
     people = [("MJ(1)", "ALI BIN ABU"), ("MJ(2)", "AMINAH"), (100, "ZUL"), ("B01", "")]
     assert payroll.parse_million_employees(million_listing(people)) == [
-        {"emp_no": "MJ(1)", "name": "ALI BIN ABU"}, {"emp_no": "MJ(2)", "name": "AMINAH"},
-        {"emp_no": "100", "name": "ZUL"}, {"emp_no": "B01", "name": ""}]      # three pages, headings not taken as people
+        {"emp_no": "MJ(1)", "name": "ALI BIN ABU", "basic_rate": 0.0}, {"emp_no": "MJ(2)", "name": "AMINAH", "basic_rate": 0.0},
+        {"emp_no": "100", "name": "ZUL", "basic_rate": 0.0}, {"emp_no": "B01", "name": "", "basic_rate": 0.0}]   # headings are not people
+    # the Payroll Information report also says how each employee is paid
+    paid = [("MJ(1)", "ALI", "ACME", "Daily", 65.5), ("MJ(2)", "SITI", "", "Monthly", 1700), ("MJ(3)", "ZUL", "", "", 0)]
+    assert payroll.parse_million_employees(million_listing(paid, title_col=1)) == [
+        {"emp_no": "MJ(1)", "name": "ALI", "branch": "ACME", "pay_basis": "daily", "basic_rate": 65.5},
+        {"emp_no": "MJ(2)", "name": "SITI", "pay_basis": "monthly", "basic_rate": 1700.0},
+        {"emp_no": "MJ(3)", "name": "ZUL", "basic_rate": 0.0}]
     # Million's "Payroll Information" report: its title, company name and total line sit in the Emp no. column
     assert [e["emp_no"] for e in payroll.parse_million_employees(million_listing(people, title_col=1))] == [
         "MJ(1)", "MJ(2)", "100", "B01"]
@@ -815,6 +1077,157 @@ def test_a_name_that_is_someone_else_in_million_needs_an_explicit_yes():
     assert refused(plan, results, code="MILLION_NAME", names=names).startswith("2 employees have another name")
     results[0]["emp_no"] = "MJ(9)"                                     # an unknown number is asked about first
     refused(plan, results, code="MILLION_UNKNOWN", names=names, known=set(names), allow_names=True)
+
+
+def test_the_month_run_puts_everyone_who_is_ready_into_one_file_and_says_why_for_the_rest():
+    plan, results = million(n=6)
+    results[1]["complete"] = False
+    results[1]["issues"] += [{"kind": "unclear", "text": "card, day 3: the hours are still unclear.", "job": "c"},
+                             {"kind": "missing", "text": "No entry found for day 9.", "job": None}]
+    results[2]["emp_no"] = ""
+    results[3]["emp_no"] = "MJ(9)"                                     # not in Million
+    results[5]["emp_no"] = "MJ(5)"                                     # the same number as employee 5
+    names = {"mj(1)": "WORKER 1", "mj(2)": "WORKER 2", "mj(4)": "WORKER 4", "mj(5)": "WORKER 5", "mj(6)": "SITI"}
+    companies = ["ACME", "ACME", "ACME", "BINA", "BINA", "BINA"]
+    run = payroll.month_run(plan, results, companies, mapping=MAPPING, known=set(names), names=names)
+    assert run["ready"] == [{"id": results[0]["id"], "emp_no": "MJ(1)", "name": "WORKER 1", "company": "ACME"}]
+    assert [h["id"] for h in run["held"]] == [r["id"] for r in results[1:]]
+    sheet = read_xls(run["file"])
+    assert sheet.nrows == 2 and sheet.cell_value(1, 0) == "MJ(1)" and sheet.cell_value(1, col("AZ")) == ""
+    why = {h["name"]: h["reasons"] for h in run["held"]}
+    assert why["WORKER 2"] == ["Marked INCOMPLETE: card, day 3: the hours are still unclear. (and 1 more)"]
+    assert why["WORKER 3"] == ["Employee No. is empty. Type it exactly as in Million Payroll."]
+    assert why["WORKER 4"] == ["Employee No. MJ(9) is not in the Million employee list."]
+    assert why["WORKER 5"] == why["WORKER 6"] == ["Employee No. MJ(5) is used for 2 employees. Each employee needs their own."]
+    assert [h["company"] for h in run["held"]] == ["ACME", "ACME", "BINA", "BINA", "BINA"]
+    results[4]["emp_no"], results[5]["emp_no"] = "MJ(4)", "MJ(6)"      # a number that is someone else in Million
+    results[3]["emp_no"] = "MJ(5)"
+    why = {h["name"]: h["reasons"] for h in payroll.month_run(plan, results, companies, mapping=MAPPING,
+                                                              known=set(names), names=names)["held"]}
+    assert why["WORKER 4"] == ["In Million Payroll, Employee No. MJ(5) is WORKER 5."]
+    assert why["WORKER 5"] == ["In Million Payroll, Employee No. MJ(4) is WORKER 4."]
+    assert why["WORKER 6"] == ["In Million Payroll, Employee No. MJ(6) is SITI."]
+
+
+def test_the_month_run_with_nobody_ready_makes_no_file_and_without_a_list_checks_no_numbers():
+    plan, results = million(n=2)
+    for r in results:
+        r["emp_no"] = ""
+    run = payroll.month_run(plan, results, ["", ""], mapping=MAPPING)
+    assert run["file"] is None and run["ready"] == [] and len(run["held"]) == 2
+    plan, results = million(n=2)
+    assert len(payroll.month_run(plan, results, ["", ""], mapping=MAPPING)["ready"]) == 2      # no list: nothing to check
+
+
+def test_an_employee_no_is_suggested_only_when_one_name_in_million_fits():
+    def plan_with(*people):
+        p = plan_for()
+        p["employees"] = [employee(id=f"e{k}", emp_no=no, name=name) for k, (no, name) in enumerate(people)]
+        return p
+
+    listed = [{"emp_no": "E01", "name": "Ali bin Abu"}, {"emp_no": "E02", "name": "SITI"}, {"emp_no": "E03", "name": "Ali bin Omar"},
+              {"emp_no": "E04", "name": ""}, {"emp_no": "E05", "name": "Zul"}]
+    p = plan_with(("", "MAJU JAYA SITI"), ("", "ALI"), ("", "ali bin abu"), ("X1", "ZUL"), ("", ""), ("", "AMINAH"))
+    assert payroll.suggest_employee_nos(p, listed) == {
+        "e0": {"emp_no": "E02", "name": "SITI"},                       # the one name in Million with all of its words
+        "e2": {"emp_no": "E01", "name": "Ali bin Abu"}}                # "ALI" alone fits two people: no suggestion
+    # a number someone in the plan already has is not offered, and neither is one that two employees would share
+    assert payroll.suggest_employee_nos(plan_with(("e02", "X"), ("", "SITI")), listed) == {}
+    assert payroll.suggest_employee_nos(plan_with(("", "SITI"), ("", "SITI AMINAH")), listed) == {}
+
+
+def test_basic_pay_is_rate_times_days_worked_for_daily_and_the_rate_itself_for_monthly():
+    p = holiday_16()
+    docs = [("card 1", card(1, 15, not_worked={6, 13})), ("card 2", card(16, 30, not_worked={20, 27}))]
+    daily = payroll.calculate(p, docs, employee(pay_basis="daily", basic_rate=65.5))
+    assert values(daily)["days_worked"] == 25 and (daily["pay_basis"], daily["basic_rate"], daily["rate_source"]) == ("daily", 65.5, "typed")
+    assert daily["pay"]["basic"] == 1637.5
+    monthly = payroll.calculate(p, docs, employee(pay_basis="monthly", basic_rate=1700))
+    assert (monthly["pay_basis"], monthly["pay"]["basic"]) == ("monthly", 1700.0)
+    none = payroll.calculate(p, docs, employee())
+    assert (none["pay_basis"], none["rate_source"], none["pay"]) == ("monthly", None, None)       # no rate: no pay shown
+    typed = payroll.calculate(p, docs, employee(pay_basis="daily", basic_rate=65.5, overrides={"days_worked": 20.0}))
+    assert typed["pay"]["basic"] == 1310.0                            # a Days Worked figure typed over is the one used
+
+
+def test_overtime_pay_follows_millions_own_overtime_tables():
+    counts = {"days_worked": 25, "ot_1": 2, "ot_1_5": 10, "ot_2": 4, "ot_3": 1, "ot_rest_day": 2, "ot_holiday": 1}
+    daily = payroll.pay_preview("daily", 80.0, counts, {})            # an hour = 80 / 8 = 10; a day = 80
+    assert {line["key"]: (line["each"], line["amount"]) for line in daily["lines"]} == {
+        "ot_1": (10.0, 20.0), "ot_1_5": (15.0, 150.0), "ot_2": (20.0, 80.0), "ot_3": (30.0, 30.0),
+        "ot_rest_day": (160.0, 320.0), "ot_holiday": (240.0, 240.0)}
+    assert (daily["basic"], daily["overtime"], daily["total"]) == (2000.0, 840.0, 2840.0)
+    monthly = payroll.pay_preview("monthly", 2080.0, counts, {})      # a day = 2080 / 26 = 80: the same overtime
+    assert (monthly["basic"], monthly["overtime"], monthly["total"]) == (2080.0, 840.0, 2920.0)
+    extras = {"allowance": {"Food Allowance": 100.0, "Transport Allowance": 50.0}, "deduction": {"ADVANCE SALARY": 200.0}}
+    with_extras = payroll.pay_preview("daily", 80.0, {"days_worked": 10}, extras)
+    assert with_extras == {"basic": 800.0, "lines": [], "overtime": 0.0, "allowances": 150.0, "deductions": 200.0, "total": 750.0}
+    assert payroll.pay_preview("daily", 0.0, counts, {}) is None
+
+
+def test_millions_pay_basis_and_rate_are_used_until_a_rate_is_typed():
+    p = holiday_16()
+    docs = [("card 1", card(1, 15, not_worked={6, 13})), ("card 2", card(16, 30, not_worked={20, 27}))]
+    in_million = {"emp_no": "MJ(1)", "name": "ALI", "pay_basis": "daily", "basic_rate": 60.0, "branch": "ACME"}
+    r = payroll.calculate(p, docs, employee(), in_million)
+    assert (r["pay_basis"], r["basic_rate"], r["rate_source"]) == ("daily", 60.0, "million") and r["pay"]["basic"] == 1500.0
+    assert r["million"] == {"pay_basis": "daily", "basic_rate": 60.0, "branch": "ACME"}
+    typed = payroll.calculate(p, docs, employee(pay_basis="monthly", basic_rate=1800), in_million)
+    assert (typed["pay_basis"], typed["basic_rate"], typed["rate_source"]) == ("monthly", 1800.0, "typed")
+    assert typed["million"]["basic_rate"] == 60.0                      # still shown, so a difference can be seen
+    for not_usable in ({"emp_no": "MJ(1)", "pay_basis": "hourly", "basic_rate": 9.0}, {"emp_no": "MJ(1)", "pay_basis": "daily"},
+                       {"emp_no": "MJ(1)", "basic_rate": 60.0}, None):
+        r = payroll.calculate(p, docs, employee(), not_usable)
+        assert (r["rate_source"], r["pay"]) == (None, None)
+    by_no = {"mj(1)": in_million}
+    plan = plan_for()
+    plan["employees"] = [employee(emp_no="MJ(1)"), employee(id="e2", emp_no="MJ(2)")]
+    both = payroll.compute_all(plan, lambda ref: ("x", []), by_no)
+    assert [x["rate_source"] for x in both] == ["million", None]
+
+
+def test_pay_basis_and_basic_rate_are_checked_and_start_as_monthly_with_no_rate():
+    plan = plan_for()
+    plan["employees"] = [employee(pay_basis="daily", basic_rate=65.5)]
+    saved = payroll.validate_plan(plan, set())["employees"][0]
+    assert (saved["pay_basis"], saved["basic_rate"]) == ("daily", 65.5)
+    plan["employees"] = [employee()]                                  # a plan saved before the Basic Rate could be typed
+    saved = payroll.validate_plan(plan, set())["employees"][0]
+    assert (saved["pay_basis"], saved["basic_rate"]) == ("monthly", 0.0)
+    for bad in ({"pay_basis": "weekly"}, {"basic_rate": -1}, {"basic_rate": "70"}):
+        plan["employees"] = [employee(**bad)]
+        with pytest.raises(ocr.OcrError):
+            payroll.validate_plan(plan, set())
+
+
+def test_the_pay_table_lists_basis_rate_counts_and_pay():
+    p = holiday_16()
+    docs = [("card 1", card(1, 15, not_worked={6, 13})), ("card 2", card(16, 30, not_worked={20, 27}))]
+    results = [payroll.calculate(p, docs, employee(id="a", emp_no="MJ(1)", name="ALI", pay_basis="daily", basic_rate=80.0)),
+               payroll.calculate(p, docs, employee(id="b", emp_no="MJ(2)", name="ZUL"), {"pay_basis": "monthly", "basic_rate": 2080.0}),
+               payroll.calculate(p, [], employee(id="c", emp_no="MJ(3)", name="SITI"))]
+    rows = list(csv.reader(io.StringIO(payroll.build_basic_pay_csv(results, ["MAJU JAYA", "MAJU JAYA", ""]))))
+    ali, zul, siti, total = (dict(zip(rows[0], row)) for row in rows[1:5])
+    assert rows[0][:8] == ["Company", "Employee No.", "Name", "Pay basis", "Basic Rate (RM)", "Rate from", "Days Worked", "Basic pay (RM)"]
+    assert (ali["Pay basis"], ali["Basic Rate (RM)"], ali["Rate from"], ali["Days Worked"], ali["Basic pay (RM)"]) == (
+        "Daily", "80.00", "Table Reader", "25.00", "2000.00")
+    # 25 hours at 1.5 (80 / 8 x 1.5 = 15) and the public holiday worked (80 x 3)
+    assert (ali["Overtime 1.5 pay (RM)"], ali["Holiday Day pay (RM)"], ali["Overtime pay (RM)"]) == ("375.00", "240.00", "615.00")
+    assert ali["Estimated pay before EPF, SOCSO and tax (RM)"] == "2615.00" and ali["Overtime 1.5 (hours)"] == "25.00"
+    assert (zul["Pay basis"], zul["Rate from"], zul["Basic pay (RM)"], zul["Overtime pay (RM)"]) == ("Monthly", "Million", "2080.00", "615.00")
+    assert siti["Pay basis"] == siti["Basic pay (RM)"] == siti["Estimated pay before EPF, SOCSO and tax (RM)"] == ""
+    assert siti["Notes"].startswith("INCOMPLETE")                    # no rate: no pay
+    assert rows[4][2] == "Total" and total["Estimated pay before EPF, SOCSO and tax (RM)"] == "5310.00"
+
+
+def test_pay_basis_and_basic_rate_are_remembered_for_next_month():
+    p = plan_for()
+    p["employees"] = [employee(worker_key="maju|name:ali", pay_basis="daily", basic_rate=60.0),
+                      employee(id="e2", worker_key="maju|name:siti")]
+    directory = {}
+    assert payroll.remember_employees(p, directory)
+    assert directory == {"maju|name:ali": {"emp_no": "MJ(1)", "name": "Test", "pay_basis": "daily", "basic_rate": 60.0},
+                         "maju|name:siti": {"emp_no": "MJ(1)", "name": "Test"}}
 
 
 def test_a_broken_mapping_file_is_reported(tmp_path):
@@ -856,3 +1269,465 @@ def test_the_employees_company_is_set_or_comes_from_their_files():
     p = plan_for()
     payroll.auto_employees(p, [candidate("j1", "MAJU JAYA ALI SEPT 26.jpeg")], {}, lambda: "a")
     assert p["employees"][0]["company"] == "MAJU JAYA"
+
+
+# ------------------------------------------------------------------- where a line problem is (the one-look panel)
+def located(result, kind="unclear"):
+    return [i for i in result["issues"] if i["kind"] == kind and "at" in i]
+
+
+def test_an_unclear_hours_cell_says_where_it_is():
+    rows = [day(1, "9"), {"Date": good("2"), "Total": cell(None, "9?", 30, "smudged")}, day(3, "9")]
+    r = payroll.calculate(plan_for(), [("c", merged(rows))], employee())
+    assert [i["at"] for i in located(r)] == [{"doc": 0, "page": 1, "row": 1, "day": 2, "columns": ["Total"]}]
+
+
+def test_an_unclear_in_out_time_says_its_columns():
+    rows = [{"Date": good("4"), "In": good("08:00"), "Out": cell(None, "17:0?", 30, "faded")}]
+    r = payroll.calculate(plan_for(), [("c", merged(rows, labels=("Date", "In", "Out")))], employee())
+    [at] = [i["at"] for i in located(r)]
+    assert at["columns"] == ["In", "Out"] and at["day"] == 4 and at["row"] == 0       # the date was read: a label
+
+
+def test_an_unclear_date_has_no_day():
+    rows = [day(1, "9"), {"Date": cell(None, "?", 20, "smudged"), "Total": good("9")}]
+    r = payroll.calculate(plan_for(), [("c", merged(rows))], employee())
+    [at] = [i["at"] for i in located(r)]
+    assert at["day"] is None and at["row"] == 1 and at["columns"] == ["Date", "Total"]
+
+
+def test_a_date_outside_the_month_says_where_it_is():
+    rows = [day(1, "9"), day(32, "9")]
+    r = payroll.calculate(plan_for(), [("c", merged(rows))], employee())
+    assert [i["at"]["row"] for i in located(r, "date")] == [1]
+
+
+def test_a_grid_row_part_points_at_the_documents_row():
+    page = grid(grid_row("ZUL", {5: ""}))[0]
+    page["rows"][0]["cells"]["5"].update(needs_review=True, raw_text="?")
+    page["first_row"] = 2                                   # the third worker's row of the sheet
+    r = payroll.calculate(plan_for(), [("grid (row 3)", [page])], employee())
+    assert [i["at"] for i in located(r)] == [{"doc": 0, "page": 1, "row": 2, "day": 5, "columns": ["5"]}]
+
+
+def test_compute_all_names_the_document_of_a_problem():
+    rows = [day(1, "9"), {"Date": good("2"), "Total": cell(None, "9?", 30, "smudged")}]
+
+    def load(ref):
+        if ref == "gone":
+            raise ocr.OcrError("JOB_NOT_FOUND", "gone")
+        return "card", merged(rows)
+
+    p = plan_for(employees=[employee(jobs=["gone", "d9#p1"])])
+    [r] = payroll.compute_all(p, load)
+    assert [i["at"]["doc"] for i in located(r)] == ["d9"]
+
+
+def test_whole_page_problems_have_no_place():
+    r = payroll.calculate(plan_for(), [("c", merged([{"Date": good("1"), "Note": good("x")}], labels=("Date", "Note")))],
+                          employee())
+    assert [i for i in r["issues"] if i["kind"] == "column" and "at" not in i]
+
+
+def test_a_grid_mark_on_a_day_the_month_does_not_have_says_where_it_is():
+    r = payroll.calculate(plan_for(), [("grid", grid(grid_row("ZUL", {31: "✓"})))], employee())
+    assert [i["at"] for i in located(r, "date")] == [{"doc": 0, "page": 1, "row": 0, "day": 31, "columns": ["31"]}]
+
+
+# ------------------------------------------------------------------------------------- month and company settings
+def bina_own(p, **values):
+    p.setdefault("companies", {})["BINA"] = payroll.own_settings(p, values or None)
+    return p
+
+
+def test_a_company_with_its_own_settings_is_calculated_with_them():
+    p = plan_for()
+    days = dict(p["day_types"], **{"7": "rest"})
+    bina_own(p, normal_hours=9, break_hours=1, day_types=days)
+    p["employees"] = [employee(id="e1", jobs=["c"]), employee(id="e2", jobs=["c"]), employee(id="e3", jobs=["c"])]
+    loader = lambda ref: ("c", card(1, 30, not_worked={6, 13, 20, 27}))
+    bina, maju, nobody = payroll.compute_all(p, loader, None, ["BINA", "MAJU JAYA", ""])
+    assert values(bina)["ot_1_5"] == 0 and values(bina)["working_days"] == 25 and values(bina)["ot_rest_day"] == 1
+    assert values(maju)["ot_1_5"] == 26 and values(maju)["working_days"] == 26
+    assert values(nobody) == values(maju)
+
+
+def test_no_companies_gives_the_same_figures():
+    p = plan_for(employees=[employee(jobs=["c"])])
+    loader = lambda ref: ("c", card(1, 30))
+    assert payroll.compute_all(p, loader) == payroll.compute_all(p, loader, None, ["BINA"])
+
+
+def test_validate_keeps_company_settings_and_refuses_bad_ones():
+    p = bina_own(plan_for())
+    p["companies"]["A & B (M)  SDN. BHD."] = payroll.own_settings(p, {"normal_hours": 9, "keep": True})
+    kept = payroll.validate_plan(p, set())["companies"]
+    assert set(kept) == {"BINA", "A & B (M) SDN. BHD."} and kept["A & B (M) SDN. BHD."]["keep"] is True
+    assert kept["A & B (M) SDN. BHD."]["normal_hours"] == 9 and kept["BINA"]["keep"] is False
+    assert payroll.validate_plan(plan_for(), set())["companies"] == {}
+    for change, message in (({"normal_hours": 25}, "Normal hours per day must be a number from 1 to 24."),
+                            ({"break_hours": 6}, "The break must be a number of hours from 0 to 5.")):
+        bad = bina_own(plan_for())
+        bad["companies"]["BINA"].update(change)
+        with pytest.raises(ocr.OcrError) as err:
+            payroll.validate_plan(bad, set())
+        assert err.value.message == message
+    bad = bina_own(plan_for())
+    del bad["companies"]["BINA"]["day_types"]["30"]
+    with pytest.raises(ocr.OcrError):
+        payroll.validate_plan(bad, set())
+
+
+def test_default_changed_after_own_settings():
+    p = bina_own(plan_for())
+    assert not payroll.default_changed(p, "BINA") and not payroll.default_changed(p, "MAJU JAYA")
+    p["day_types"]["16"] = "holiday"                       # a public holiday marked in the month's default afterwards
+    assert payroll.default_changed(p, "BINA")
+    assert payroll.settings_for(p, "BINA")["day_types"]["16"] == "work"      # its own calendar does not change
+    assert payroll.settings_for(p, "MAJU JAYA")["day_types"]["16"] == "holiday"
+
+
+def weekend_company(month, holidays=(), keep=True, sundays_worked=()):
+    """BINA resting on Saturdays and Sundays (except ``sundays_worked``), working 9 hours, in ``month``."""
+    p = plan_for(month)
+    y, m = payroll.parse_month(month)
+    days = {}
+    for d in range(1, payroll.days_in(month) + 1):
+        weekday = date(y, m, d).weekday()
+        days[str(d)] = "holiday" if d in holidays else "rest" if weekday >= 5 and d not in sundays_worked else "work"
+    return bina_own(p, normal_hours=9, break_hours=0.5, day_types=days, keep=keep)
+
+
+def test_kept_settings_start_the_next_month_by_weekday():
+    august = weekend_company("2026-08", holidays=(31, 15))     # 31 = a Monday, 15 = a Saturday: both public holidays
+    september = plan_for("2026-09")
+    september["day_types"]["16"] = "holiday"                  # the new month's default has its own public holiday
+    bina = payroll.carry_companies(august, september)["BINA"]
+    assert (bina["normal_hours"], bina["break_hours"], bina["keep"]) == (9, 0.5, True)
+    types = bina["day_types"]
+    assert [d for d, t in types.items() if t == "rest"] == ["5", "6", "12", "13", "19", "20", "26", "27"]
+    assert [d for d, t in types.items() if t == "holiday"] == ["16"]            # August's are not carried
+    assert bina["based_on"]["day_types"] == september["day_types"]
+    assert not payroll.default_changed({**september, "companies": {"BINA": bina}}, "BINA")
+
+
+def test_a_company_working_some_sundays_works_sundays_next_month():
+    august = weekend_company("2026-08", sundays_worked=(2,))
+    types = payroll.carry_companies(august, plan_for("2026-09"))["BINA"]["day_types"]
+    assert types["6"] == "work" and types["5"] == "rest"       # 6 September is a Sunday, 5 a Saturday
+
+
+def test_settings_not_kept_do_not_carry():
+    assert payroll.carry_companies(weekend_company("2026-08", keep=False), plan_for("2026-09")) == {}
+
+
+def test_a_new_month_file_starts_with_the_kept_settings(tmp_path):
+    store = payroll.PayrollStore(tmp_path)
+    store.save(payroll.validate_plan(weekend_company("2026-08"), set()))
+    september = store.load("2026-09")
+    assert september["companies"]["BINA"]["normal_hours"] == 9
+    assert payroll.settings_for(september, "BINA")["day_types"]["5"] == "rest"
+    assert payroll.settings_for(september, "MAJU JAYA")["day_types"]["5"] == "work"
+    assert store.load("2026-08")["companies"]["BINA"]["day_types"]["1"] == "rest"     # a saved month is as it was
+
+
+# ------------------------------------------------------------------------- conversion: the daily hours column
+REPORT_2 = ("DATE", "DAYS/HOURS/MINUTES WORK / WDays", "DAYS/HOURS/MINUTES WORK / WHrs", "DAYS/HOURS/MINUTES WORK / OT",
+            "DAYS/HOURS/MINUTES WORK / LIn(Min)", "DAYS/HOURS/MINUTES WORK / E/Out(Min)", "STATUS")
+
+
+def test_minutes_columns_are_never_the_daily_hours():
+    assert payroll.pick_columns(list(REPORT_2), None) == ("DATE", "DAYS/HOURS/MINUTES WORK / WHrs")
+
+
+def test_a_money_column_is_never_the_daily_hours():
+    assert payroll.pick_columns(["NO.", "NAME", "DAY UNPAID", "TOTAL (RM)"], None)[1] is None
+
+
+def test_the_users_hours_column_still_wins():
+    assert payroll.pick_columns(["NO.", "NAME", "TOTAL (RM)"], "TOTAL (RM)")[1] == "TOTAL (RM)"
+
+
+def test_total_normal_is_still_the_hours():
+    assert payroll.pick_columns(["Date", "TOTAL (NORMAL)"], None) == ("Date", "TOTAL (NORMAL)")
+
+
+# ------------------------------------------------------------- conversion: an afternoon OUT written without pm
+def test_an_out_earlier_than_in_without_pm_is_afternoon():
+    r = payroll.calculate(plan_for(), [("card", in_out([(1, {"IN": "8.00", "OUT": "5.00"})]))], employee())
+    day = r["days"][0]
+    assert day["status"] == "ok" and day["hours"] == 8.0                      # 08:00 to 17:00, less the 1 hour break
+    assert day["clock"]["afternoon"] == ["5.00"]
+    assert not [i for i in r["issues"] if i["kind"] == "unclear"]
+
+
+def test_the_afternoon_rule_also_joins_a_morning_in_and_an_overtime_out():
+    labels = ("DATE", "MORNING / IN", "MORNING / OUT", "OVERTIME / IN", "OVERTIME / OUT")
+    r = payroll.calculate(plan_for(), [("card", in_out([(1, {labels[1]: "8.00", labels[4]: "7.00"})], labels=labels))],
+                          employee())
+    assert r["days"][0]["hours"] == 10.0 and r["days"][0]["clock"]["afternoon"] == ["7.00"]     # 08:00-19:00, less 1
+
+
+@pytest.mark.parametrize("tin,tout", [("8.00", "5.00 am"), ("9:00 pm", "5.00"), ("13:00", "12.30"), ("8.00", "8.00")])
+def test_the_afternoon_rule_leaves_other_cases_unclear(tin, tout):
+    r = payroll.calculate(plan_for(), [("card", in_out([(1, {"IN": tin, "OUT": tout})]))], employee())
+    assert r["days"][0]["status"] == "unclear"
+    assert any(f"OUT {tout} is not later than IN {tin}" in i["text"] for i in r["issues"])
+
+
+def test_digits_with_pm_are_a_clock_time():
+    assert payroll.parse_clock("530 pm") == 1050 and payroll.parse_clock("1130 am") == 690
+    assert payroll.parse_clock("530") is None
+
+
+# ---------------------------------------------------------- conversion: SA / SU in a month grid (the user's rule)
+def test_sa_on_a_saturday_and_su_on_a_sunday_are_not_worked():
+    r = payroll.calculate(plan_for(), [("sheet", grid(grid_row("ALI", {5: "SA", 6: "SU"}, remark="")))], employee())
+    by_day = {d["day"]: d for d in r["days"]}                         # September 2026: the 5th is a Saturday
+    assert (by_day[5]["code"], by_day[5]["status"], by_day[5]["hours"]) == ("SA", "ok", 0.0)       # read as off
+    assert (by_day[6]["code"], by_day[6]["status"], by_day[6]["hours"]) == ("SU", "ok", 0.0)
+    assert not [i for i in r["issues"] if i["kind"] == "unclear"]
+    assert values(r)["days_worked"] == 24                            # 25 ticks in SEPT_MARKS, the 5th now SA
+
+
+def test_sa_on_a_weekday_stays_unclear():
+    r = payroll.calculate(plan_for(), [("sheet", grid(grid_row("ALI", {7: "SA"}, remark="")))], employee())
+    assert any("day 7: 'SA' is not a mark Table Reader knows" in i["text"] for i in r["issues"])
+
+
+def test_hours_on_a_sunday_still_count_as_rest_day_work():
+    r = payroll.calculate(plan_for(), [("sheet", grid(grid_row("ALI", {6: "8"}, remark="")))], employee())
+    assert values(r)["ot_rest_day"] == 1
+
+
+# ------------------------------------------------------------------- conversion: layout maps (confirmed by the user)
+MAPPED = ("DATE", "WHrs", "OT", "LIn(Min)", "E/Out(Min)")
+
+
+def layout_map(labels, roles):
+    """{signature: map} for a page with ``labels``; ``roles`` = {label: (role, unit)}, the rest ignored."""
+    return {payroll.layout_signature(list(labels)): {"columns": {
+        c: {"role": roles.get(c, ("ignore", "none"))[0], "unit": roles.get(c, ("ignore", "none"))[1]} for c in labels}}}
+
+
+REPORT_MAP = layout_map(MAPPED, {"DATE": ("date", "none"), "WHrs": ("hours", "hours"), "OT": ("ot_1_5", "hours"),
+                                 "LIn(Min)": ("lateness", "minutes"), "E/Out(Min)": ("early_departure", "minutes")})
+
+
+def mapped_rows(*rows, labels=MAPPED):
+    return merged([{c: good(v) for c, v in zip(labels, r)} for r in rows], labels=labels)
+
+
+def test_a_mapped_report_gives_hours_and_million_figures():
+    page = mapped_rows(("1", "10", "2", "15", "0"), ("2", "8", "0", "0", "30"))
+    days, issues = payroll.read_days([("report", page)], 30, 9, None, layouts=REPORT_MAP)
+    assert not issues
+    assert days[1]["hours"] == 10.0 and days[2]["hours"] == 8.0
+    assert days[1]["printed"] == {"ot_1_5": 2.0, "lateness": 0.25, "early_departure": 0.0}
+    v = values(payroll.calculate(plan_for(), [("report", page)], employee(), layouts=REPORT_MAP))
+    assert v["ot_1_5"] == 2.0 and v["lateness"] == 0.25 and v["early_departure"] == 0.5     # no 10 - 8 rule on top
+    assert v["days_worked"] == 2
+
+
+def test_a_map_is_used_only_for_its_own_headings():
+    labels = MAPPED + ("STATUS",)
+    page = mapped_rows(("1", "10", "2", "15", "0", "OK"), labels=labels)
+    days, _ = payroll.read_days([("report", page)], 30, 9, None, layouts=REPORT_MAP)
+    assert days[1]["printed"] is None and days[1]["hours"] == 10.0          # today's reading: WHrs is the hours
+
+
+def test_stamps_in_one_cell_are_paired_in_order():
+    stamps = layout_map(("Date", "Times"), {"Date": ("date", "none"), "Times": ("stamps", "none")})
+    page = mapped_rows(("1", "07:58 12:01 13:02 17:05"), ("2", "07:58 12:01 13:02"), labels=("Date", "Times"))
+    days, issues = payroll.read_days([("door", page)], 30, 9, None, layouts=stamps)
+    assert days[1]["hours"] == 8.1 and days[1]["clock"]["pairs"] == 2                   # two pairs: no break
+    assert days[2]["status"] == "unclear"
+    assert any("day 2: '07:58 12:01 13:02' holds an odd number of clock times" in i["text"] for i in issues)
+
+
+def test_a_minutes_figure_written_as_hmm_is_minutes():
+    page = mapped_rows(("1", "8", "0", "1:30", "0"))
+    days, _ = payroll.read_days([("report", page)], 30, 9, None, layouts=REPORT_MAP)
+    assert days[1]["printed"]["lateness"] == 1.5
+
+
+@pytest.mark.parametrize("change", [
+    lambda m: m.pop("WHrs"),                                                     # a heading of the page left out
+    lambda m: m.update({"OTHER": {"role": "ignore", "unit": "none"}}),          # a heading not on the page
+    lambda m: m.update({"OT": {"role": "salary", "unit": "hours"}}),            # a role not on the list
+    lambda m: m.update({"OT": {"role": "ot_1_5", "unit": "days"}}),             # a unit not on the list
+    lambda m: m.update({"WHrs": {"role": "date", "unit": "none"}}),             # two dates
+    lambda m: m.update({"WHrs": {"role": "hours", "unit": "none"}}),            # hours without a unit
+    lambda m: m.update({"OT": {"role": "out", "unit": "none"}, "LIn(Min)": {"role": "in", "unit": "none"}}),  # OUT 1st
+])
+def test_valid_layout_map_refuses_bad_answers(change):
+    columns = {c: dict(v) for c, v in next(iter(REPORT_MAP.values()))["columns"].items()}
+    change(columns)
+    with pytest.raises(ocr.OcrError) as e:
+        payroll.valid_layout_map(list(MAPPED), columns)
+    assert e.value.code == "BAD_LAYOUT"
+
+
+def test_a_valid_layout_map_is_returned_clean():
+    columns = next(iter(REPORT_MAP.values()))["columns"]
+    assert payroll.valid_layout_map(list(MAPPED), columns) == columns
+
+
+def test_layouts_are_stored_and_a_damaged_file_is_empty(tmp_path):
+    store = payroll.PayrollStore(tmp_path)
+    assert store.load_layouts() == {}
+    store.save_layouts(REPORT_MAP)
+    assert store.load_layouts() == REPORT_MAP
+    (tmp_path / "layouts.json").write_text("{not json", encoding="utf-8")
+    assert store.load_layouts() == {}
+
+
+def test_columns_read_matches_what_read_days_reads():
+    assert payroll.columns_read(["Date", "Total", "Sign"], None, None) == {"Date", "Total"}
+    assert payroll.columns_read(["DATE", "IN", "OUT", "SIGN"], None, None) == {"DATE", "IN", "OUT"}
+    assert payroll.columns_read(list(GRID_LABELS), None, None) == set(GRID_LABELS)          # days, name, Remark
+    assert payroll.columns_read(list(REPORT_LABELS), None, None) >= {"Date", "Shift Details / Actual", "OverTime / 1.5"}
+    assert payroll.columns_read(list(MAPPED), None, REPORT_MAP) == set(MAPPED)
+    assert payroll.columns_read(list(MAPPED) + ["STATUS"], None, REPORT_MAP) == {"DATE", "WHrs"}   # not this layout
+
+
+def test_map_as_read_keeps_todays_reading_and_ignores_the_rest():
+    m = payroll.map_as_read(["NO.", "DATE", "WHrs", "OT"], None)
+    assert m == {"NO.": {"role": "ignore", "unit": "none"}, "DATE": {"role": "date", "unit": "none"},
+                 "WHrs": {"role": "hours", "unit": "hours"}, "OT": {"role": "ignore", "unit": "none"}}
+    assert payroll.map_as_read(["Date", "IN", "OUT", "Sign"], None)["OUT"] == {"role": "out", "unit": "none"}
+    assert payroll.valid_layout_map(["NO.", "DATE", "WHrs", "OT"], m) == m
+
+
+# --------------------------------------------- conversion: month-grid day columns headed with their weekday
+WEEKDAY_GRID = ["No.", "NAME"] + [f"{d} / {'TUE WED THU FRI SAT SUN MON'.split()[(d - 1) % 7]}" for d in range(1, 31)] + [
+    "TOTAL (NORMAL)"]
+
+
+def test_day_columns_headed_with_their_weekday_are_a_month_grid():
+    g = payroll.grid_columns(WEEKDAY_GRID)
+    assert g is not None and g["days"][1] == "1 / TUE" and g["days"][30] == "30 / WED" and len(g["days"]) == 30
+    assert g["name"] == "NAME" and g["total"] == "TOTAL (NORMAL)"
+    long = ["Day", "JOB"] + [f"{d} {'Tuesday Wednesday Thursday Friday Saturday Sunday Monday'.split()[(d - 1) % 7]}"
+                             for d in range(1, 31)]
+    assert payroll.grid_columns(long)["days"][2] == "2 Wednesday"
+    malay = ["Nama"] + [f"{d} {'Sel Rab Kha Jum Sab Ahd Isn'.split()[(d - 1) % 7]}" for d in range(1, 31)]
+    assert len(payroll.grid_columns(malay)["days"]) == 30
+
+
+def test_ordinal_or_other_words_are_still_not_day_columns():
+    assert payroll.grid_columns(["Things to Clean"] + [f"{d}th" for d in range(1, 32)]) is None
+    assert payroll.grid_columns(["Name"] + [f"{d} kg" for d in range(1, 32)]) is None
+
+
+def test_a_sheet_with_weekday_headings_is_never_read_as_a_time_card():
+    rows = [{"No.": good(str(n)), "NAME": good(f"W{n}"), **{c: good("✓") for c in WEEKDAY_GRID[2:-1]},
+             "TOTAL (NORMAL)": good("26")} for n in range(1, 5)]
+    r = payroll.calculate(plan_for(), [("sheet", merged(rows, labels=tuple(WEEKDAY_GRID)))], employee())
+    assert any("this sheet lists 4 workers" in i["text"] for i in r["issues"])
+    assert all(d["hours"] in (None, 0) for d in r["days"])                # no "No." column read as dates
+
+
+# ------------------------------------------------------------------ review fixes: layout maps (Part C review)
+def test_a_map_saved_with_other_capitals_or_spacing_is_used_not_a_crash():
+    page = mapped_rows(("1", "10", "2", "15", "0"), labels=("date", "WHRS", "ot", "Lin(min)", "E/OUT(MIN)"))
+    days, _ = payroll.read_days([("report", page)], 30, 9, None, layouts=REPORT_MAP)    # saved as DATE, WHrs, OT ...
+    assert days[1]["printed"]["ot_1_5"] == 2.0
+
+
+def test_a_damaged_layout_entry_is_left_out(tmp_path):
+    store = payroll.PayrollStore(tmp_path)
+    store.save_layouts({payroll.layout_signature(list(MAPPED)): {"confirmed": "2026-10-14"}, **REPORT_MAP})
+    store.save_layouts({**{"x | y": {"columns": "nonsense"}}, **store.load_layouts()})
+    assert set(store.load_layouts()) == set(REPORT_MAP)
+
+
+def test_it_is_right_as_it_is_reads_exactly_as_today():
+    labels = ("Date", "Masuk Pagi", "Keluar Petang", "Jumlah")
+    rows = [{"Date": good("1"), "Masuk Pagi": good("08:00"), "Keluar Petang": good("17:00"), "Jumlah": good("")},
+            {"Date": good("2"), "Masuk Pagi": good(""), "Keluar Petang": good(""), "Jumlah": good("8")}]
+    page = merged(rows, labels=labels)
+    as_is = {payroll.layout_signature(list(labels)): {"columns": payroll.map_as_read(list(labels), None)}}
+    today = payroll.read_days([("card", page)], 30, 9, None)
+    mapped = payroll.read_days([("card", page)], 30, 9, None, layouts=as_is)
+    assert {d: (e["hours"], e["status"]) for d, e in mapped[0].items()} == \
+        {d: (e["hours"], e["status"]) for d, e in today[0].items()}
+    assert [i["text"] for i in mapped[1]] == [i["text"] for i in today[1]] and today[0][1]["status"] == "unclear"
+
+
+def test_mapped_figures_are_read_on_in_out_and_stamp_days_too():
+    labels = ("DATE", "IN", "OUT", "OT", "Late (Min)")
+    m = layout_map(labels, {"DATE": ("date", "none"), "IN": ("in", "none"), "OUT": ("out", "none"),
+                            "OT": ("ot_1_5", "hours"), "Late (Min)": ("lateness", "minutes")})
+    days, _ = payroll.read_days([("card", mapped_rows(("1", "08:00", "19:00", "2", "30"), labels=labels))], 30, 9, None,
+                                layouts=m)
+    assert days[1]["printed"] == {"ot_1_5": 2.0, "lateness": 0.5} and days[1]["hours"] == 10.0
+    labels = ("Date", "Punch", "OT")
+    m = layout_map(labels, {"Date": ("date", "none"), "Punch": ("stamps", "none"), "OT": ("ot_1_5", "hours")})
+    days, _ = payroll.read_days([("door", mapped_rows(("1", "08:00 19:00", "2"), labels=labels))], 30, 9, None, layouts=m)
+    assert days[1]["printed"] == {"ot_1_5": 2.0}
+
+
+def test_mapping_only_lateness_keeps_the_overtime_and_rest_day_rules():
+    labels = ("Date", "WHrs", "Late (Min)")
+    m = layout_map(labels, {"Date": ("date", "none"), "WHrs": ("hours", "hours"), "Late (Min)": ("lateness", "minutes")})
+    page = mapped_rows(("1", "10", "15"), ("6", "8", "0"), labels=labels)            # the 6th is a Sunday
+    v = values(payroll.calculate(plan_for(), [("card", page)], employee(), layouts=m))
+    assert v["ot_1_5"] == 2.0 and v["ot_rest_day"] == 1 and v["lateness"] == 0.25
+
+
+def test_as_is_keeps_the_users_hours_column():
+    m = payroll.map_as_read(["Date", "Normal Hrs", "Total"], "Normal Hrs")
+    assert m["Normal Hrs"]["role"] == "hours" and m["Total"]["role"] == "ignore"
+
+
+def test_a_cell_with_several_clock_times_holds_figures():
+    assert payroll.is_figure_text("07:58 12:01 13:02 17:05")
+
+
+def _two_people():
+    plan = payroll.default_plan("2026-09")
+    plan["employees"] = [payroll.new_employee("e1", "ALI", ["job1"], "MAJU JAYA", None, {}),
+                         payroll.new_employee("e2", "SITI", [], "MAJU JAYA", None, {})]
+    plan["employees"][0].update(emp_no="MJ1", overrides={"ot_1_5": 2.0})
+    return plan
+
+
+def test_change_employee_sets_only_the_keys_given():
+    plan = _two_people()
+    person = payroll.change_employee(plan, "e1", {"name": "ALI B"})
+    assert person is plan["employees"][0]
+    assert (person["name"], person["emp_no"], person["overrides"]) == ("ALI B", "MJ1", {"ot_1_5": 2.0})
+
+
+@pytest.mark.parametrize("changes", [{"jobs": []}, {"id": "x"}, {"company": "BINA"}])
+def test_change_employee_refuses_a_key_it_does_not_know(changes):
+    with pytest.raises(ocr.OcrError) as error:
+        payroll.change_employee(_two_people(), "e1", changes)
+    assert error.value.code == "BAD_PAYROLL"
+
+
+def test_an_unknown_employee_cannot_be_changed_or_removed():
+    plan = _two_people()
+    for act in (lambda: payroll.change_employee(plan, "gone", {"name": "X"}), lambda: payroll.remove_employee(plan, "gone")):
+        with pytest.raises(ocr.OcrError) as error:
+            act()
+        assert error.value.code == "EMPLOYEE_NOT_FOUND"
+        assert str(error.value) == payroll.EMPLOYEE_GONE
+    payroll.remove_employee(plan, "e2")
+    assert [e["id"] for e in plan["employees"]] == ["e1"]
+
+
+def test_take_off_card_returns_whose_it_was():
+    plan = _two_people()
+    assert payroll.take_off_card(plan, "job1") == "e1"
+    assert plan["employees"][0]["jobs"] == []
+    assert payroll.take_off_card(plan, "job1") is None
+
+
+def test_add_employee_is_empty_and_valid():
+    plan = _two_people()
+    person = payroll.add_employee(plan, "e3", "BINA")
+    assert person is plan["employees"][-1]
+    assert (person["emp_no"], person["name"], person["jobs"], person["pay_basis"]) == ("", "", [], "monthly")
+    assert payroll.validate_plan(plan, {"job1"})["employees"][-1]["company"] == "BINA"

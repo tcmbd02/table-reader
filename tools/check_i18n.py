@@ -9,8 +9,9 @@ from pathlib import Path
 import esprima
 
 S = Path(__file__).resolve().parent.parent / "static"
+SCRIPTS = sorted(p.name for p in S.glob("*.js"))
 trees = {}
-for name in ("i18n.js", "app.js", "payroll.js"):
+for name in SCRIPTS:
     try:
         src = (S / name).read_text(encoding="utf-8")
         src = re.sub(r"catch \{", "catch (_e) {", src)             # optional catch binding: valid, too new for esprima
@@ -47,7 +48,7 @@ def find_calls(node):
         for a in args[: (1 if node.callee.name == "t" else 2)]:
             if a.type == "Literal" and isinstance(a.value, str):
                 used.append(a.value)
-for name in ("app.js", "payroll.js"):
+for name in [n for n in SCRIPTS if n != "i18n.js"]:
     walk(trees[name], find_calls)
 # data-t texts in index.html
 html = (S / "index.html").read_text(encoding="utf-8")
@@ -58,8 +59,17 @@ for m in re.finditer(r'(title|aria-label)="([^"]+)"[^>]*data-t-(?:title|aria)', 
     used.append(m.group(2))
 # words looked up through variables
 used += ["January", "Sun", "Working day", "benefit", "leave", "allowance", "deduction", "Day", "Type", "Hours written", "Note",
-         "Clear", "Change the language"]
+         "Clear", "Change the language",
+         # people.js: item heads, employee statuses and table heads
+         "{name}: cells to check on the card", "{name}: days that do not add up",
+         "{name}: Table Reader cannot work out the days", "{name}: no time card yet",
+         "{name}: not ready for the Million file", "Waiting for Million", "Needs you", "Ready", "Employee No.", "Name",
+         "Days Worked", "OT 1.5 (hours)", "Rest day (days)", "Status",
+         # columns.js: what a column can mean, and its unit
+         "Date", "Hours worked that day", "Clock in (IN)", "Clock out (OUT)", "Several clock times in one cell",
+         "Lateness", "Early departure", "Overtime 1.0", "Overtime 1.5", "Overtime 2.0", "Overtime 3.0", "Not used",
+         "hours", "minutes", "—"]
 missing = sorted(set(u for u in used if u not in ms_keys))
 print("texts used:", len(set(used)), "| missing Malay:", len(missing))
 for m in missing:
-    print("  MISSING:", m)
+    print("  MISSING:", m.encode("ascii", "backslashreplace").decode())

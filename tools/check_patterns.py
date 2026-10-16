@@ -3,6 +3,7 @@
 Run from the project folder:  .venv\\Scripts\\python tools\\check_patterns.py   (needs esprima, see check_i18n.py)
 """
 import re
+from datetime import date
 import sys
 from pathlib import Path
 
@@ -58,6 +59,9 @@ msgs += [
     "card.jpg could not be saved. Check that the computer has free disk space, then add it again.",
     "card.jpg has not been read completely yet.",
     "'Food Allowance' is in the Allowance list twice. Use another name.",
+    payroll.document_month("card.jpg", [], date(2026, 10, 12))[1],
+    payroll.document_month("AUG 2026.jpg", [{"page": 1, "column_labels": [], "rows": [], "header_fields": [
+        {"label": "Month", "cell": {"value": "September", "needs_review": False}}]}], date(2026, 10, 12))[1],
 ]
 # payroll issues from the real calculation
 p = payroll.default_plan("2026-09")
@@ -101,10 +105,30 @@ io_rows = [{"Date": good("1"), "IN": good("07:55"), "OUT": cell(None, raw="1?:0?
            {"Date": good("2"), "IN": good("07:55"), "OUT": good("")},
            {"Date": good("3"), "IN": good("-"), "OUT": good("17:00")},
            {"Date": good("4"), "IN": good("7.55 AM ✓"), "OUT": good("17:00")},
-           {"Date": good("7"), "IN": good("8.00"), "OUT": good("5.00")}]
+           {"Date": good("7"), "IN": good("8.00"), "OUT": good("5.00 am")}]
 io_rec = record(io_rows, labels=("Date", "IN", "OUT")); io_rec["page"] = 1
 msgs += [i["text"] for i in payroll.calculate(p, [("in-out.jpg", jobs.merged_pages({"pages": [io_rec]}, {"edits": []}))],
                                               emp)["issues"]]
+# an empty Total with times in columns not known as IN/OUT
+st_rec = record([{"Date": good("1"), "Start": good("08:00"), "Finish": good("17:00"), "Jumlah Total": good("")}],
+                labels=("Date", "Start", "Finish", "Jumlah Total")); st_rec["page"] = 1
+msgs += [i["text"] for i in payroll.calculate(p, [("card.jpg", jobs.merged_pages({"pages": [st_rec]}, {"edits": []}))],
+                                              emp)["issues"]]
+
+# a card read with a layout map: several stamps in one cell that do not pair up, and a map without a date column
+st_labels = ("Date", "Times")
+lay = {payroll.layout_signature(list(st_labels)): {"columns": {"Date": {"role": "date", "unit": "none"},
+                                                              "Times": {"role": "stamps", "unit": "none"}}}}
+lay_nodate = {payroll.layout_signature(list(st_labels)): {"columns": {"Date": {"role": "ignore", "unit": "none"},
+                                                                     "Times": {"role": "stamps", "unit": "none"}}}}
+door = record([{"Date": good("1"), "Times": good("07:58 12:01 13:02")}, {"Date": good("2"), "Times": good("07:58 x")}],
+              labels=st_labels); door["page"] = 1
+door_pages = jobs.merged_pages({"pages": [door]}, {"edits": []})
+msgs += [i["text"] for i in payroll.calculate(p, [("door.pdf", door_pages)], emp, layouts=lay)["issues"]]
+msgs += [i["text"] for i in payroll.calculate(p, [("door.pdf", door_pages)], emp, layouts=lay_nodate)["issues"]]
+lay_notimes = {payroll.layout_signature(list(st_labels)): {"columns": {"Date": {"role": "date", "unit": "none"},
+                                                                      "Times": {"role": "ignore", "unit": "none"}}}}
+msgs += [i["text"] for i in payroll.calculate(p, [("door.pdf", door_pages)], emp, layouts=lay_notimes)["issues"]]
 
 # Million file refusals, built by the real code
 mapping = payroll.load_office_mapping(ROOT / "million" / "office-mapping.csv")
@@ -144,6 +168,14 @@ msgs += ["Payroll 2026-09 (Million).xls could not be saved. If it is open in Exc
          "The Million column table office-mapping.csv was not found.",
          "The Million column table (C:\\x\\office-mapping.csv) could not be used: column 3 is used for both A and B. "
          "Fix it to match Million's File Format Setting, then try again."]
+
+# the month's Million file: the reason for each employee who is not in it (a problem line is shown without "- who: ")
+run = payroll.month_run(p, res + ok[:1] + [dict(ok[0], complete=True), dict(ok[1], complete=True, emp_no="OK0")],
+                        ["A"] * (len(res) + 3), mapping=mapping, known={"x2", "ok0", "ok1"}, names={"ok1": "SOMEONE ELSE"})
+for held in run["held"]:
+    msgs += [r if covered(r) else "- X: " + r for r in held["reasons"]]
+
+msgs.append("The folder could not be opened. Open it yourself: C:\\Users\\x\\Documents\\Table Reader\\Inbox")
 
 bad = [m for m in msgs if not covered(m)]
 print(f"{len(msgs)} messages checked, {len(bad)} not translated")

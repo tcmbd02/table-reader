@@ -28,6 +28,7 @@ from typing import Callable
 
 import ocr
 import pages
+import pdftext
 from ocr import OcrError
 
 log = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ class Jobs:
         self._cancels: dict[str, threading.Event] = {}   # set = the user pressed Cancel for this job
         self._current: str | None = None         # the job the worker is reading at this moment
         self._worker: threading.Thread | None = None
+        self._yellow: dict[str, tuple[tuple, int]] = {}    # id -> (sizes and times of result/edits, cells to check)
         self._recover_interrupted()
 
     # ------------------------------------------------------------------------------------------- folders
@@ -187,6 +189,12 @@ class Jobs:
                 continue
         for m in out:
             m.setdefault("company", "")                            # files added before companies existed
+            m["cells_to_check"] = None
+            if m.get("status") == "done":
+                try:
+                    m["cells_to_check"] = self._cells_to_check(m["id"])
+                except (OcrError, OSError, ValueError):
+                    pass                                           # a reading that cannot be opened: no count
         return sorted(out, key=lambda m: (m.get("created", ""), m.get("id", "")), reverse=True)
 
     # ------------------------------------------------------------------------------------------- companies
@@ -219,10 +227,21 @@ class Jobs:
     def get_job(self, job_id: str) -> dict:
         """Status and progress, plus how many cells the user still has to check."""
         meta = self._meta(job_id)
-        meta["cells_to_check"] = None
-        if meta["status"] == "done":
-            meta["cells_to_check"] = count_to_check(merged_pages(self.load_result(job_id), self.load_edits(job_id)))
+        meta["cells_to_check"] = self._cells_to_check(job_id) if meta["status"] == "done" else None
         return meta
+
+    def _cells_to_check(self, job_id: str) -> int:
+        """count_to_check of a finished document, worked out again only when its reading or corrections change on
+        disk (so the file list can carry it on every refresh)."""
+        d = self._dir(job_id)
+        key = tuple((p.stat().st_mtime_ns, p.stat().st_size) if p.exists() else None
+                    for p in (d / "result.json", d / "edits.json"))
+        hit = self._yellow.get(job_id)
+        if hit is not None and hit[0] == key:
+            return hit[1]
+        n = count_to_check(merged_pages(self.load_result(job_id), self.load_edits(job_id)))
+        self._yellow[job_id] = (key, n)
+        return n
 
     # ------------------------------------------------------------------------------------------ queue/worker
     def _enqueue(self, job_id: str) -> None:
@@ -325,23 +344,33 @@ class Jobs:
                 self._cancels.pop(job_id, None)
 
     def _read_pages(self, job_id: str, d: Path, cancel: threading.Event) -> None:
+        text = None
         try:
             original = next((d / "original").iterdir())
             page_images = pages.render_pages(original, d / "pages")
             total = len(page_images)
             self._update(job_id, pages_total=total, pages_done=self._count_readings(d))
+            # A PDF made by a program carries its own text: once Claude has read one page of it, later pages with the
+            # same layout are filled in from that text (pdftext). Pages already read teach the layout too (Continue).
+            text = pdftext.Document(original)
+            for number in range(1, total + 1):
+                if (d / "reading" / f"page-{number}.json").exists():
+                    text.learn(number, _read_json(d / "reading" / f"page-{number}.json"))
             for number, image in enumerate(page_images, start=1):
                 reading = d / "reading" / f"page-{number}.json"
                 if reading.exists():
                     continue
                 if cancel.is_set():
                     raise OcrError(_CANCELLED["code"], _CANCELLED["message"])
-                try:
-                    record = self._reader(image)
-                except OcrError as exc:
-                    if total > 1 and exc.code != _CANCELLED["code"]:
-                        raise OcrError(exc.code, f"Page {number} of {total}: {exc.message}") from exc
-                    raise
+                record = text.read(number)
+                if record is None:
+                    try:
+                        record = self._reader(image)
+                    except OcrError as exc:
+                        if total > 1 and exc.code != _CANCELLED["code"]:
+                            raise OcrError(exc.code, f"Page {number} of {total}: {exc.message}") from exc
+                        raise
+                    text.learn(number, record)
                 pages.turn_page(image, int(record.get("rotated_clockwise") or 0))   # before the reading is saved
                 record["page"] = number
                 _write_json(reading, record)
@@ -358,6 +387,9 @@ class Jobs:
             self._update(job_id, status="failed", error={
                 "code": "UNEXPECTED", "message": "Something went wrong while reading this document. Press Continue "
                                                  "to try again. If it keeps happening, tell your support person."})
+        finally:
+            if text is not None:
+                text.close()                                        # lets go of the PDF file
 
     def _stop_queue(self, exc: OcrError) -> None:
         """Every waiting document would fail the same way: mark them stopped so they can be continued later."""
@@ -404,14 +436,24 @@ class Jobs:
 
         A cell change is {"page", "row", "column", "value"}; a form-field change is {"page", "header", "value"}
         (row / header are 0-based positions). ``value`` "" means "checked, it is really empty"; ``None`` takes the
-        correction back, so Claude's reading shows again."""
+        correction back, so Claude's reading shows again.
+        A change may say how the cell looked when it was shown ("seen": {"edited", "value"}; the payroll's one-look
+        panel sends it for every box): if the cell was corrected since (in another window), nothing is saved."""
         result = self.load_result(job_id)
         by_page = {p["page"]: p for p in result["pages"]}
         with self._lock:
             edits = self.load_edits(job_id)
             kept = {_edit_key(e): e for e in edits["edits"]}
-            for change in changes:
-                entry = _validate_edit(change, by_page)
+            entries = [(_validate_edit(change, by_page), change.get("seen")) for change in changes]
+            for entry, seen in entries:
+                if seen is None:
+                    continue
+                now = kept.get(_edit_key(entry))
+                if not isinstance(seen, dict) or (now is not None) != seen.get("edited") \
+                        or (now is not None and now["value"] != seen.get("value")):
+                    raise OcrError("CELL_CHANGED", "This card was changed in another window, so nothing was saved. "
+                                                   "Check it again: it now shows what is saved.")
+            for entry, _ in entries:
                 if entry["value"] is None:
                     kept.pop(_edit_key(entry), None)
                 else:
@@ -457,17 +499,21 @@ def _validate_edit(change: dict, by_page: dict[int, dict]) -> dict:
         value = value.strip()
         if len(value) > MAX_EDIT_LENGTH:
             raise OcrError("EDIT_TOO_LONG", f"That entry is too long (over {MAX_EDIT_LENGTH} characters).")
+    # "via": "look" = accepted through the payroll's one-look panel, so it can be told apart from a typed correction
+    if change.get("via", "look") != "look":
+        raise bad
+    via = {"via": "look"} if "via" in change else {}
     record = by_page[page]
     if "header" in change:
         idx = change["header"]
         if isinstance(idx, bool) or not isinstance(idx, int) or not 0 <= idx < len(record["header_fields"]):
             raise bad
-        return {"page": page, "header": idx, "value": value}
+        return {"page": page, "header": idx, "value": value, **via}
     row, column = change.get("row"), change.get("column")
     if isinstance(row, bool) or not isinstance(row, int) or not 0 <= row < len(record["rows"]) \
             or column not in record["column_labels"]:
         raise bad
-    return {"page": page, "row": row, "column": column, "value": value}
+    return {"page": page, "row": row, "column": column, "value": value, **via}
 
 
 def merged_pages(result: dict, edits: dict) -> list[dict]:
