@@ -106,7 +106,6 @@
   <div id="mo-error" class="banner error" hidden></div>
   <div id="mo-info" class="banner info" hidden></div>
   <div id="mo-run-result" class="banner info" hidden></div>
-  <section id="mo-settings" class="card" hidden></section>
   <section id="mo-export" class="card" hidden></section>
   <p id="mo-total" class="legend"></p>
   <div class="split">
@@ -129,7 +128,6 @@
         </div>
         <div id="co-error" class="banner error" hidden></div>
         <section id="co-million" class="card" hidden></section>
-        <section id="co-settings" class="card" hidden></section>
         <section class="card"><h3 data-t>Needs you</h3><div id="co-items"></div></section>
         <section id="co-pay" class="card">
           <h3 data-t>Pay preview</h3>
@@ -177,6 +175,11 @@
   </div>
 </main>
 
+<dialog id="popup" aria-labelledby="popup-title">
+  <div class="pop-head"><h2 id="popup-title"></h2><button id="popup-close" type="button"></button></div>
+  <div id="popup-body"></div>
+  <div id="popup-foot" class="need-buttons"></div>
+</dialog>
 <script src="i18n.js"></script>
 <script src="app.js"></script>
 <script src="paycommon.js"></script>

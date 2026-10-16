@@ -33,6 +33,42 @@ function iconButton(name, label, props = {}) {
     icon(name), el("span", { class: "sr-only", text: label }));
 }
 
+// The pop-up (one at a time, over the page): a title with its icon, a ×, the body and the buttons. Esc and × close it.
+let popupClosed = null;
+function openPopup({ title, icon: name, body, buttons = [], onClose }) {
+  closePopup();
+  const box = $("popup");
+  $("popup-title").replaceChildren(icon(name), " ", title);
+  $("popup-body").replaceChildren(...body);
+  $("popup-foot").replaceChildren(...buttons);
+  $("popup-foot").hidden = !buttons.length;
+  popupClosed = onClose || null;
+  if (typeof box.showModal === "function") box.showModal(); else box.setAttribute("open", "");
+  box.scrollTop = 0; $("popup-body").scrollTop = 0;
+}
+function closePopup() {
+  const box = $("popup");
+  if (!box || !box.open) return;
+  if (typeof box.close === "function") box.close(); else box.removeAttribute("open");
+}
+function popupOpen() { return Boolean($("popup") && $("popup").open); }
+// An error inside the pop-up, at the top of its body ("" takes it away).
+function popupError(message) {
+  $("popup-body").querySelector(":scope > .banner.error")?.remove();
+  if (message) $("popup-body").prepend(el("div", { class: "banner error", text: message }));
+}
+
+function setupPopup() {
+  const box = $("popup");
+  $("popup-close").replaceWith(iconButton("x", t("Close"), { id: "popup-close", class: "popup-x", onclick: closePopup }));
+  box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); closePopup(); } });
+  box.addEventListener("close", () => {
+    $("popup-body").replaceChildren(); $("popup-foot").replaceChildren();
+    const done = popupClosed; popupClosed = null;
+    if (done) done();
+  });
+}
+
 async function api(method, url, body) {
   const opts = { method, headers: {} };
   if (body instanceof FormData) opts.body = body;
@@ -195,5 +231,6 @@ function setupQuit() {
 }
 
 setupQuit();
+setupPopup();
 refreshClaude();
 setInterval(() => { if (!loginTimer) refreshClaude(); }, 60000);

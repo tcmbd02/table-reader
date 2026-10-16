@@ -39,6 +39,7 @@ function route() {
     const m = hash.match(re);
     if (m) { location.replace(to(m)); return; }               // the hashchange that follows draws it
   }
+  closePopup();                                               // a pop-up belongs to the screen it was opened on
   if (typeof emLeave === "function") emLeave();               // what was typed in an employee and not sent yet: now
   const ck = hash.match(/^#\/check(?:\/([^/]+)(?:\/columns\/(\d+)(?:\/h\/([^/]+))?)?)?$/);
   const pp = hash.match(/^#\/payroll(?:\/(\d{4}-\d{2})(?:\/e\/([^/]+)(\/look)?|\/c\/(.*))?)?$/);

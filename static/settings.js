@@ -43,6 +43,8 @@ function settingsEditor(month, start) {
     box.indeterminate = resting > 0 && resting < days.length;
   });
   const grid = el("div", { class: "days" });
+  const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7;             // the calendar starts on Monday
+  for (let k = 0; k < lead; k++) grid.append(el("span", { class: "blank", "aria-hidden": "true" }));
   const buttons = [];
   const paintAll = () => { buttons.forEach((btn, i) => paint(btn, i + 1)); paintSummary(); paintWeekly(); };
   for (let d = 1; d <= Object.keys(types).length; d++) {
@@ -58,52 +60,48 @@ function settingsEditor(month, start) {
   paintSummary();
   paintWeekly();
   const node = el("div", { class: "settings-editor" },
-    el("div", { class: "row" }, el("label", {}, t("Normal hours in a working day (overtime starts after this)"), hours),
-      el("label", {}, t("Break taken off IN/OUT time cards (hours)"), rest)),
-    el("div", { class: "weekly" }, el("span", { text: t("Rest days every week:") }),
-      ...weekly.map(({ weekday, box }) => el("label", {}, box, t(WEEKDAYS[weekday])))),
-    el("p", { class: "legend", text: t("Click a day to change it: working day → rest day → public holiday.") }),
-    el("p", { class: "legend day-key" }, t("Colours:"),
-      ...DAY_ORDER.map((k) => el("span", {}, el("span", { class: `swatch day ${k}`, "aria-hidden": "true" }),
-        t({ work: "white = working day", rest: "grey = rest day", holiday: "yellow = public holiday" }[k])))),
+    el("div", { class: "row" },
+      el("label", { class: "num", title: t("Normal hours in a working day (overtime starts after this)") }, icon("clock"), t("Normal hours"), hours),
+      el("label", { class: "num", title: t("Break taken off IN/OUT time cards (hours)") }, t("Break (hours)"), rest)),
+    el("p", { class: "sec", text: t("Rest days every week") }),
+    el("div", { class: "weekly" },
+      ...weekly.map(({ weekday, box }) => el("label", { class: "wd" }, box, el("span", { text: t(WEEKDAYS[weekday]) })))),
+    el("p", { class: "sec" }, t("Days") + " ",
+      el("span", { class: "muted", text: t("Click a day: working → rest → holiday") })),
     grid, summary);
   return { node, values: () => ({ normal_hours: Number(hours.value), break_hours: rest.value === "" ? -1 : Number(rest.value), day_types: { ...types } }) };
 }
 
 // ------------------------------------------------------------------------------------------------ month settings
 function openMonthSettings() {
-  const box = $("mo-settings");
-  if (!box.hidden) { box.hidden = true; return; }
   if (!ppView) return;
-  const editor = settingsEditor(moMonth, ppView.settings);
+  const month = moMonth;
+  const editor = settingsEditor(month, ppView.settings);
   const save = el("button", { type: "button", class: "primary", text: t("Save") });
-  const cancel = el("button", { type: "button", text: t("Cancel"), onclick: () => { box.hidden = true; } });
+  const cancel = el("button", { type: "button", text: t("Cancel"), onclick: closePopup });
   save.addEventListener("click", async () => {
     save.disabled = true;
     try {
-      await api("PUT", `/api/payroll/${moMonth}/settings`, editor.values());
-      box.hidden = true; moError("");
+      await api("PUT", `/api/payroll/${month}/settings`, editor.values());
+      closePopup(); moError("");
       await ppLoad();
-    } catch (e) { moError(e.message); save.disabled = false; }
+    } catch (e) { popupError(e.message); save.disabled = false; }
   });
-  box.replaceChildren(el("h3", { text: t("Settings for {month}", { month: monthTitle(moMonth) }) }),
-    el("p", { class: "legend", text: t("Every company follows these, except a company given its own settings on its screen.") }),
-    editor.node, el("div", { class: "need-buttons" }, save, cancel));
-  box.hidden = false;
+  openPopup({ title: monthTitle(month), icon: "calendar-cog", buttons: [cancel, save],
+    body: [el("p", { class: "legend", text: t("Every company follows these, except a company given its own settings.") }), editor.node] });
 }
 
 $("mo-settings-open").addEventListener("click", openMonthSettings);
 
 // ---------------------------------------------------------------------------------------------- company settings
 function openCompanySettings() {
-  const box = $("co-settings");
   if (!coView || !coView.settings) return;
-  const s = coView.settings;
+  const s = coView.settings, month = moMonth, company = coCompany;
   const name = `cs-${Date.now()}`;                                    // a radio group of its own
   const follow = el("input", { type: "radio", name, checked: !s.own });
   const own = el("input", { type: "radio", name, checked: s.own });
   // a company's own set starts as a copy of the month's default
-  const editor = settingsEditor(moMonth, s.own ? s : s.default);
+  const editor = settingsEditor(month, s.own ? s : s.default);
   const keep = el("input", { type: "checkbox", checked: s.keep });
   const ownPart = el("div", { class: "own-settings" }, editor.node,
     el("label", { class: "check" }, keep, t("Use the same settings for this company next month")));
@@ -112,23 +110,22 @@ function openCompanySettings() {
   own.addEventListener("change", show);
   show();
   const save = el("button", { type: "button", class: "primary", text: t("Save") });
-  const cancel = el("button", { type: "button", text: t("Cancel"), onclick: () => { box.hidden = true; } });
+  const cancel = el("button", { type: "button", text: t("Cancel"), onclick: closePopup });
   save.addEventListener("click", async () => {
     save.disabled = true;
     try {
-      await api("PUT", `/api/payroll/${moMonth}/company-settings`, own.checked
-        ? { company: coCompany, own: true, keep: keep.checked, ...editor.values() } : { company: coCompany, own: false });
-      box.hidden = true; coError("");
+      await api("PUT", `/api/payroll/${month}/company-settings`, own.checked
+        ? { company, own: true, keep: keep.checked, ...editor.values() } : { company, own: false });
+      closePopup(); coError("");
       await loadCompany();
-    } catch (e) { coError(e.message); save.disabled = false; }
+    } catch (e) { popupError(e.message); save.disabled = false; }
   });
-  box.replaceChildren(el("h3", { text: t("{company} - settings for {month}", { company: coCompany, month: monthTitle(moMonth) }) }),
-    ...(s.default_changed ? [el("p", { class: "banner info", text: t("The month's default was changed after this; check the calendar.") })] : []),
-    el("label", { class: "check" }, follow, t("Same as the month's default")),
-    el("label", { class: "check" }, own, t("This company is different:")),
-    ownPart, el("div", { class: "need-buttons" }, save, cancel));
-  box.hidden = false;
-  box.scrollIntoView({ block: "start" });
+  openPopup({ title: t("{company} - settings for {month}", { company, month: monthTitle(month) }), icon: "calendar-cog",
+    buttons: [cancel, save], body: [
+      ...(s.default_changed ? [el("p", { class: "banner info", text: t("The month's default was changed after this; check the calendar.") })] : []),
+      el("label", { class: "check" }, follow, t("Same as the month's default")),
+      el("label", { class: "check" }, own, t("This company is different:")),
+      ownPart] });
 }
 
 // "It is right": the company's own settings stay as they are and are saved again, now on top of the current default
@@ -138,6 +135,4 @@ function keepCompanySettings(button) {
     company: coCompany, own: true, keep: s.keep, normal_hours: s.normal_hours, break_hours: s.break_hours, day_types: s.day_types }));
 }
 
-$("co-settings-open").addEventListener("click", () => {
-  if (!$("co-settings").hidden) $("co-settings").hidden = true; else openCompanySettings();
-});
+$("co-settings-open").addEventListener("click", openCompanySettings);

@@ -41,7 +41,7 @@ async function showPeople(month, sel, entering = false) {
   const before = ppSel;
   moMonth = month; ppSel = sel;
   $("mo-title").textContent = t("Payroll {month}", { month: monthTitle(moMonth) });
-  if (other) { $("mo-run-result").hidden = true; $("mo-settings").hidden = true; $("mo-export").hidden = true; }
+  if (other) { $("mo-run-result").hidden = true; $("mo-export").hidden = true; }
   if (other || entering) ppNotes = takeMonthNotes(month);
   else if ((before.employee || before.company !== null) && (sel.employee !== before.employee || sel.company !== before.company)) {
     ppNotes = []; $("mo-run-result").hidden = true;      // the messages at the top are said once: another one opened
@@ -301,7 +301,7 @@ $("mo-million-file").addEventListener("change", async () => {
 
 // ------------------------------------------------------------------------------------------------ the company panel
 function showCompany(company) {
-  if (company !== coCompany) { $("co-settings").hidden = true; $("co-million").hidden = true; coError(""); }
+  if (company !== coCompany) { $("co-million").hidden = true; coError(""); }
   coCompany = company;
   drawCompany();
   if (company) loadPayTable();

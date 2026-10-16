@@ -235,8 +235,31 @@ label.check { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
 .side-head { flex-direction: column; align-items: flex-start; gap: 0; margin-top: 6px; }
 .pp-company + .pp-company { border-top: 1px solid var(--line); }
 .foot { justify-content: flex-end; margin: 16px 0; }
-.weekly { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.weekly { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin: 4px 0 8px; }
 .weekly label { display: inline-flex; align-items: center; gap: 4px; }
 .export-row { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
 .export-row strong { min-width: 150px; }
 .export-row label { display: inline-flex; align-items: center; gap: 4px; }
+
+/* the pop-up (Month / Company settings, Export, Move to): one at a time, over the page */
+#popup { width: min(560px, calc(100vw - 32px)); max-height: 85vh; padding: 0; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--card); color: var(--text); display: none; flex-direction: column; }
+#popup[open] { display: flex; }
+#popup::backdrop { background: rgba(0, 0, 0, .35); }
+.pop-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px 4px; }
+.pop-head h2 { flex: 1; margin: 0; font-size: 1.1rem; }
+.popup-x { border: none; background: none; color: var(--muted); }
+#popup-body { padding: 4px 16px 8px; overflow-y: auto; min-height: 0; }
+#popup-foot { padding: 8px 16px 14px; justify-content: flex-end; margin: 0; border-top: 1px solid var(--line); }
+.sec { margin: 12px 0 4px; font-weight: 600; }
+.sec .muted { font-weight: 400; font-size: .9rem; }
+label.num { display: inline-flex; align-items: center; gap: 6px; margin-right: 18px; }
+label.num input { width: 70px; }
+label.wd { position: relative; }
+label.wd input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+label.wd span { display: inline-block; min-width: 42px; padding: 5px 6px; text-align: center; border: 1px solid var(--line); border-radius: 6px; }
+label.wd input:checked + span { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+label.wd input:indeterminate + span { border-color: var(--accent); border-style: dashed; }
+label.wd input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+.settings-editor .days { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.settings-editor .day { padding: 3px 0; }
