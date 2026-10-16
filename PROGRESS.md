@@ -27,6 +27,12 @@
   `check_reading`: no problems. 558 tests pass.
 - Staff feedback (for the next step, mock-ups first): fewer words, more icons and features, one thing at a time with
   little scrolling.
+- On the user's OK: `closable-notes` merged into `pdf-text` (fast-forward, bd1c781, not pushed, app not rebuilt).
+- Mock-ups shown in chat; the user chose **A** (employee in tabs To fix / Cards / Hours / Pay, messages in a bell,
+  Month settings / Company settings / Export as pop-ups). Design
+  `docs/superpowers/specs/2026-10-16-step3-tabs-bell-popups-design.md` and plan
+  `docs/superpowers/plans/2026-10-16-step3-tabs-bell-popups.md` (10 tasks) on branch `step3-tabs`, **nothing built**.
+  Open for the user: the one-time download of the Tabler icons (MIT), and the review of design and plan.
 
 ## Session 24d - 2026-10-14 - Export…: what, format, companies, one file or one per company
 Asked by the user: the "Download payroll CSV" and "Make the month's Million file" buttons as one customisable export.
