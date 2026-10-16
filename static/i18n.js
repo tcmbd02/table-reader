@@ -600,6 +600,7 @@ const MS = {
   "Not now": "Bukan sekarang",
   // New in Million (a company's employees Million does not have yet)
   "New in Million": "Baharu dalam Million",
+  "Pay table (CSV)": "Jadual gaji (CSV)",
   "How to export the list in Million": "Cara mengeksport senarai dalam Million",
   "New in Million: {n} employee": "Baharu dalam Million: {n} pekerja",
   "New in Million: {n} employees": "Baharu dalam Million: {n} pekerja",

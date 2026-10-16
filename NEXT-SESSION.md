@@ -10,9 +10,9 @@ sessions 5–7b) and `PLAN.md`. Project rules are in `CLAUDE.md` (never guess; p
 > **State at the end of session 25 (16 Oct):** `pdf-text` is pushed up to 24d, and the `download` branch has that build
 > (8b1b984). The yellow-cell question (step 2) and the closable step 3 messages are merged into `pdf-text`
 > (bd1c781), **not pushed**; the app was rebuilt with the first only. Windows' Application Control blocked starting the
-> rebuilt exe from the session. **Next:** the step 3 redesign (tabs, bell, pop-ups): design and plan on branch
-> `step3-tabs`, waiting for the user's review, the icon download OK and the choice of how to build it. Push,
-> `download` branch, PDF guide each need the user's OK. Details: PROGRESS.md 25.
+> rebuilt exe from the session. The step 3 redesign (tabs, bell, pop-ups) is **built on branch `step3-tabs`**
+> (from `pdf-text`; not merged, app not rebuilt). Waiting for the user: look at it, then merge / rebuild / push /
+> `download` branch / PDF guide (each needs the user's OK). Details: PROGRESS.md 25.
 
 Session 24 rearranged the app into three steps (Upload, Check reading, Payroll): merged into `pdf-text`, the app
 rebuilt, pushed (PR #2), and the `download` branch updated, all on the user's OK. Sessions 24b-24d added to it (see

@@ -33,6 +33,27 @@
   `docs/superpowers/specs/2026-10-16-step3-tabs-bell-popups-design.md` and plan
   `docs/superpowers/plans/2026-10-16-step3-tabs-bell-popups.md` (10 tasks) on branch `step3-tabs`, **nothing built**.
   Open for the user: the one-time download of the Tabler icons (MIT), and the review of design and plan.
+- On the user's OK (icons downloaded once, built in this session, one fresh reviewer at the end): the 10 tasks built on
+  branch `step3-tabs`, **not merged, app not rebuilt, not pushed.** Ledger:
+  `.superpowers/sdd/2026-10-16-step3-tabs-bell-popups/progress.md` (git-ignored; rulings listed in the session's final
+  message).
+  - Icons: `static/icons.svg` (31 Tabler outline icons, `tools/make_icon_sprite.py`, licence in `static/icons-LICENSE.txt`);
+    `icon()`, `iconButton()`, `iconize()` in `app.js`; the payroll folder can be opened (`POST /api/folders/payroll/open`).
+  - One pop-up (`<dialog id="popup">`, `openPopup` / `closePopup`): Month settings, Company settings (shorter words, a
+    Monday-first calendar, weekday buttons), Export (two large choices, company chips, two-way switches; the Million
+    file's summary inside it), Move to.
+  - The bell (`static/bell.js`): month notes, the Million file made (with Open folder), Million's list imported; a toast;
+    kept per month in the tab. The banners above the list are gone.
+  - Month bar as icons with tooltips, a short "n ready · n to fix" line, icon marks in the list.
+  - Employee tabs To fix · Cards · Hours · Pay (`emPane`, the last tab remembered; To fix first when there is
+    something to fix); Hours as a calendar (`static/hours.js`); Pay in sub-tabs (Basic Pay & Overtime with three
+    groups, Allowance & Deduction, Leave); Remove employee in the … menu; notes that are not things to fix (leave on a
+    card) under To fix.
+  - Company tabs To fix · Pay preview · New in Million; its settings and Export as icon buttons.
+  - Guides (both languages, sections B and C) and the PDF guide's source paragraph rewritten; the PDF itself is not
+    regenerated.
+  - Tests: pytest 560; new click-throughs `popups`, `bell`, `employee_tabs` (`YELLOW_FILE=1`), `company_tabs`;
+    `closable_notes` replaced by `bell`; the others updated. Looked at in the browser pane on made-up data.
 
 ## Session 24d - 2026-10-14 - Export…: what, format, companies, one file or one per company
 Asked by the user: the "Download payroll CSV" and "Make the month's Million file" buttons as one customisable export.

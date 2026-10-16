@@ -480,6 +480,8 @@ function drawMillionNew() {
 }
 
 iconize($("co-settings-open"), "calendar-cog", t("Company settings"));
+$("co-pay-download").replaceChildren(icon("download"), " ", t("Pay table (CSV)"));
+$("co-add").replaceChildren(icon("plus"), " ", t("Add employee"));
 $("co-pay").prepend(el("div", { class: "pane-head" }, el("strong", { text: t("Pay preview") }),
   iconButton("info-circle", t("What Million Payroll should pay each employee before EPF, SOCSO and tax, worked out with Million's own overtime tables. The pay basis and Basic Rate come from Million's employee list (import its “Payroll Information” report); type a rate to use another. This is a check for you: Million still does the real calculation."), { class: "info" })));
 $("co-export").replaceChildren(icon("download"), " ", t("Export"));
