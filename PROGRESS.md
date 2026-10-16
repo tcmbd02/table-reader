@@ -1,5 +1,21 @@
 # Progress log
 
+## Session 26 - 2026-10-16 - Step 3 redesign: final review and its fixes
+- The whole-branch review of `step3-tabs` (89fae15..1ffe823) by one fresh reviewer (Opus 5.5), with the plan's Review
+  Focus and the ledger's rulings: Critical 0, Important 4, Minor 10, "ready to merge with fixes". One fix pass, each
+  fix with a check that fails first (commits fa8c07e..49f0fee on `step3-tabs`, **not merged, app not rebuilt, not pushed**):
+  - the bell said "n file(s) without a month" again (with a toast) on every refresh of step 3, because the server
+    repeats it until a month is chosen: each note is now said once in the browser tab, also after its ×;
+  - leave / cards-taken-off notes (not things to fix) were only under To fix, whose tab showed 0: they are again above
+    Million's fields in Pay, and the To fix tab gets an info mark;
+  - the Review Focus 1 test (typing in Pay, then another tab) passed without the flush: it now checks the change was
+    sent at once (fails without the flush);
+  - the Review Focus 5 test (about 30 companies in Export) never overflowed: 40 made-up chips are added; the buttons
+    must stay on the screen and the body scroll (fails without the body's scrolling).
+- pytest 560; every click-through "No problems" (`employee_tabs` and `yellow_confirm` with `YELLOW_FILE=1`,
+  `check_reading` with `SLOW_FILE=1`); Malay checks pass. The 10 minor findings are deferred (listed in the session's
+  final message and the ledger).
+
 ## Session 25 - 2026-10-16 - Push, `download` branch, and the yellow-cell question before payroll
 - On the user's OK: `pdf-text` pushed (24c, 24d and their notes, 6 commits; diff scanned, made-up names only), and the
   `download` branch updated with the 14 Oct build that has them (8b1b984; the zip checked against the code first; HTML
